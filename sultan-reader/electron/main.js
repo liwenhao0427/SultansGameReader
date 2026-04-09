@@ -29,6 +29,14 @@ const CONFIG_SUBPATH = path.join("Sultan's Game_Data", 'StreamingAssets', 'confi
 /** 开发模式判断 */
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 
+/**
+ * 工作区根目录（开发模式下 electron/ 的上两级）
+ * sultan-reader/electron/main.js → sultan-reader/ → 工作区根
+ */
+const WORKSPACE_ROOT = isDev
+  ? path.resolve(__dirname, '..', '..')  // sultan-reader/electron/ → sultan-reader/ → 工作区根
+  : null;
+
 // ─── 自定义协议注册（必须在 app.ready 之前调用）────────────────────────────────
 
 // 将 sultan-asset:// 注册为安全的自定义协议，允许在 Renderer 中作为 img src 使用
@@ -63,22 +71,39 @@ let mainWindow = null;
  */
 async function initStore() {
   if (settings) return settings;
+
+  // 开发模式下默认使用工作区根目录的 cache/ 和 resource/（已有现成数据）
+  // 生产模式下使用 userData 目录
+  const defaultCacheDir   = WORKSPACE_ROOT
+    ? path.join(WORKSPACE_ROOT, 'cache')
+    : path.join(app.getPath('userData'), 'cache');
+  const defaultResourceDir = WORKSPACE_ROOT
+    ? path.join(WORKSPACE_ROOT, 'resource')
+    : path.join(app.getPath('userData'), 'resource');
+
   try {
-    // electron-store v8 是 ESM，使用动态 import
     const { default: ElectronStore } = await import('electron-store');
     settings = new ElectronStore({
       name: 'sultan-reader-settings',
       defaults: {
         gamePath:    '',
         cliPath:     '',
-        resourceDir: path.join(app.getPath('userData'), 'resource'),
-        cacheDir:    path.join(app.getPath('userData'), 'cache'),
+        resourceDir: defaultResourceDir,
+        cacheDir:    defaultCacheDir,
       },
     });
+    // 如果已保存的 cacheDir 不存在（如首次安装后 userData 路径），重置为默认值
+    const savedCacheDir = settings.get('cacheDir');
+    if (savedCacheDir && !fs.existsSync(savedCacheDir) && fs.existsSync(defaultCacheDir)) {
+      settings.set('cacheDir', defaultCacheDir);
+    }
+    const savedResourceDir = settings.get('resourceDir');
+    if (savedResourceDir && !fs.existsSync(savedResourceDir) && fs.existsSync(defaultResourceDir)) {
+      settings.set('resourceDir', defaultResourceDir);
+    }
   } catch (e) {
-    // 降级：使用简单 JSON 文件存储
     console.warn('electron-store 加载失败，使用 JSON 降级存储:', e.message);
-    settings = createFallbackStore();
+    settings = createFallbackStore(defaultCacheDir, defaultResourceDir);
   }
   return settings;
 }
@@ -86,14 +111,14 @@ async function initStore() {
 /**
  * 降级存储：基于 JSON 文件的简单 key-value store
  */
-function createFallbackStore() {
+function createFallbackStore(defaultCacheDir, defaultResourceDir) {
   const storePath = path.join(app.getPath('userData'), 'settings.json');
   let data = {};
   const defaults = {
     gamePath:    '',
     cliPath:     '',
-    resourceDir: path.join(app.getPath('userData'), 'resource'),
-    cacheDir:    path.join(app.getPath('userData'), 'cache'),
+    resourceDir: defaultResourceDir || path.join(app.getPath('userData'), 'resource'),
+    cacheDir:    defaultCacheDir    || path.join(app.getPath('userData'), 'cache'),
   };
 
   // 读取已有数据

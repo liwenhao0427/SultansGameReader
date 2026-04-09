@@ -250,12 +250,15 @@ export default function SettingsPage({ onNavigate }) {
           />
           <label style={labelStyle}>缓存目录（解析结果存储目录）</label>
           <input
-            style={inputStyle}
+            style={{ ...inputStyle, marginBottom: 6 }}
             value={cacheDir}
             onChange={e => setCacheDir(e.target.value)}
             onBlur={handleCacheDirBlur}
             placeholder="默认：<appData>/cache/"
           />
+          <div style={{ fontSize: 11, color: '#6c7086' }}>
+            提示：如果搜索无结果，请确认缓存目录路径正确，或点击"更新配置缓存"重新生成。
+          </div>
         </div>
 
         {/* 缓存与资源管理 */}
