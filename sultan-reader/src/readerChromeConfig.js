@@ -15,6 +15,12 @@ export const READER_CHROME = {
       backgroundSize: '100% 100%',
       backgroundPosition: 'center',
     },
+    riteTitlePlate: {
+      asset: 'rite_title_bg',
+    },
+    riteTitleLine: {
+      asset: 'rite_title_short',
+    },
     slotFrame: {
       asset: 'nomal_slot_bg',
       width: 82,

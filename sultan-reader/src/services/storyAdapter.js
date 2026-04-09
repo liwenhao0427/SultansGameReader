@@ -112,6 +112,7 @@ function buildCardSummary(id, cardsMap, cardsById) {
     id: String(id),
     name: card?.name || cardsMap?.get(String(id)) || String(id),
     title: card?.title || '',
+    rare: card?.rare || null,
     image: resolveCardResource(card),
   }
 }
@@ -228,6 +229,7 @@ export function adaptStoryData(type, data, cardsMap, cardsById = {}) {
         kind: 'rite',
         title: data.name || `仪式 ${data.id}`,
         subtitle: `仪式 #${data.id}`,
+        mappingId: data.mapping_id || null,
         intro: data.text || '',
         meta: [
           data.location ? `地点：${data.location}` : null,
@@ -235,7 +237,8 @@ export function adaptStoryData(type, data, cardsMap, cardsById = {}) {
           data.waiting_round != null ? `等待回合：${data.waiting_round}` : null,
         ].filter(Boolean),
         tags: normalizeArray(data.tag_tips),
-        image: data.icon || null,
+        headerIcon: data.icon || null,
+        image: null,
         slots: Object.entries(data.cards_slot || {}).map(([slotId, slot]) => ({
           id: slotId,
           title: slotId.toUpperCase(),

@@ -4,9 +4,25 @@ import { useResolvedImage } from '../../services/imageResolver'
 import { adaptStoryData } from '../../services/storyAdapter'
 import { READER_CHROME } from '../../readerChromeConfig'
 import { linkNodesOnCanvas, mountNodeOnCanvas } from '../../services/graphNavigation'
+import RawFileView from '../RawFileView'
 
 function useChromeAsset(assetKey) {
   return useResolvedImage(READER_CHROME.assets[assetKey]?.asset)
+}
+
+function rareAssetKey(rare) {
+  switch (Number(rare)) {
+    case 1:
+      return 'rare_stone'
+    case 2:
+      return 'rare_copper'
+    case 3:
+      return 'rare_silver'
+    case 4:
+      return 'rare_gold'
+    default:
+      return null
+  }
 }
 
 function splitIntro(text) {
@@ -20,11 +36,14 @@ function splitIntro(text) {
 
 function CardPortrait({ card, compact = false }) {
   const { url } = useResolvedImage(card?.image)
+  const { url: rareFrameUrl } = useResolvedImage(rareAssetKey(card?.rare))
+  const width = compact ? 72 : 94
+  const height = compact ? 108 : 142
 
   return (
     <div style={{
-      width: compact ? 72 : 94,
-      height: compact ? 108 : 142,
+      width,
+      height,
       borderRadius: 16,
       overflow: 'hidden',
       border: '1px solid rgba(233, 219, 183, 0.22)',
@@ -54,6 +73,22 @@ function CardPortrait({ card, compact = false }) {
         }}>
           {card?.name || '未知卡牌'}
         </div>
+      )}
+      {rareFrameUrl && (
+        <img
+          src={rareFrameUrl}
+          alt=""
+          aria-hidden="true"
+          style={{
+            position: 'absolute',
+            inset: 0,
+            width: '100%',
+            height: '100%',
+            objectFit: 'fill',
+            pointerEvents: 'none',
+            opacity: 0.96,
+          }}
+        />
       )}
       <div style={{
         position: 'absolute',
@@ -124,7 +159,9 @@ function PreviewImage({ pic, maxHeight = 320 }) {
   )
 }
 
-function SlotButton({ slot, active, candidateLabel, onClick, slotBgUrl }) {
+function SlotButton({ slot, active, candidateLabel, onClick, slotBgKey }) {
+  const { url: slotBgUrl } = useResolvedImage(slotBgKey)
+
   return (
     <button
       type="button"
@@ -243,10 +280,16 @@ export default function StoryInspector({ type, data, onClose }) {
   const cardsLite = useConfigStore((s) => s.cardsLite)
   const cardsById = useConfigStore((s) => s.cardsById)
   const model = adaptStoryData(type, data, cardsLite, cardsById)
-  const { url: noteBg } = useChromeAsset('noteBackground')
-  const { url: titleEmblem } = useChromeAsset('titleEmblem')
-  const { url: slotBg } = useChromeAsset('slotFrame')
   const { url: textFrame } = useChromeAsset('dialogueFrame')
+  const [templateData, setTemplateData] = useState(null)
+  const [rawContent, setRawContent] = useState(null)
+  const noteBgKey = type === 'rite'
+    ? (templateData?.bg || READER_CHROME.assets.noteBackground.asset)
+    : READER_CHROME.assets.noteBackground.asset
+  const { url: noteBg } = useResolvedImage(noteBgKey)
+  const { url: headerIconUrl } = useResolvedImage(model?.headerIcon)
+  const { url: titlePlateUrl } = useResolvedImage(READER_CHROME.assets.riteTitlePlate.asset)
+  const { url: titleLineUrl } = useResolvedImage(READER_CHROME.assets.riteTitleLine.asset)
 
   const [activeSlotId, setActiveSlotId] = useState(null)
   const [slotSelections, setSlotSelections] = useState({})
@@ -275,6 +318,33 @@ export default function StoryInspector({ type, data, onClose }) {
     setRevealedSegmentCount(0)
   }, [type, data?.id, data?._source_path])
 
+  useEffect(() => {
+    let cancelled = false
+
+    if (type !== 'rite' || !model?.mappingId) {
+      setTemplateData(null)
+      return () => {
+        cancelled = true
+      }
+    }
+
+    window.electronAPI.configReadCache('rite_template', String(model.mappingId))
+      .then((result) => {
+        if (!cancelled) {
+          setTemplateData(result || null)
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setTemplateData(null)
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [type, model?.mappingId])
+
   const selectedSlot = useMemo(
     () => model?.slots?.find((slot) => slot.id === activeSlotId) || null,
     [model?.slots, activeSlotId]
@@ -297,8 +367,29 @@ export default function StoryInspector({ type, data, onClose }) {
   const canRevealLine = revealedLineCount < dialogueLines.length
   const canRevealSegment = !canRevealLine && !currentGateSegment && revealedSegmentCount < (model?.segments?.length || 0)
   const isFullscreenReader = type === 'rite' || type === 'event'
+  const slotBackgroundMap = templateData?.slots || {}
+  const titlePlateStyle = titlePlateUrl
+    ? {
+        backgroundImage: `url("${titlePlateUrl}")`,
+        backgroundRepeat: 'no-repeat',
+        backgroundSize: '100% 100%',
+        backgroundPosition: 'center',
+      }
+    : {
+        backgroundColor: 'rgba(102, 73, 35, 0.2)',
+      }
 
   if (!model) return null
+
+  async function handleViewRaw() {
+    if (!data?._source_path) return
+    try {
+      const content = await window.electronAPI.fileReadRaw(data._source_path)
+      setRawContent(content)
+    } catch (error) {
+      setRawContent(`读取失败：${error?.message || '未知错误'}`)
+    }
+  }
 
   async function handleOpenAction(action, offsetIndex = 0) {
     if (!action?.targetType || !action?.targetId) return
@@ -416,7 +507,7 @@ export default function StoryInspector({ type, data, onClose }) {
                   <SlotButton
                     key={slot.id}
                     slot={slot}
-                    slotBgUrl={slotBg}
+                    slotBgKey={slotBackgroundMap?.[slot.id]?.slot_bg || templateData?.nomal_slot_bg || READER_CHROME.assets.slotFrame.asset}
                     active={activeSlotId === slot.id}
                     candidateLabel={currentCandidate?.label}
                     onClick={() => handleSelectSlot(slot.id)}
@@ -506,24 +597,6 @@ export default function StoryInspector({ type, data, onClose }) {
               backgroundPosition: READER_CHROME.assets.noteBackground.backgroundPosition,
               color: READER_CHROME.header.metaColor,
             }}>
-              {titleEmblem && (
-                <div
-                  aria-hidden="true"
-                  style={{
-                    position: 'absolute',
-                    top: READER_CHROME.assets.titleEmblem.top,
-                    right: READER_CHROME.assets.titleEmblem.right,
-                    width: READER_CHROME.assets.titleEmblem.width,
-                    height: READER_CHROME.assets.titleEmblem.height,
-                    opacity: READER_CHROME.assets.titleEmblem.opacity,
-                    pointerEvents: 'none',
-                    backgroundImage: `url("${titleEmblem}")`,
-                    backgroundRepeat: 'no-repeat',
-                    backgroundSize: READER_CHROME.assets.titleEmblem.backgroundSize,
-                    backgroundPosition: READER_CHROME.assets.titleEmblem.backgroundPosition,
-                  }}
-                />
-              )}
               <div style={{ fontSize: 12, letterSpacing: '0.24em', textTransform: 'uppercase', color: READER_CHROME.header.subtitleColor }}>
                 {model.subtitle || model.kind}
               </div>
@@ -531,15 +604,59 @@ export default function StoryInspector({ type, data, onClose }) {
                 marginTop: 10,
                 display: 'flex',
                 alignItems: 'center',
+                gap: 12,
               }}>
+                {headerIconUrl && (
+                  <div
+                    aria-hidden="true"
+                    style={{
+                      width: 52,
+                      height: 52,
+                      flexShrink: 0,
+                      borderRadius: 12,
+                      backgroundColor: 'rgba(255, 248, 235, 0.28)',
+                      backgroundImage: `url("${headerIconUrl}")`,
+                      backgroundRepeat: 'no-repeat',
+                      backgroundSize: 'contain',
+                      backgroundPosition: 'center',
+                      boxShadow: '0 10px 24px rgba(72, 46, 19, 0.16)',
+                    }}
+                  />
+                )}
                 <div style={{
-                  fontSize: 40,
+                  fontSize: 32,
                   fontWeight: 900,
                   lineHeight: 1.08,
                   color: READER_CHROME.header.titleColor,
                   textShadow: READER_CHROME.header.titleShadow,
+                  display: 'grid',
+                  gap: 6,
                 }}>
-                  {model.title}
+                  <div style={{
+                    padding: titlePlateUrl ? '8px 14px 9px' : '2px 0',
+                    color: '#3a2612',
+                    fontSize: 17,
+                    fontWeight: 700,
+                    lineHeight: 1,
+                    letterSpacing: '0.02em',
+                    ...titlePlateStyle,
+                  }}>
+                    {model.title}
+                  </div>
+                  {titleLineUrl && (
+                    <div
+                      aria-hidden="true"
+                      style={{
+                        width: 128,
+                        height: 18,
+                        backgroundImage: `url("${titleLineUrl}")`,
+                        backgroundRepeat: 'no-repeat',
+                        backgroundSize: '100% 100%',
+                        backgroundPosition: 'left center',
+                        opacity: 0.86,
+                      }}
+                    />
+                  )}
                 </div>
               </div>
               {model.meta.length > 0 && (
@@ -742,12 +859,20 @@ export default function StoryInspector({ type, data, onClose }) {
             <div style={overlayTitleStyle}>{type === 'rite' ? '仪式阅读模式' : '事件阅读模式'}</div>
             <div style={overlaySubStyle}>关闭后返回节点图模式。</div>
           </div>
-          <button type="button" onClick={onClose} style={closeButtonStyle}>关闭</button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            {data?._source_path && (
+              <button type="button" onClick={handleViewRaw} style={secondaryButtonStyle}>查看原始文件</button>
+            )}
+            <button type="button" onClick={onClose} style={closeButtonStyle}>关闭</button>
+          </div>
         </div>
         <div style={{ height: '100%', minHeight: 0, overflow: 'hidden', padding: 24 }}>
           {content}
         </div>
       </div>
+      {rawContent !== null && (
+        <RawFileView content={rawContent} onClose={() => setRawContent(null)} />
+      )}
     </div>
   )
 }
