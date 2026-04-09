@@ -132,7 +132,7 @@ export default function MainLayout({ onNavigate }) {
           <div style={eyebrowStyle}>Sultan's Game Reader</div>
           <div style={titleStyle}>仪式优先的剧情阅读工作台</div>
           <div style={subTitleStyle}>
-            默认加载几个仪式到画布，画布负责导航，右侧负责阅读。
+            默认加载几个仪式到画布，画布负责导航，选中节点后直接进入阅读。
           </div>
         </div>
         <div style={{ display: 'flex', gap: 10 }}>
@@ -242,10 +242,9 @@ export default function MainLayout({ onNavigate }) {
           </div>
         </section>
 
-        <aside style={readerStageStyle}>
-          <DetailPanel />
-        </aside>
       </div>
+
+      <DetailPanel />
     </div>
   )
 }
@@ -316,7 +315,7 @@ const secondaryActionStyle = {
 const workspaceStyle = {
   minHeight: 0,
   display: 'grid',
-  gridTemplateColumns: '300px minmax(420px, 1fr) 500px',
+  gridTemplateColumns: '300px minmax(420px, 1fr)',
   gap: 18,
   padding: 18,
 }
@@ -340,10 +339,6 @@ const canvasStageStyle = {
   ...panelBaseStyle,
   display: 'grid',
   gridTemplateRows: 'auto 1fr',
-}
-
-const readerStageStyle = {
-  ...panelBaseStyle,
 }
 
 const railHeaderStyle = {

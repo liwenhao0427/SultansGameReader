@@ -153,29 +153,25 @@ function PreviewImage({ pic, maxHeight = 320 }) {
   )
 }
 
-function SlotButton({ slot, active, candidateLabel, onClick, slotBgKey }) {
+function SlotButton({ slot, active, candidate, onClick, slotBgKey }) {
   const { url: slotBgUrl } = useResolvedImage(slotBgKey)
+  const previewCard = candidate?.cards?.[0] || null
 
   return (
     <button
       type="button"
       onClick={onClick}
       style={{
-        width: READER_CHROME.assets.slotFrame.width + 26,
-        minHeight: READER_CHROME.assets.slotFrame.minHeight + 22,
-        padding: 10,
-        borderRadius: 26,
-        border: active
-          ? '1px solid rgba(239, 215, 169, 0.54)'
-          : '1px solid rgba(219, 207, 181, 0.18)',
-        backgroundColor: active ? 'rgba(225, 192, 130, 0.16)' : 'rgba(31, 24, 18, 0.88)',
-        boxShadow: active
-          ? '0 0 0 3px rgba(212, 184, 126, 0.14), 0 18px 30px rgba(0,0,0,0.22)'
-          : '0 14px 24px rgba(0,0,0,0.2)',
+        width: READER_CHROME.assets.slotFrame.width,
+        minHeight: READER_CHROME.assets.slotFrame.minHeight,
+        padding: 0,
+        borderRadius: 22,
+        border: active ? '1px solid rgba(239, 215, 169, 0.54)' : '1px solid rgba(219, 207, 181, 0.12)',
+        backgroundColor: 'transparent',
+        boxShadow: active ? '0 0 0 3px rgba(212, 184, 126, 0.12)' : 'none',
         cursor: 'pointer',
-        display: 'grid',
-        gap: 8,
-        justifyItems: 'center',
+        overflow: 'hidden',
+        position: 'relative',
       }}
     >
       <div style={{
@@ -188,22 +184,39 @@ function SlotButton({ slot, active, candidateLabel, onClick, slotBgKey }) {
         backgroundRepeat: 'no-repeat',
         backgroundSize: READER_CHROME.assets.slotFrame.backgroundSize,
         backgroundPosition: READER_CHROME.assets.slotFrame.backgroundPosition,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        color: '#fff1d4',
-        fontWeight: 800,
-        fontSize: 16,
+        position: 'relative',
       }}>
-        {slot.title}
-      </div>
-      <div style={{
-        fontSize: 11,
-        color: '#dcc7a1',
-        lineHeight: 1.5,
-        textAlign: 'center',
-      }}>
-        {candidateLabel || '点击选择'}
+        {previewCard ? (
+          <div style={{ position: 'absolute', inset: '6px 7px 10px' }}>
+            <CardPortrait card={previewCard} compact />
+          </div>
+        ) : (
+          <div style={{
+            position: 'absolute',
+            inset: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: '#fff1d4',
+            fontWeight: 800,
+            fontSize: 16,
+          }}>
+            {slot.title}
+          </div>
+        )}
+        <div style={{
+          position: 'absolute',
+          left: 0,
+          right: 0,
+          bottom: 8,
+          textAlign: 'center',
+          color: '#f4e8cf',
+          fontWeight: 800,
+          fontSize: 16,
+          textShadow: '0 2px 6px rgba(0,0,0,0.55)',
+        }}>
+          {slot.title}
+        </div>
       </div>
     </button>
   )
@@ -447,7 +460,7 @@ export default function StoryInspector({ type, data, onClose }) {
         height: '100%',
         minHeight: 0,
         display: 'grid',
-        gridTemplateColumns: model.slots.length > 0 ? '220px minmax(280px, 360px) minmax(0, 1fr)' : 'minmax(280px, 360px) minmax(0, 1fr)',
+        gridTemplateColumns: model.slots.length > 0 ? '164px minmax(280px, 360px) minmax(0, 1fr)' : 'minmax(280px, 360px) minmax(0, 1fr)',
         gap: 22,
         overflow: 'hidden',
       }}>
@@ -467,9 +480,6 @@ export default function StoryInspector({ type, data, onClose }) {
           }}>
             <div>
               <div style={sectionTitleStyle}>卡牌槽位</div>
-              <div style={{ ...smallLineStyle, marginTop: 8 }}>
-                点击槽位后，下方会出现这个槽位的候选手牌或条件分支。
-              </div>
             </div>
 
             <div style={{
@@ -487,7 +497,7 @@ export default function StoryInspector({ type, data, onClose }) {
                     slot={slot}
                     slotBgKey={slotBackgroundMap?.[slot.id]?.slot_bg || templateData?.nomal_slot_bg || READER_CHROME.assets.slotFrame.asset}
                     active={activeSlotId === slot.id}
-                    candidateLabel={currentCandidate?.label}
+                    candidate={currentCandidate}
                     onClick={() => handleSelectSlot(slot.id)}
                   />
                 )

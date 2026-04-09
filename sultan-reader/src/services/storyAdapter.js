@@ -5,6 +5,13 @@ function normalizeArray(value) {
   return Array.isArray(value) ? value : [value]
 }
 
+function stripSlotPrefix(key, slotId) {
+  if (typeof key !== 'string') return key
+  if (key.startsWith(`${slotId}.`)) return key.slice(slotId.length + 1)
+  if (key.startsWith(`!${slotId}.`)) return `!${key.slice(slotId.length + 2)}`
+  return key
+}
+
 function actionTargetType(key) {
   switch (key) {
     case 'event_on':
@@ -185,6 +192,31 @@ function buildSlotCandidate(slotId, pop, index, cardsMap, cardsById) {
   }
 }
 
+function buildSettlementSlotHints(slotId, items, cardsMap) {
+  return normalizeArray(items)
+    .filter((item) => item?.condition && typeof item.condition === 'object')
+    .map((item, index) => {
+      const scopedCondition = Object.fromEntries(
+        Object.entries(item.condition)
+          .filter(([key]) => key === slotId || key.startsWith(`${slotId}.`) || key.startsWith(`!${slotId}.`) || key === `${slotId}.is` || key === `!${slotId}.is`)
+          .map(([key, value]) => [stripSlotPrefix(key, slotId), value])
+      )
+
+      if (Object.keys(scopedCondition).length === 0) return null
+
+      return {
+        id: `${slotId}:settlement:${item.guid || index}`,
+        label: item.result_title || `相关结算 ${index + 1}`,
+        mode: 'settlement',
+        cards: [],
+        choiceTexts: [],
+        primaryText: item.result_text || '',
+        conditionText: parseConditionObject(scopedCondition, cardsMap).join(' / '),
+      }
+    })
+    .filter(Boolean)
+}
+
 function buildPhaseItem(item, cardsMap, phase) {
   return {
     phase,
@@ -225,6 +257,15 @@ export function adaptStoryData(type, data, cardsMap, cardsById = {}) {
 
   switch (type) {
     case 'rite':
+      const settlementHintsBySlot = {}
+      for (const slotId of Object.keys(data.cards_slot || {})) {
+        settlementHintsBySlot[slotId] = [
+          ...buildSettlementSlotHints(slotId, data.settlement_prior, cardsMap),
+          ...buildSettlementSlotHints(slotId, data.settlement, cardsMap),
+          ...buildSettlementSlotHints(slotId, data.settlement_extre, cardsMap),
+        ]
+      }
+
       return {
         kind: 'rite',
         title: data.name || `仪式 ${data.id}`,
@@ -244,9 +285,12 @@ export function adaptStoryData(type, data, cardsMap, cardsById = {}) {
           title: slotId.toUpperCase(),
           text: slot.text || '',
           conditions: parseConditionObject(slot.condition, cardsMap),
-          candidates: normalizeArray(slot.pops).map((pop, index) => (
-            buildSlotCandidate(slotId, pop, index, cardsMap, cardsById)
-          )),
+          candidates: [
+            ...normalizeArray(slot.pops).map((pop, index) => (
+              buildSlotCandidate(slotId, pop, index, cardsMap, cardsById)
+            )),
+            ...(settlementHintsBySlot[slotId] || []),
+          ],
         })),
         segments: [
           ...normalizeArray(data.settlement_prior).map((item) => buildPhaseItem(item, cardsMap, '前置结算')),
