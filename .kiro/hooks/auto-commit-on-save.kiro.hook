@@ -1,0 +1,21 @@
+{
+  "enabled": true,
+  "name": "Auto Commit on Save",
+  "description": "每次保存代码文件后，自动执行 git add 和 git commit",
+  "version": "1",
+  "when": {
+    "type": "fileEdited",
+    "patterns": [
+      "sultan-reader/**/*.js",
+      "sultan-reader/**/*.jsx",
+      "sultan-reader/**/*.ts",
+      "sultan-reader/**/*.tsx",
+      ".kiro/**/*.md"
+    ]
+  },
+  "then": {
+    "type": "runCommand",
+    "command": "git add -A && git diff --cached --quiet || git commit -m \"chore: auto-commit on save\"",
+    "timeout": 30
+  }
+}

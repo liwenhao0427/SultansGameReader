@@ -13,6 +13,11 @@
 - 解析器模块（commentStripper、gameConfigParser、cacheManager）已完成并通过 2934 个文件 100% 验证，作为已有资产直接集成
 - 条件表达式保留原始 key 名（含 `!`、`>=`、`.` 等特殊字符），仅在展示层通过 Condition_Parser 转义为人类可读文本
 - 图片查找需同时尝试 `.png` 和 `.png.png` 双后缀（AssetStudio 提取产物）
+- **本地图片通过自定义协议加载**：注册 `sultan-asset://` 协议，避免关闭 webSecurity 的安全风险
+- **搜索逻辑在 Main Process 执行**：避免通过 IPC 传输全量索引数据导致的序列化性能瓶颈
+- **自动展开使用 Visited Set 防循环**：游戏事件网络存在循环引用，必须严格拦截已访问节点
+- **缓存包含解析器版本号**：`_parser_version` 字段确保解析逻辑升级后自动失效旧缓存
+- **AssetStudio CLI 使用数组参数调用**：避免路径含空格/特殊字符时的命令行断裂问题
 
 ## Architecture
 
@@ -63,15 +68,52 @@ graph TB
     CL -->|IPC read| Cache
 ```
 
+### 本地图片加载：自定义协议方案
+
+Electron 默认开启 `webSecurity`，Renderer 进程中 `<img src="C:/...">` 会被拦截（`Not allowed to load local resource`）。关闭 `webSecurity` 是危险做法。
+
+采用自定义协议（Custom Protocol）方案：
+
+```javascript
+// main.js 中注册协议
+const { protocol } = require('electron');
+
+protocol.handle('sultan-asset', (request) => {
+  // sultan-asset://Sprite/2000001.png → resource/Sprite/2000001.png
+  const relativePath = decodeURIComponent(request.url.replace('sultan-asset://', ''));
+  const fullPath = path.join(resourceDir, relativePath);
+  return net.fetch(`file://${fullPath}`);
+});
+```
+
+前端使用 `sultan-asset://Sprite/2000001.png` 作为 `<img src>`，主进程拦截并返回本地文件流。性能优于 Base64 IPC 传输方案，且无安全风险。
+
+`asset:resolveImage` IPC handler 返回的路径格式改为 `sultan-asset://` 协议 URL，而非本地绝对路径。
+
+### 搜索架构：Main Process 侧搜索
+
+为避免通过 IPC 传输全量索引数据（cards.json 27000+ 行）导致的结构化克隆性能瓶颈：
+
+- 搜索索引的构建和模糊匹配逻辑在 Main Process 中完成
+- Renderer 通过 `config:search` IPC 通道发送搜索关键字和类型过滤条件
+- Main Process 返回匹配的结果摘要（通常几十条），而非全量数据
+- 卡牌名称映射表（供 conditionParser 使用）精简为 `cards_lite`（仅 id → name），在 Parser 写入缓存时同步生成
+
+新增 IPC 通道：
+- `config:search(query: string, types?: string[])` → `Array<{ id, type, name, text }>` （最多返回 100 条）
+
+原 `config:buildIndex` 通道保留但改为仅返回统计信息（各类型数量），不再传输全量数据。
+
 ### 进程间通信设计
 
 Main Process 通过 `ipcMain.handle` 注册异步 IPC handler，Renderer 通过 preload 暴露的 `window.electronAPI` 对象调用。所有文件系统操作封装在 Main Process 中，Renderer 无直接 fs 访问权限。
 
-IPC 通道分为四组：
-1. **config:** — 配置解析与缓存管理（setGameDir, rebuildCache, clearCache, readCache, listCache, buildIndex）
+IPC 通道分为五组：
+1. **config:** — 配置解析与缓存管理（setGameDir, rebuildCache, clearCache, readCache, listCache, buildIndex, search）
 2. **asset:** — 资源提取与图片解析（setCliPath, extract, resolveImage）
 3. **file:** — 原始文件读取（readRaw）
 4. **settings:** — 用户设置持久化（get, set）
+5. **sultan-asset://** — 自定义协议，Renderer 直接通过 URL 加载本地图片（非 IPC，protocol handler）
 
 ### 状态管理架构
 
@@ -96,8 +138,8 @@ graph LR
     end
 ```
 
-- **useConfigStore**: 管理搜索索引、卡牌名称映射表（供 conditionParser 解析 `have.卡牌ID`）、计数器注册表
-- **useCanvasStore**: 管理画布节点/边状态、节点去重集合、当前选中节点
+- **useConfigStore**: 管理卡牌名称精简映射表（cards_lite，供 conditionParser 解析 `have.卡牌ID`）、计数器注册表。搜索索引不再存储在前端，搜索请求通过 IPC 发送到 Main Process
+- **useCanvasStore**: 管理画布节点/边状态、节点去重集合（Visited Set，同时用于防止自动展开时的循环引用）、当前选中节点
 - **usePlayerStore**: 管理玩家模拟状态（已触发事件、计数器模拟值），持久化到 Electron userData
 
 ## Components and Interfaces
@@ -123,12 +165,15 @@ interface ElectronAPI {
   configClearCache(type?: string): Promise<{ success: boolean }>
   configReadCache(type: string, id: string): Promise<object>
   configListCache(type: string): Promise<Array<{ id: string; name?: string; text?: string }>>
-  configBuildIndex(): Promise<Array<{ id: string; type: string; name: string; text: string }>>
+  configBuildIndex(): Promise<{ counts: Record<string, number> }>  // 仅返回统计信息
+  configSearch(query: string, types?: string[]): Promise<Array<{ id: string; type: string; name: string; text: string }>>  // Main Process 侧搜索
+  configGetCardsLite(): Promise<Record<string, string>>  // id → name 精简映射
 
   // 资源管理
   assetSetCliPath(cliPath: string): Promise<{ success: boolean }>
   assetExtract(params: { gamePath: string; outputDir: string }): Promise<{ success: boolean; log: string }>
-  assetResolveImage(pic: string): Promise<string | null>
+  assetResolveImage(pic: string): Promise<string | null>  // 返回 sultan-asset:// URL 或 null
+  assetCheckDotnet(): Promise<{ available: boolean; version?: string }>  // .NET 运行时探测
 
   // 文件读取
   fileReadRaw(filePath: string): Promise<string>
@@ -393,14 +438,77 @@ Edge 提取需递归遍历 settlement 数组中的 `action.success`、`action.fa
 pic 字段值 (e.g. "cards/2000001")
   ↓ 提取 name (去掉 "cards/" 前缀)
   ↓
-尝试 1: resource/Sprite/{name}.png
-  ↓ 不存在
-尝试 2: resource/Sprite/{name}.png.png
-  ↓ 不存在
-尝试 3: resource/Texture2D/{name}.png
-  ↓ 不存在
-尝试 4: resource/Texture2D/{name}.png.png
-  ↓ 不存在
-返回 null → UI 显示占位图
+Main Process asset:resolveImage handler:
+  尝试 1: resource/Sprite/{name}.png
+    ↓ 不存在
+  尝试 2: resource/Sprite/{name}.png.png
+    ↓ 不存在
+  尝试 3: resource/Texture2D/{name}.png
+    ↓ 不存在
+  尝试 4: resource/Texture2D/{name}.png.png
+    ↓ 不存在
+  返回 null → UI 显示占位图
+  ↓ 存在
+  返回 "sultan-asset://Sprite/{name}.png" (自定义协议 URL)
 ```
+
+### 自动展开防循环机制
+
+游戏事件网络存在循环引用（如：事件 A 失败 → 触发事件 B → B 的选项跳回事件 A）。自动展开逻辑必须防止无限递归：
+
+```
+addNode(id, type, data)
+  ↓
+检查 nodeIdSet.has(id) → 已存在则跳过
+  ↓
+nodeIdSet.add(id)
+  ↓
+edgeExtractor.extract(data) → 获取关联列表
+  ↓
+过滤：移除 target 已在 nodeIdSet 中的关联（防循环）
+  ↓
+关联数 ≤ 10 → 自动展开（仅展开一层，不递归展开关联的关联）
+关联数 > 10 → 折叠，DetailPanel 中手动展开
+```
+
+关键约束：
+- 自动展开仅展开一层深度，不递归
+- `nodeIdSet` 同时作为去重集合和 Visited Set
+- dagre 布局引擎配置 `acyclicer: 'greedy'` 处理有环图，或使用 elkjs 替代
+
+### 缓存版本化
+
+缓存文件 metadata 中增加 `_parser_version` 字段：
+
+```typescript
+interface CacheMeta {
+  _source_path: string
+  _cached_at: number
+  _source_mtime: number
+  _parser_version: string   // e.g. "1.0.0"，解析器逻辑变更时递增
+  _parse_error: string | null
+}
+```
+
+CacheManager 校验缓存有效性时，同时对比 `_source_mtime` 和 `_parser_version`。任一不匹配则强制重新解析。版本号定义在 `gameConfigParser.js` 中作为常量导出。
+
+### AssetStudio CLI 安全调用
+
+使用 `child_process.spawn` 的数组参数形式，避免路径含空格/特殊字符时的命令行断裂：
+
+```javascript
+const { spawn } = require('child_process');
+
+// 正确：数组参数，无需手动处理引号
+spawn(cliPath, [
+  gameDataPath,           // "D:\Steam\...\Sultan's Game_Data"
+  resourceDir,
+  '--game', 'Normal',
+  '--types', 'Sprite:Both',
+  '--group_assets', 'ByType',
+  '--image_format', 'Png'
+]);
+```
+
+设置页增加 .NET 8.0 运行时探测：通过执行 `dotnet --list-runtimes` 检查环境，如果未安装则在 UI 直接提示，而非等 AssetStudio 静默失败。
 

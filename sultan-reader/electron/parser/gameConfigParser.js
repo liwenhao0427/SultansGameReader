@@ -18,6 +18,9 @@
 
 const { stripComments } = require('./commentStripper');
 
+// 解析器版本号，用于缓存失效判断（修改解析逻辑时需同步更新此版本号）
+const PARSER_VERSION = "1.0.0";
+
 const ARRAY_MERGE_KEYS = new Set([
   'rite', 'event_on', 'rite_end', 'card', 'loot', 'choose',
 ]);
@@ -415,4 +418,4 @@ function parseGameConfig(source) {
   return { data, comments, error: null };
 }
 
-module.exports = { parseGameConfig, removeTrailingCommas };
+module.exports = { parseGameConfig, removeTrailingCommas, PARSER_VERSION };

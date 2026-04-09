@@ -18,7 +18,7 @@
 
 const fs   = require('fs');
 const path = require('path');
-const { parseGameConfig } = require('./gameConfigParser');
+const { parseGameConfig, PARSER_VERSION } = require('./gameConfigParser');
 
 // 游戏配置目录相对于游戏根目录的偏移路径
 const CONFIG_SUBPATH = path.join("Sultan's Game_Data", 'StreamingAssets', 'config');
@@ -63,7 +63,9 @@ class CacheManager {
     try {
       const cached = JSON.parse(fs.readFileSync(cachePath, 'utf-8'));
       const sourceStat = fs.statSync(sourcePath);
-      return cached._source_mtime === sourceStat.mtimeMs;
+      // 同时校验文件修改时间和解析器版本号，任一不匹配则缓存失效
+      return cached._source_mtime === sourceStat.mtimeMs &&
+             cached._parser_version === PARSER_VERSION;
     } catch {
       return false;
     }
@@ -98,10 +100,11 @@ class CacheManager {
     const { data, comments, error } = parseGameConfig(source);
 
     const cacheEntry = {
-      _source_path:  sourcePath,
-      _cached_at:    Date.now(),
-      _source_mtime: sourceStat.mtimeMs,
-      _parse_error:  error,
+      _source_path:    sourcePath,
+      _cached_at:      Date.now(),
+      _source_mtime:   sourceStat.mtimeMs,
+      _parser_version: PARSER_VERSION,  // 记录解析器版本，用于缓存失效判断
+      _parse_error:    error,
       ...(data || {}),
     };
 
