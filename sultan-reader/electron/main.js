@@ -72,14 +72,12 @@ let mainWindow = null;
 async function initStore() {
   if (settings) return settings;
 
-  // 开发模式下默认使用工作区根目录的 cache/ 和 resource/（已有现成数据）
-  // 生产模式下使用 userData 目录
-  const defaultCacheDir   = WORKSPACE_ROOT
-    ? path.join(WORKSPACE_ROOT, 'cache')
-    : path.join(app.getPath('userData'), 'cache');
-  const defaultResourceDir = WORKSPACE_ROOT
-    ? path.join(WORKSPACE_ROOT, 'resource')
-    : path.join(app.getPath('userData'), 'resource');
+  // 使用 appData（而非 userData）下的独立目录，避免被 Electron session Cache 清理
+  // userData = C:\Users\...\AppData\Roaming\sultan-reader（Electron 会清理其中的 Cache 目录）
+  // 改用 appData\sultan-reader-data\ 作为数据根目录
+  const dataRoot = path.join(app.getPath('appData'), 'sultan-reader-data');
+  const defaultCacheDir    = path.join(dataRoot, 'cache');
+  const defaultResourceDir = path.join(dataRoot, 'resource');
 
   try {
     const { default: ElectronStore } = await import('electron-store');
@@ -92,15 +90,25 @@ async function initStore() {
         cacheDir:    defaultCacheDir,
       },
     });
-    // 如果已保存的 cacheDir 不存在（如首次安装后 userData 路径），重置为默认值
+
+    // 迁移旧路径：如果保存的是旧的 userData/cache 路径，自动更新为新路径
     const savedCacheDir = settings.get('cacheDir');
-    if (savedCacheDir && !fs.existsSync(savedCacheDir) && fs.existsSync(defaultCacheDir)) {
+    const oldUserDataCache = path.join(app.getPath('userData'), 'cache');
+    if (savedCacheDir === oldUserDataCache || savedCacheDir.toLowerCase() === oldUserDataCache.toLowerCase()) {
+      // 旧路径有数据就迁移，没有就直接更新
+      if (fs.existsSync(savedCacheDir) && hasJsonFiles(savedCacheDir)) {
+        console.log(`[迁移] 旧缓存路径 ${savedCacheDir} → ${defaultCacheDir}`);
+        copyDirSync(savedCacheDir, defaultCacheDir);
+      }
       settings.set('cacheDir', defaultCacheDir);
     }
+
     const savedResourceDir = settings.get('resourceDir');
-    if (savedResourceDir && !fs.existsSync(savedResourceDir) && fs.existsSync(defaultResourceDir)) {
+    const oldUserDataResource = path.join(app.getPath('userData'), 'resource');
+    if (savedResourceDir === oldUserDataResource || savedResourceDir.toLowerCase() === oldUserDataResource.toLowerCase()) {
       settings.set('resourceDir', defaultResourceDir);
     }
+
   } catch (e) {
     console.warn('electron-store 加载失败，使用 JSON 降级存储:', e.message);
     settings = createFallbackStore(defaultCacheDir, defaultResourceDir);
@@ -632,7 +640,25 @@ ipcMain.handle('settings:set', async (_event, key, value) => {
 // ─── 应用生命周期 ─────────────────────────────────────────────────────────────
 
 /**
- * 递归复制目录
+ * 检查目录下是否有 .json 文件（递归一层）
+ */
+function hasJsonFiles(dir) {
+  if (!fs.existsSync(dir)) return false;
+  try {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (entry.isDirectory()) {
+        const sub = path.join(dir, entry.name);
+        if (fs.readdirSync(sub).some(f => f.endsWith('.json'))) return true;
+      } else if (entry.name.endsWith('.json')) {
+        return true;
+      }
+    }
+  } catch {}
+  return false;
+}
+
+/**
+ * 递归复制目录（目标已有文件不覆盖）
  */
 function copyDirSync(src, dest) {
   if (!fs.existsSync(dest)) fs.mkdirSync(dest, { recursive: true });
@@ -641,7 +667,8 @@ function copyDirSync(src, dest) {
     const destPath = path.join(dest, entry.name);
     if (entry.isDirectory()) {
       copyDirSync(srcPath, destPath);
-    } else {
+    } else if (!fs.existsSync(destPath)) {
+      // 不覆盖已有文件
       fs.copyFileSync(srcPath, destPath);
     }
   }
@@ -649,51 +676,26 @@ function copyDirSync(src, dest) {
 
 /**
  * 启动时自动迁移缓存：
- * 如果当前 cacheDir（roaming）下没有缓存文件，
- * 但运行目录（__dirname 上两级）下有 cache/ 目录，
- * 则将其复制到 cacheDir 并更新设置。
+ * 如果新 cacheDir 为空，但工作区 cache/ 有数据，复制过去
  */
 async function migrateCacheIfNeeded() {
   if (!settings) return;
-
   const currentCacheDir = settings.get('cacheDir');
-  // 检查当前 cacheDir 是否有实际缓存（至少有一个子目录含 .json 文件）
-  const hasCache = (dir) => {
-    if (!fs.existsSync(dir)) return false;
-    try {
-      for (const sub of fs.readdirSync(dir)) {
-        const subPath = path.join(dir, sub);
-        if (fs.statSync(subPath).isDirectory()) {
-          const files = fs.readdirSync(subPath).filter(f => f.endsWith('.json'));
-          if (files.length > 0) return true;
-        }
-      }
-    } catch {}
-    return false;
-  };
+  if (hasJsonFiles(currentCacheDir)) return; // 已有缓存，不需要迁移
 
-  if (hasCache(currentCacheDir)) return; // 已有缓存，不需要迁移
-
-  // 查找运行目录上两级的 cache/（工作区根）
+  // 查找工作区根目录的 cache/
   const candidates = [
-    path.resolve(__dirname, '..', '..', 'cache'),  // sultan-reader/electron/ → 工作区根/cache
-    path.resolve(__dirname, '..', 'cache'),         // sultan-reader/ → sultan-reader/cache
-    path.resolve(process.cwd(), 'cache'),           // 当前工作目录/cache
+    path.resolve(__dirname, '..', '..', 'cache'),
+    path.resolve(__dirname, '..', 'cache'),
+    path.resolve(process.cwd(), 'cache'),
   ];
 
   for (const srcCache of candidates) {
-    if (hasCache(srcCache)) {
+    if (hasJsonFiles(srcCache)) {
       console.log(`[迁移] 发现缓存：${srcCache} → ${currentCacheDir}`);
       try {
         copyDirSync(srcCache, currentCacheDir);
         console.log('[迁移] 缓存复制完成');
-        // 同时迁移 resource/
-        const srcResource = path.join(path.dirname(srcCache), 'resource');
-        const currentResourceDir = settings.get('resourceDir');
-        if (fs.existsSync(srcResource) && !hasCache(currentResourceDir)) {
-          copyDirSync(srcResource, currentResourceDir);
-          console.log('[迁移] resource 复制完成');
-        }
       } catch (e) {
         console.warn('[迁移] 复制失败:', e.message);
       }
