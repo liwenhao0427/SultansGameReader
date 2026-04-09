@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import useConfigStore from '../../stores/useConfigStore'
 import { useResolvedImage } from '../../services/imageResolver'
 import { adaptStoryData } from '../../services/storyAdapter'
@@ -399,6 +399,8 @@ export default function StoryInspector({ type, data, onClose }) {
   const [settlementSelections, setSettlementSelections] = useState({})
   const [revealedLineCount, setRevealedLineCount] = useState(1)
   const [revealedSegmentCount, setRevealedSegmentCount] = useState(0)
+  const [autoAdvance, setAutoAdvance] = useState(false)
+  const readerBodyRef = useRef(null)
 
   function buildDialogueLines(slotId, selections, settlementState) {
     const slot = model?.slots?.find((entry) => entry.id === slotId) || null
@@ -479,11 +481,31 @@ export default function StoryInspector({ type, data, onClose }) {
     return [...introLines, ...candidateLines, ...settlementLines].filter(Boolean)
   }, [model?.intro, selectedCandidate, selectedSettlementHints])
 
+  const selectedHintIds = useMemo(
+    () => new Set(Object.values(settlementSelections).flat()),
+    [settlementSelections]
+  )
+  const selectedHintGuids = useMemo(
+    () => new Set(
+      (model?.slots || [])
+        .flatMap((slot) => slot.settlementHints || [])
+        .filter((hint) => selectedHintIds.has(hint.id))
+        .map((hint) => hint.id.split(':').slice(-1)[0])
+    ),
+    [model?.slots, selectedHintIds]
+  )
+  const availableSegments = useMemo(() => {
+    if (type !== 'rite') return model?.segments || []
+    return (model?.segments || []).filter((segment) => (
+      !segment.slotBindingIds?.length || (segment.guid && selectedHintGuids.has(segment.guid))
+    ))
+  }, [model?.segments, selectedHintGuids, type])
+
   const visibleLines = dialogueLines.slice(0, revealedLineCount)
-  const visibleSegments = (model?.segments || []).slice(0, revealedSegmentCount)
+  const visibleSegments = availableSegments.slice(0, revealedSegmentCount)
   const currentGateSegment = visibleSegments.find((segment) => segment.options?.length > 0)
   const canRevealLine = revealedLineCount < dialogueLines.length
-  const canRevealSegment = !canRevealLine && !currentGateSegment && revealedSegmentCount < (model?.segments?.length || 0)
+  const canRevealSegment = !canRevealLine && !currentGateSegment && revealedSegmentCount < availableSegments.length
   const isFullscreenReader = type === 'rite' || type === 'event'
   const slotBackgroundMap = templateData?.slots || {}
 
@@ -531,6 +553,20 @@ export default function StoryInspector({ type, data, onClose }) {
     const nextLines = buildDialogueLines(nextSlotId, nextSelections, nextSettlementSelections)
     setRevealedLineCount(nextLines.length > 0 ? 1 : 0)
     setRevealedSegmentCount(0)
+  }
+
+  function advanceFlow() {
+    if (canRevealLine) {
+      setRevealedLineCount((count) => Math.min(dialogueLines.length, count + 1))
+      return
+    }
+
+    if (canRevealSegment) {
+      setRevealedSegmentCount((count) => Math.min(availableSegments.length, count + 1))
+      return
+    }
+
+    setAutoAdvance(false)
   }
 
   function handleSelectSlot(slotId) {
@@ -584,7 +620,35 @@ export default function StoryInspector({ type, data, onClose }) {
     const nextLines = splitIntro(model.intro).concat((firstCandidate?.choiceTexts || []).map((entry) => entry.text))
     setRevealedLineCount(nextLines.length > 0 ? 1 : 0)
     setRevealedSegmentCount(0)
+    setAutoAdvance(false)
   }
+
+  useEffect(() => {
+    if (!readerBodyRef.current) return
+
+    const frame = requestAnimationFrame(() => {
+      const element = readerBodyRef.current
+      if (!element) return
+      element.scrollTo({ top: element.scrollHeight, behavior: 'smooth' })
+    })
+
+    return () => cancelAnimationFrame(frame)
+  }, [revealedLineCount, revealedSegmentCount])
+
+  useEffect(() => {
+    if (!autoAdvance) return
+
+    if (!canRevealLine && !canRevealSegment) {
+      setAutoAdvance(false)
+      return
+    }
+
+    const timer = window.setInterval(() => {
+      advanceFlow()
+    }, 1800)
+
+    return () => window.clearInterval(timer)
+  }, [autoAdvance, canRevealLine, canRevealSegment, dialogueLines.length, availableSegments.length])
 
   const content = (
     <div style={{
@@ -794,7 +858,7 @@ export default function StoryInspector({ type, data, onClose }) {
               padding: '24px 24px 16px',
               display: 'grid',
               gap: 18,
-            }}>
+            }} ref={readerBodyRef}>
               {selectedSlot?.settlementHints?.length > 0 && (
                 <div style={settlementPanelStyle}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
@@ -949,7 +1013,7 @@ export default function StoryInspector({ type, data, onClose }) {
                 <button
                   type="button"
                   style={primaryButtonStyle}
-                  onClick={() => setRevealedLineCount((count) => Math.min(dialogueLines.length, count + 1))}
+                  onClick={advanceFlow}
                 >
                   下一句
                 </button>
@@ -958,12 +1022,19 @@ export default function StoryInspector({ type, data, onClose }) {
                 <button
                   type="button"
                   style={primaryButtonStyle}
-                  onClick={() => setRevealedSegmentCount((count) => Math.min(model.segments.length, count + 1))}
+                  onClick={advanceFlow}
                 >
                   推进后续
                 </button>
               )}
-              {!canRevealLine && !canRevealSegment && model.segments.length > 0 && (
+              <button
+                type="button"
+                style={autoAdvance ? activeToggleButtonStyle : secondaryButtonStyle}
+                onClick={() => setAutoAdvance((value) => !value)}
+              >
+                {autoAdvance ? '停止自动' : '自动下一句'}
+              </button>
+              {!canRevealLine && !canRevealSegment && availableSegments.length > 0 && (
                 <span style={smallLineStyle}>当前已推进到可选分支或末尾。</span>
               )}
             </div>
@@ -1105,6 +1176,13 @@ const secondaryButtonStyle = {
   backgroundColor: 'rgba(212, 184, 126, 0.08)',
   color: '#f3ead8',
   cursor: 'pointer',
+}
+
+const activeToggleButtonStyle = {
+  ...secondaryButtonStyle,
+  border: '1px solid rgba(143, 191, 119, 0.28)',
+  backgroundColor: 'rgba(143, 191, 119, 0.14)',
+  color: '#e4f1d7',
 }
 
 const choiceButtonStyle = {

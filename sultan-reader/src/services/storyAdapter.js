@@ -221,12 +221,23 @@ function buildSettlementSlotHints(slotId, items, cardsMap, cardsById) {
     .filter(Boolean)
 }
 
-function buildPhaseItem(item, cardsMap, phase) {
+function buildPhaseItem(item, cardsMap, phase, slotIds = []) {
+  const condition = item.condition || {}
+  const slotBindingIds = slotIds.filter((slotId) => Object.keys(condition).some((key) => (
+    key === slotId ||
+    key.startsWith(`${slotId}.`) ||
+    key.startsWith(`!${slotId}.`) ||
+    key === `${slotId}.is` ||
+    key === `!${slotId}.is`
+  )))
+
   return {
+    guid: item.guid || null,
     phase,
     title: item.result_title || '',
     text: item.result_text || item.tips_text || '',
-    conditions: parseConditionObject(item.condition, cardsMap),
+    conditions: parseConditionObject(condition, cardsMap),
+    slotBindingIds,
     actions: extractActionTargets(item.action),
     choiceActions: extractActionTargets(item.action).filter((entry) => entry.targetType === 'event' || entry.targetType === 'rite' || entry.targetType === 'over'),
     options: extractChoiceOptions(item.result?.choose || item.action?.choose),
@@ -261,8 +272,9 @@ export function adaptStoryData(type, data, cardsMap, cardsById = {}) {
 
   switch (type) {
     case 'rite':
+      const riteSlotIds = Object.keys(data.cards_slot || {})
       const settlementHintsBySlot = {}
-      for (const slotId of Object.keys(data.cards_slot || {})) {
+      for (const slotId of riteSlotIds) {
         settlementHintsBySlot[slotId] = [
           ...buildSettlementSlotHints(slotId, data.settlement_prior, cardsMap, cardsById),
           ...buildSettlementSlotHints(slotId, data.settlement, cardsMap, cardsById),
@@ -295,9 +307,9 @@ export function adaptStoryData(type, data, cardsMap, cardsById = {}) {
           settlementHints: settlementHintsBySlot[slotId] || [],
         })),
         segments: [
-          ...normalizeArray(data.settlement_prior).map((item) => buildPhaseItem(item, cardsMap, '前置结算')),
-          ...normalizeArray(data.settlement).map((item) => buildPhaseItem(item, cardsMap, '主结算')),
-          ...normalizeArray(data.settlement_extre).map((item) => buildPhaseItem(item, cardsMap, '额外结算')),
+          ...normalizeArray(data.settlement_prior).map((item) => buildPhaseItem(item, cardsMap, '前置结算', riteSlotIds)),
+          ...normalizeArray(data.settlement).map((item) => buildPhaseItem(item, cardsMap, '主结算', riteSlotIds)),
+          ...normalizeArray(data.settlement_extre).map((item) => buildPhaseItem(item, cardsMap, '额外结算', riteSlotIds)),
         ].filter((item) => item.text || item.title || item.conditions.length || item.options.length || item.actions.length),
       }
 
