@@ -417,13 +417,11 @@ export default function StoryInspector({ type, data, onClose }) {
   function buildDialogueLines(slotId, selections, settlementState, globalSelections = globalSettlementSelections) {
     const slot = model?.slots?.find((entry) => entry.id === slotId) || null
     const candidate = slot?.candidates?.find((entry) => entry.id === selections?.[slotId]) || slot?.candidates?.[0] || null
-    const selectedHints = (slot?.settlementHints || []).filter((hint) => settlementState?.[slotId]?.includes(hint.id))
-    const selectedGlobalHints = (model?.globalSettlementHints || []).filter((hint) => globalSelections.includes(hint.id))
+    void settlementState
+    void globalSelections
 
     return splitIntro(model?.intro)
       .concat((candidate?.choiceTexts || []).map((entry) => entry.text))
-      .concat(selectedHints.map((hint) => hint.primaryText).filter(Boolean))
-      .concat(selectedGlobalHints.map((hint) => hint.primaryText).filter(Boolean))
   }
 
   useEffect(() => {
@@ -492,13 +490,8 @@ export default function StoryInspector({ type, data, onClose }) {
   const dialogueLines = useMemo(() => {
     const introLines = splitIntro(model?.intro)
     const candidateLines = (selectedCandidate?.choiceTexts || []).map((entry) => entry.text)
-    const settlementLines = selectedSettlementHints.map((hint) => hint.primaryText).filter(Boolean)
-    const globalLines = (model?.globalSettlementHints || [])
-      .filter((hint) => globalSettlementSelections.includes(hint.id))
-      .map((hint) => hint.primaryText)
-      .filter(Boolean)
-    return [...introLines, ...candidateLines, ...settlementLines, ...globalLines].filter(Boolean)
-  }, [model?.intro, selectedCandidate, selectedSettlementHints, model?.globalSettlementHints, globalSettlementSelections])
+    return [...introLines, ...candidateLines].filter(Boolean)
+  }, [model?.intro, selectedCandidate])
 
   const selectedHintIds = useMemo(
     () => new Set(Object.values(settlementSelections).flat()),
