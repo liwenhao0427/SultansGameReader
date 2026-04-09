@@ -124,6 +124,12 @@ function buildCardSummary(id, cardsMap, cardsById) {
   }
 }
 
+function extractConditionCards(condition, cardsMap, cardsById) {
+  const directIs = normalizeArray(condition?.is)
+  const anyIs = normalizeArray(condition?.any?.is)
+  return (directIs.length > 0 ? directIs : anyIs).map((id) => buildCardSummary(id, cardsMap, cardsById))
+}
+
 function summarizeLabel(name, fallbackPrefix = '') {
   if (!name) return fallbackPrefix || '未命名条件'
   return fallbackPrefix ? `${fallbackPrefix}${name}` : name
@@ -204,21 +210,40 @@ function buildSettlementSlotHints(slotId, items, cardsMap, cardsById) {
 
       if (Object.keys(scopedCondition).length === 0) return null
 
-      const directIs = normalizeArray(scopedCondition.is)
-      const anyIs = normalizeArray(scopedCondition.any?.is)
-      const cards = (directIs.length > 0 ? directIs : anyIs).map((id) => buildCardSummary(id, cardsMap, cardsById))
-
       return {
         id: `${slotId}:settlement:${item.guid || index}`,
         label: item.result_title || `相关结算 ${index + 1}`,
         mode: 'settlement',
-        cards,
+        cards: extractConditionCards(scopedCondition, cardsMap, cardsById),
         choiceTexts: [],
         primaryText: item.result_text || '',
         conditionText: parseConditionObject(scopedCondition, cardsMap).join(' / '),
       }
     })
     .filter(Boolean)
+}
+
+function buildGlobalSettlementHints(items, cardsMap, cardsById, slotIds = []) {
+  return normalizeArray(items)
+    .filter((item) => item?.condition && typeof item.condition === 'object')
+    .filter((item) => !Object.keys(item.condition).some((key) => (
+      slotIds.some((slotId) => (
+        key === slotId ||
+        key.startsWith(`${slotId}.`) ||
+        key.startsWith(`!${slotId}.`) ||
+        key === `${slotId}.is` ||
+        key === `!${slotId}.is`
+      ))
+    )))
+    .map((item, index) => ({
+      id: `global:settlement:${item.guid || index}`,
+      label: item.result_title || `额外结算 ${index + 1}`,
+      mode: 'settlement',
+      cards: extractConditionCards(item.condition || {}, cardsMap, cardsById),
+      choiceTexts: [],
+      primaryText: item.result_text || '',
+      conditionText: parseConditionObject(item.condition, cardsMap).join(' / '),
+    }))
 }
 
 function buildPhaseItem(item, cardsMap, phase, slotIds = []) {
@@ -281,6 +306,11 @@ export function adaptStoryData(type, data, cardsMap, cardsById = {}) {
           ...buildSettlementSlotHints(slotId, data.settlement_extre, cardsMap, cardsById),
         ]
       }
+      const globalSettlementHints = [
+        ...buildGlobalSettlementHints(data.settlement_prior, cardsMap, cardsById, riteSlotIds),
+        ...buildGlobalSettlementHints(data.settlement, cardsMap, cardsById, riteSlotIds),
+        ...buildGlobalSettlementHints(data.settlement_extre, cardsMap, cardsById, riteSlotIds),
+      ]
 
       return {
         kind: 'rite',
@@ -301,11 +331,13 @@ export function adaptStoryData(type, data, cardsMap, cardsById = {}) {
           title: slotId.toUpperCase(),
           text: slot.text || '',
           conditions: parseConditionObject(slot.condition, cardsMap),
+          defaultCards: extractConditionCards(slot.condition || {}, cardsMap, cardsById),
           candidates: normalizeArray(slot.pops).map((pop, index) => (
             buildSlotCandidate(slotId, pop, index, cardsMap, cardsById)
           )),
           settlementHints: settlementHintsBySlot[slotId] || [],
         })),
+        globalSettlementHints,
         segments: [
           ...normalizeArray(data.settlement_prior).map((item) => buildPhaseItem(item, cardsMap, '前置结算', riteSlotIds)),
           ...normalizeArray(data.settlement).map((item) => buildPhaseItem(item, cardsMap, '主结算', riteSlotIds)),

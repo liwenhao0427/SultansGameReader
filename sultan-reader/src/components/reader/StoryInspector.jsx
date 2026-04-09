@@ -157,8 +157,8 @@ function PreviewImage({ pic, maxHeight = 320 }) {
 
 function SlotButton({ slot, active, candidate, tags, onClick, slotBgKey }) {
   const { url: slotBgUrl } = useResolvedImage(slotBgKey)
-  const previewCard = candidate?.cards?.[0] || null
-  const slotCaption = candidate?.label || slot.title
+  const previewCard = candidate?.cards?.[0] || slot.defaultCards?.[0] || null
+  const slotCaption = candidate?.label || slot.defaultCards?.[0]?.name || slot.title
 
   return (
     <div style={{ display: 'grid', gap: 6, justifyItems: 'center' }}>
@@ -236,7 +236,18 @@ function SlotButton({ slot, active, candidate, tags, onClick, slotBgKey }) {
       {tags?.length > 0 && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, justifyContent: 'center' }}>
           {tags.map((tag) => (
-            <span key={tag.id} style={slotTagStyle}>{tag.label}</span>
+            <button
+              key={tag.id}
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation()
+                tag.onRemove?.()
+              }}
+              style={slotTagButtonStyle}
+            >
+              <span>{tag.label}</span>
+              <span style={{ opacity: 0.8 }}>x</span>
+            </button>
           ))}
         </div>
       )}
@@ -397,19 +408,22 @@ export default function StoryInspector({ type, data, onClose }) {
   const [activeSlotId, setActiveSlotId] = useState(null)
   const [slotSelections, setSlotSelections] = useState({})
   const [settlementSelections, setSettlementSelections] = useState({})
+  const [globalSettlementSelections, setGlobalSettlementSelections] = useState([])
   const [revealedLineCount, setRevealedLineCount] = useState(1)
   const [revealedSegmentCount, setRevealedSegmentCount] = useState(0)
   const [autoAdvance, setAutoAdvance] = useState(false)
   const readerBodyRef = useRef(null)
 
-  function buildDialogueLines(slotId, selections, settlementState) {
+  function buildDialogueLines(slotId, selections, settlementState, globalSelections = globalSettlementSelections) {
     const slot = model?.slots?.find((entry) => entry.id === slotId) || null
     const candidate = slot?.candidates?.find((entry) => entry.id === selections?.[slotId]) || slot?.candidates?.[0] || null
     const selectedHints = (slot?.settlementHints || []).filter((hint) => settlementState?.[slotId]?.includes(hint.id))
+    const selectedGlobalHints = (model?.globalSettlementHints || []).filter((hint) => globalSelections.includes(hint.id))
 
     return splitIntro(model?.intro)
       .concat((candidate?.choiceTexts || []).map((entry) => entry.text))
       .concat(selectedHints.map((hint) => hint.primaryText).filter(Boolean))
+      .concat(selectedGlobalHints.map((hint) => hint.primaryText).filter(Boolean))
   }
 
   useEffect(() => {
@@ -427,6 +441,7 @@ export default function StoryInspector({ type, data, onClose }) {
 
     setSlotSelections(defaults)
     setSettlementSelections(hintDefaults)
+    setGlobalSettlementSelections([])
     setActiveSlotId(firstSlotId)
     setRevealedLineCount(initialLines.length > 0 ? 1 : 0)
     setRevealedSegmentCount(0)
@@ -478,12 +493,20 @@ export default function StoryInspector({ type, data, onClose }) {
     const introLines = splitIntro(model?.intro)
     const candidateLines = (selectedCandidate?.choiceTexts || []).map((entry) => entry.text)
     const settlementLines = selectedSettlementHints.map((hint) => hint.primaryText).filter(Boolean)
-    return [...introLines, ...candidateLines, ...settlementLines].filter(Boolean)
-  }, [model?.intro, selectedCandidate, selectedSettlementHints])
+    const globalLines = (model?.globalSettlementHints || [])
+      .filter((hint) => globalSettlementSelections.includes(hint.id))
+      .map((hint) => hint.primaryText)
+      .filter(Boolean)
+    return [...introLines, ...candidateLines, ...settlementLines, ...globalLines].filter(Boolean)
+  }, [model?.intro, selectedCandidate, selectedSettlementHints, model?.globalSettlementHints, globalSettlementSelections])
 
   const selectedHintIds = useMemo(
     () => new Set(Object.values(settlementSelections).flat()),
     [settlementSelections]
+  )
+  const selectedGlobalHintIds = useMemo(
+    () => new Set(globalSettlementSelections),
+    [globalSettlementSelections]
   )
   const selectedHintGuids = useMemo(
     () => new Set(
@@ -494,12 +517,20 @@ export default function StoryInspector({ type, data, onClose }) {
     ),
     [model?.slots, selectedHintIds]
   )
+  const selectedGlobalHintGuids = useMemo(
+    () => new Set(
+      (model?.globalSettlementHints || [])
+        .filter((hint) => selectedGlobalHintIds.has(hint.id))
+        .map((hint) => hint.id.split(':').slice(-1)[0])
+    ),
+    [model?.globalSettlementHints, selectedGlobalHintIds]
+  )
   const availableSegments = useMemo(() => {
     if (type !== 'rite') return model?.segments || []
     return (model?.segments || []).filter((segment) => (
-      !segment.slotBindingIds?.length || (segment.guid && selectedHintGuids.has(segment.guid))
+      segment.guid && (selectedHintGuids.has(segment.guid) || selectedGlobalHintGuids.has(segment.guid))
     ))
-  }, [model?.segments, selectedHintGuids, type])
+  }, [model?.segments, selectedHintGuids, selectedGlobalHintGuids, type])
 
   const visibleLines = dialogueLines.slice(0, revealedLineCount)
   const visibleSegments = availableSegments.slice(0, revealedSegmentCount)
@@ -549,8 +580,8 @@ export default function StoryInspector({ type, data, onClose }) {
     return (segment.choiceActions || []).filter((action) => action.branch === branch)
   }
 
-  function resetFlow(nextSlotId = activeSlotId, nextSelections = slotSelections, nextSettlementSelections = settlementSelections) {
-    const nextLines = buildDialogueLines(nextSlotId, nextSelections, nextSettlementSelections)
+  function resetFlow(nextSlotId = activeSlotId, nextSelections = slotSelections, nextSettlementSelections = settlementSelections, nextGlobalSelections = globalSettlementSelections) {
+    const nextLines = buildDialogueLines(nextSlotId, nextSelections, nextSettlementSelections, nextGlobalSelections)
     setRevealedLineCount(nextLines.length > 0 ? 1 : 0)
     setRevealedSegmentCount(0)
   }
@@ -583,7 +614,7 @@ export default function StoryInspector({ type, data, onClose }) {
     }
 
     setSlotSelections(nextSelections)
-    const nextLines = buildDialogueLines(selectedSlot.id, nextSelections, settlementSelections)
+    const nextLines = buildDialogueLines(selectedSlot.id, nextSelections, settlementSelections, globalSettlementSelections)
     setRevealedLineCount(nextLines.length > 0 ? 1 : 0)
     setRevealedSegmentCount(0)
   }
@@ -602,7 +633,16 @@ export default function StoryInspector({ type, data, onClose }) {
     }
 
     setSettlementSelections(nextSettlementSelections)
-    resetFlow(slotId, slotSelections, nextSettlementSelections)
+    resetFlow(slotId, slotSelections, nextSettlementSelections, globalSettlementSelections)
+  }
+
+  function handleToggleGlobalSettlementHint(hintId) {
+    const nextIds = globalSettlementSelections.includes(hintId)
+      ? globalSettlementSelections.filter((id) => id !== hintId)
+      : [...globalSettlementSelections, hintId]
+
+    setGlobalSettlementSelections(nextIds)
+    resetFlow(activeSlotId, slotSelections, settlementSelections, nextIds)
   }
 
   function handleManualReset() {
@@ -614,6 +654,7 @@ export default function StoryInspector({ type, data, onClose }) {
     )
     setSlotSelections(defaults)
     setSettlementSelections(hintDefaults)
+    setGlobalSettlementSelections([])
     setActiveSlotId(model.slots?.[0]?.id || null)
 
     const firstCandidate = model.slots?.[0]?.candidates?.[0] || null
@@ -694,7 +735,22 @@ export default function StoryInspector({ type, data, onClose }) {
             }}>
               {model.slots.map((slot) => {
                 const currentCandidate = slot.candidates?.find((candidate) => candidate.id === slotSelections[slot.id]) || slot.candidates?.[0] || null
-                const activeTags = (slot.settlementHints || []).filter((hint) => settlementSelections[slot.id]?.includes(hint.id))
+                const activeTags = (slot.settlementHints || [])
+                  .filter((hint) => settlementSelections[slot.id]?.includes(hint.id))
+                  .map((hint) => ({
+                    id: hint.id,
+                    label: hint.label,
+                    onRemove: () => {
+                      setSettlementSelections((current) => {
+                        const next = {
+                          ...current,
+                          [slot.id]: (current[slot.id] || []).filter((id) => id !== hint.id),
+                        }
+                        resetFlow(activeSlotId, slotSelections, next, globalSettlementSelections)
+                        return next
+                      })
+                    },
+                  }))
                 return (
                   <SlotButton
                     key={slot.id}
@@ -884,6 +940,37 @@ export default function StoryInspector({ type, data, onClose }) {
                         hint={hint}
                         active={settlementSelections[selectedSlot.id]?.includes(hint.id)}
                         onToggle={() => handleToggleSettlementHint(hint.id)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {model?.globalSettlementHints?.length > 0 && (
+                <div style={settlementPanelStyle}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
+                    <div>
+                      <div style={sectionTitleStyle}>全局条件</div>
+                      <div style={{ ...smallLineStyle, marginTop: 6 }}>
+                        这些分支不绑定单一卡槽，也可以提前勾选参与推进。
+                      </div>
+                    </div>
+                    <div style={settlementCountStyle}>
+                      已选 {globalSettlementSelections.length}
+                    </div>
+                  </div>
+                  <div style={{
+                    marginTop: 14,
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+                    gap: 10,
+                  }}>
+                    {model.globalSettlementHints.map((hint) => (
+                      <SettlementHintItem
+                        key={hint.id}
+                        hint={hint}
+                        active={globalSettlementSelections.includes(hint.id)}
+                        onToggle={() => handleToggleGlobalSettlementHint(hint.id)}
                       />
                     ))}
                   </div>
@@ -1098,6 +1185,20 @@ const slotTagStyle = {
   color: '#dcc9a6',
   fontSize: 10,
   lineHeight: 1.3,
+}
+
+const slotTagButtonStyle = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 5,
+  padding: '2px 7px',
+  borderRadius: 999,
+  backgroundColor: 'rgba(212, 184, 126, 0.12)',
+  border: '1px solid rgba(212, 184, 126, 0.14)',
+  color: '#dcc9a6',
+  fontSize: 10,
+  lineHeight: 1.3,
+  cursor: 'pointer',
 }
 
 const metaChipCompactStyle = {
