@@ -381,7 +381,7 @@ const tabStyle = {
 const activeTabStyle = {
   background: 'rgba(212, 184, 126, 0.18)',
   color: '#fff3dd',
-  borderColor: 'rgba(212, 184, 126, 0.28)',
+  border: '1px solid rgba(212, 184, 126, 0.28)',
 }
 
 const listWrapStyle = {
@@ -411,7 +411,7 @@ const listItemStyle = {
 
 const mountedItemStyle = {
   background: 'rgba(133, 170, 117, 0.08)',
-  borderColor: 'rgba(133, 170, 117, 0.22)',
+  border: '1px solid rgba(133, 170, 117, 0.22)',
 }
 
 const listItemIdStyle = {

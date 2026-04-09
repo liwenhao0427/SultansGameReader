@@ -84,6 +84,106 @@ function extractChoiceOptions(chooseValue) {
   return []
 }
 
+function extractChooseEntries(chooseValue) {
+  if (!chooseValue) return []
+
+  if (Array.isArray(chooseValue)) {
+    return chooseValue.flatMap((entry) => extractChooseEntries(entry))
+  }
+
+  if (typeof chooseValue === 'object') {
+    return Object.entries(chooseValue)
+      .filter(([key]) => !key.endsWith('__c') && !key.endsWith('__ca') && !key.endsWith('__ci'))
+      .map(([id, text]) => ({ id, text: String(text) }))
+  }
+
+  return []
+}
+
+function resolveCardResource(card) {
+  if (!card) return null
+  if (Array.isArray(card.resource)) return card.resource[0] || null
+  return card.resource || null
+}
+
+function buildCardSummary(id, cardsMap, cardsById) {
+  const card = cardsById?.[String(id)] || null
+  return {
+    id: String(id),
+    name: card?.name || cardsMap?.get(String(id)) || String(id),
+    title: card?.title || '',
+    image: resolveCardResource(card),
+  }
+}
+
+function summarizeLabel(name, fallbackPrefix = '') {
+  if (!name) return fallbackPrefix || '未命名条件'
+  return fallbackPrefix ? `${fallbackPrefix}${name}` : name
+}
+
+function buildSlotCandidate(slotId, pop, index, cardsMap, cardsById) {
+  const condition = pop?.condition || {}
+  const anyCondition = condition.any && typeof condition.any === 'object' ? condition.any : null
+  const chooseEntries = extractChooseEntries(pop?.action?.choose)
+  const directIs = normalizeArray(condition.is)
+  const anyIs = normalizeArray(anyCondition?.is)
+
+  let label = `候选 ${index + 1}`
+  let cards = []
+  let mode = 'text'
+
+  if (directIs.length > 0) {
+    cards = directIs.map((id) => buildCardSummary(id, cardsMap, cardsById))
+    label = condition.is__c || cards.map((card) => card.name).join(' / ')
+    mode = cards.length > 1 ? 'stack' : 'card'
+  } else if (anyIs.length > 0) {
+    cards = anyIs.map((id) => buildCardSummary(id, cardsMap, cardsById))
+    label = anyCondition?.is__c || condition.any__c || cards.map((card) => card.name).join(' / ')
+    mode = 'stack'
+  } else {
+    const positiveLabels = []
+    const negativeLabels = []
+    const negativeIs = normalizeArray(condition['!is'])
+
+    if (negativeIs.length > 0) {
+      negativeLabels.push(summarizeLabel(condition['!is__c'] || '指定卡牌', '非'))
+    }
+
+    for (const [key, value] of Object.entries(condition)) {
+      if (key.endsWith('__c') || key.endsWith('__ca') || key.endsWith('__ci')) continue
+      if (key === 'any' || key === 'all' || key === 'is' || key === '!is') continue
+      if (typeof value !== 'number') continue
+
+      const comment = condition[`${key}__c`] || null
+      const name = comment || key.replace(/^!/, '')
+
+      if (key.startsWith('!')) {
+        negativeLabels.push(summarizeLabel(name, '非'))
+      } else {
+        positiveLabels.push(name)
+      }
+    }
+
+    if (positiveLabels.length > 0) {
+      label = positiveLabels.join(' / ')
+      mode = 'tag'
+    } else if (negativeLabels.length > 0) {
+      label = negativeLabels.join(' / ')
+      mode = 'fallback'
+    }
+  }
+
+  return {
+    id: `${slotId}:candidate:${index}`,
+    label,
+    mode,
+    cards,
+    choiceTexts: chooseEntries,
+    primaryText: chooseEntries[0]?.text || '',
+    conditionText: parseConditionObject(condition, cardsMap).join(' / '),
+  }
+}
+
 function buildPhaseItem(item, cardsMap, phase) {
   return {
     phase,
@@ -119,7 +219,7 @@ function pickCardImage(card) {
   return resource || null
 }
 
-export function adaptStoryData(type, data, cardsMap) {
+export function adaptStoryData(type, data, cardsMap, cardsById = {}) {
   if (!data) return null
 
   switch (type) {
@@ -141,7 +241,9 @@ export function adaptStoryData(type, data, cardsMap) {
           title: slotId.toUpperCase(),
           text: slot.text || '',
           conditions: parseConditionObject(slot.condition, cardsMap),
-          options: normalizeArray(slot.pops).flatMap((pop) => extractChoiceOptions(pop.action?.choose)),
+          candidates: normalizeArray(slot.pops).map((pop, index) => (
+            buildSlotCandidate(slotId, pop, index, cardsMap, cardsById)
+          )),
         })),
         segments: [
           ...normalizeArray(data.settlement_prior).map((item) => buildPhaseItem(item, cardsMap, '前置结算')),

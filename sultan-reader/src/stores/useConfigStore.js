@@ -8,6 +8,9 @@ const useConfigStore = create((set) => ({
   // 卡牌 id → name 精简映射（供 conditionParser 解析 have.卡牌ID）
   cardsLite: new Map(),
 
+  // 卡牌完整数据，供阅读器展示手牌图片与标题
+  cardsById: {},
+
   // 计数器注册表：id → { id, comment, defaultValue }
   counterRegistry: new Map(),
 
@@ -25,10 +28,12 @@ const useConfigStore = create((set) => ({
     const stats = await window.electronAPI.configBuildIndex();
     // 获取 id→name 精简卡牌映射
     const cardsObj = await window.electronAPI.configGetCardsLite();
+    const cardsFull = await window.electronAPI.configReadCache('single', 'cards');
 
     set({
       indexStats: stats,
       cardsLite: new Map(Object.entries(cardsObj)),
+      cardsById: cardsFull || {},
       isLoaded: true,
     });
   },

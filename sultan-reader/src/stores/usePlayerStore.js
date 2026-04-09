@@ -1,11 +1,11 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { createJSONStorage, persist } from 'zustand/middleware';
 
 /**
  * usePlayerStore
  * 玩家状态模拟：已触发事件集合、计数器模拟值
  * 使用 persist 中间件持久化到 localStorage
- * 注意：Set 和 Map 不能直接序列化，需自定义 serialize/deserialize
+ * 通过 createJSONStorage 的 replacer/reviver 处理 Set 和 Map
  */
 const usePlayerStore = create(
   persist(
@@ -52,29 +52,30 @@ const usePlayerStore = create(
     }),
     {
       name: 'sultan-player-state',
-      // 自定义序列化：Set → string[]，Map → Record<string, number>
-      serialize: (state) => {
-        return JSON.stringify({
-          ...state,
-          state: {
-            ...state.state,
-            triggeredEvents: [...state.state.triggeredEvents],
-            counterValues: Object.fromEntries(state.state.counterValues),
-          },
-        });
-      },
-      // 自定义反序列化：string[] → Set，Record<string, number> → Map
-      deserialize: (str) => {
-        const parsed = JSON.parse(str);
-        return {
-          ...parsed,
-          state: {
-            ...parsed.state,
-            triggeredEvents: new Set(parsed.state.triggeredEvents ?? []),
-            counterValues: new Map(Object.entries(parsed.state.counterValues ?? {})),
-          },
-        };
-      },
+      storage: createJSONStorage(() => localStorage, {
+        replacer: (_key, value) => {
+          if (value instanceof Set) {
+            return { __type: 'Set', value: [...value] };
+          }
+
+          if (value instanceof Map) {
+            return { __type: 'Map', value: [...value.entries()] };
+          }
+
+          return value;
+        },
+        reviver: (_key, value) => {
+          if (value && value.__type === 'Set') {
+            return new Set(value.value ?? []);
+          }
+
+          if (value && value.__type === 'Map') {
+            return new Map(value.value ?? []);
+          }
+
+          return value;
+        },
+      }),
     }
   )
 );
