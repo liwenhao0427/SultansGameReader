@@ -6,10 +6,6 @@ import { READER_CHROME } from '../../readerChromeConfig'
 import { linkNodesOnCanvas, mountNodeOnCanvas } from '../../services/graphNavigation'
 import RawFileView from '../RawFileView'
 
-function useChromeAsset(assetKey) {
-  return useResolvedImage(READER_CHROME.assets[assetKey]?.asset)
-}
-
 function rareAssetKey(rare) {
   switch (Number(rare)) {
     case 1:
@@ -39,6 +35,7 @@ function CardPortrait({ card, compact = false }) {
   const { url: rareFrameUrl } = useResolvedImage(rareAssetKey(card?.rare))
   const width = compact ? 72 : 94
   const height = compact ? 108 : 142
+  const artInset = compact ? '4px 6px 18px' : '5px 8px 22px'
 
   return (
     <div style={{
@@ -49,57 +46,54 @@ function CardPortrait({ card, compact = false }) {
       border: '1px solid rgba(233, 219, 183, 0.22)',
       boxShadow: '0 14px 26px rgba(0, 0, 0, 0.26)',
       backgroundColor: 'rgba(18, 15, 11, 0.92)',
+      backgroundImage: rareFrameUrl ? `url("${rareFrameUrl}")` : 'none',
+      backgroundRepeat: 'no-repeat',
+      backgroundSize: '100% 100%',
+      backgroundPosition: 'center',
       position: 'relative',
       flexShrink: 0,
     }}>
-      {url ? (
-        <img
-          src={url}
-          alt={card?.name || ''}
-          style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-        />
-      ) : (
-        <div style={{
-          width: '100%',
-          height: '100%',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: 8,
-          textAlign: 'center',
-          color: '#f4e9cd',
-          fontSize: compact ? 11 : 12,
-          lineHeight: 1.5,
-        }}>
-          {card?.name || '未知卡牌'}
-        </div>
-      )}
-      {rareFrameUrl && (
-        <img
-          src={rareFrameUrl}
-          alt=""
-          aria-hidden="true"
-          style={{
-            position: 'absolute',
-            inset: 0,
+      <div style={{
+        position: 'absolute',
+        inset: artInset,
+        overflow: 'hidden',
+        borderRadius: compact ? 14 : 18,
+        background: 'linear-gradient(180deg, rgba(87, 78, 58, 0.55), rgba(21, 17, 12, 0.88))',
+      }}>
+        {url ? (
+          <img
+            src={url}
+            alt={card?.name || ''}
+            style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+          />
+        ) : (
+          <div style={{
             width: '100%',
             height: '100%',
-            objectFit: 'fill',
-            pointerEvents: 'none',
-            opacity: 0.96,
-          }}
-        />
-      )}
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 8,
+            textAlign: 'center',
+            color: '#f4e9cd',
+            fontSize: compact ? 11 : 12,
+            lineHeight: 1.5,
+          }}>
+            {card?.name || '未知卡牌'}
+          </div>
+        )}
+      </div>
       <div style={{
         position: 'absolute',
         left: 0,
         right: 0,
         bottom: 0,
         padding: compact ? '6px 6px 7px' : '8px 8px 9px',
-        backgroundImage: 'linear-gradient(180deg, transparent, rgba(4, 3, 2, 0.92))',
+        backgroundImage: 'linear-gradient(180deg, transparent, rgba(4, 3, 2, 0.9))',
         color: '#fff7e6',
         fontSize: compact ? 10 : 11,
         lineHeight: 1.4,
+        zIndex: 2,
       }}>
         {card?.name}
       </div>
@@ -237,6 +231,7 @@ function CandidateHandItem({ candidate, active, onSelect }) {
         textAlign: 'left',
         display: 'grid',
         gap: 10,
+        alignContent: 'start',
       }}
     >
       {candidate.cards.length > 0 ? (
@@ -280,16 +275,9 @@ export default function StoryInspector({ type, data, onClose }) {
   const cardsLite = useConfigStore((s) => s.cardsLite)
   const cardsById = useConfigStore((s) => s.cardsById)
   const model = adaptStoryData(type, data, cardsLite, cardsById)
-  const { url: textFrame } = useChromeAsset('dialogueFrame')
   const [templateData, setTemplateData] = useState(null)
   const [rawContent, setRawContent] = useState(null)
-  const noteBgKey = type === 'rite'
-    ? (templateData?.bg || READER_CHROME.assets.noteBackground.asset)
-    : READER_CHROME.assets.noteBackground.asset
-  const { url: noteBg } = useResolvedImage(noteBgKey)
   const { url: headerIconUrl } = useResolvedImage(model?.headerIcon)
-  const { url: titlePlateUrl } = useResolvedImage(READER_CHROME.assets.riteTitlePlate.asset)
-  const { url: titleLineUrl } = useResolvedImage(READER_CHROME.assets.riteTitleLine.asset)
 
   const [activeSlotId, setActiveSlotId] = useState(null)
   const [slotSelections, setSlotSelections] = useState({})
@@ -368,16 +356,6 @@ export default function StoryInspector({ type, data, onClose }) {
   const canRevealSegment = !canRevealLine && !currentGateSegment && revealedSegmentCount < (model?.segments?.length || 0)
   const isFullscreenReader = type === 'rite' || type === 'event'
   const slotBackgroundMap = templateData?.slots || {}
-  const titlePlateStyle = titlePlateUrl
-    ? {
-        backgroundImage: `url("${titlePlateUrl}")`,
-        backgroundRepeat: 'no-repeat',
-        backgroundSize: '100% 100%',
-        backgroundPosition: 'center',
-      }
-    : {
-        backgroundColor: 'rgba(102, 73, 35, 0.2)',
-      }
 
   if (!model) return null
 
@@ -528,6 +506,16 @@ export default function StoryInspector({ type, data, onClose }) {
             <div style={{ ...smallLineStyle, marginTop: 8 }}>
               当前显示的是 {selectedSlot?.title || '当前槽位'} 的候选卡牌或条件分支。
             </div>
+            {selectedSlot?.text && (
+              <div style={{ ...smallLineStyle, marginTop: 10 }}>
+                {selectedSlot.text}
+              </div>
+            )}
+            {selectedSlot?.conditions?.length > 0 && (
+              <div style={{ ...smallLineStyle, marginTop: 8 }}>
+                可放入条件：{selectedSlot.conditions.join('，')}
+              </div>
+            )}
           </div>
 
           {selectedSlot?.candidates?.length > 0 ? (
@@ -589,14 +577,27 @@ export default function StoryInspector({ type, data, onClose }) {
               padding: '22px 24px 18px',
               position: 'relative',
               overflow: 'hidden',
-              backgroundImage: noteBg
-                ? `${READER_CHROME.header.panelOverlay}, url("${noteBg}")`
-                : READER_CHROME.header.panelOverlay,
-              backgroundRepeat: 'no-repeat',
-              backgroundSize: READER_CHROME.assets.noteBackground.backgroundSize,
-              backgroundPosition: READER_CHROME.assets.noteBackground.backgroundPosition,
+              background: 'linear-gradient(180deg, rgba(250, 244, 231, 0.98), rgba(227, 212, 186, 0.95))',
               color: READER_CHROME.header.metaColor,
             }}>
+              {model.meta.length > 0 && (
+                <div style={{
+                  position: 'absolute',
+                  top: 14,
+                  right: 18,
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  justifyContent: 'flex-end',
+                  gap: 8,
+                  maxWidth: '52%',
+                }}>
+                  {model.meta.slice(0, 6).map((item) => (
+                    <span key={item} style={metaChipCompactStyle}>
+                      {item}
+                    </span>
+                  ))}
+                </div>
+              )}
               <div style={{ fontSize: 12, letterSpacing: '0.24em', textTransform: 'uppercase', color: READER_CHROME.header.subtitleColor }}>
                 {model.subtitle || model.kind}
               </div>
@@ -624,55 +625,15 @@ export default function StoryInspector({ type, data, onClose }) {
                   />
                 )}
                 <div style={{
-                  fontSize: 32,
+                  fontSize: 26,
                   fontWeight: 900,
-                  lineHeight: 1.08,
-                  color: READER_CHROME.header.titleColor,
-                  textShadow: READER_CHROME.header.titleShadow,
-                  display: 'grid',
-                  gap: 6,
+                  lineHeight: 1.18,
+                  color: '#3f2a16',
+                  letterSpacing: '0.01em',
                 }}>
-                  <div style={{
-                    padding: titlePlateUrl ? '8px 14px 9px' : '2px 0',
-                    color: '#3a2612',
-                    fontSize: 17,
-                    fontWeight: 700,
-                    lineHeight: 1,
-                    letterSpacing: '0.02em',
-                    ...titlePlateStyle,
-                  }}>
-                    {model.title}
-                  </div>
-                  {titleLineUrl && (
-                    <div
-                      aria-hidden="true"
-                      style={{
-                        width: 128,
-                        height: 18,
-                        backgroundImage: `url("${titleLineUrl}")`,
-                        backgroundRepeat: 'no-repeat',
-                        backgroundSize: '100% 100%',
-                        backgroundPosition: 'left center',
-                        opacity: 0.86,
-                      }}
-                    />
-                  )}
+                  {model.title}
                 </div>
               </div>
-              {model.meta.length > 0 && (
-                <div style={{
-                  display: 'flex',
-                  flexWrap: 'wrap',
-                  gap: 10,
-                  marginTop: 14,
-                }}>
-                  {model.meta.slice(0, 6).map((item) => (
-                    <span key={item} style={metaChipStyle}>
-                      {item}
-                    </span>
-                  ))}
-                </div>
-              )}
             </div>
 
             <div style={{
@@ -682,21 +643,6 @@ export default function StoryInspector({ type, data, onClose }) {
               display: 'grid',
               gap: 18,
             }}>
-              {selectedSlot && (
-                <div style={slotHintCardStyle}>
-                  <div style={sectionTitleStyle}>当前卡槽</div>
-                  <div style={{ marginTop: 10, fontSize: 16, fontWeight: 700, color: '#f6ead1' }}>
-                    {selectedSlot.title}
-                  </div>
-                  <div style={{ ...smallLineStyle, marginTop: 8 }}>{selectedSlot.text}</div>
-                  {selectedSlot.conditions.length > 0 && (
-                    <div style={{ ...smallLineStyle, marginTop: 8 }}>
-                      可放入条件：{selectedSlot.conditions.join('，')}
-                    </div>
-                  )}
-                </div>
-              )}
-
               {model.image && (
                 <PreviewImage pic={model.image} maxHeight={260} />
               )}
@@ -712,13 +658,8 @@ export default function StoryInspector({ type, data, onClose }) {
                         marginLeft: index % 2 === 0 ? 0 : 'auto',
                         padding: READER_CHROME.assets.dialogueFrame.padding,
                         borderRadius: 22,
-                        backgroundColor: 'rgba(16, 13, 10, 0.78)',
-                        backgroundImage: textFrame
-                          ? `linear-gradient(180deg, rgba(16, 13, 10, 0.18), rgba(16, 13, 10, 0.34)), url("${textFrame}")`
-                          : 'none',
-                        backgroundRepeat: 'no-repeat',
-                        backgroundSize: READER_CHROME.assets.dialogueFrame.backgroundSize,
-                        backgroundPosition: READER_CHROME.assets.dialogueFrame.backgroundPosition,
+                        background: 'linear-gradient(180deg, rgba(30, 24, 18, 0.92), rgba(18, 14, 11, 0.98))',
+                        border: '1px solid rgba(212, 184, 126, 0.14)',
                         boxShadow: '0 18px 36px rgba(0, 0, 0, 0.22)',
                       }}
                     >
@@ -895,19 +836,14 @@ const smallLineStyle = {
   color: '#cbb391',
 }
 
-const metaChipStyle = {
-  padding: '5px 12px',
+const metaChipCompactStyle = {
+  padding: '4px 10px',
   borderRadius: 999,
-  border: '1px solid rgba(61, 39, 21, 0.08)',
-  backgroundColor: 'rgba(61, 39, 21, 0.14)',
-  fontSize: 13,
-}
-
-const slotHintCardStyle = {
-  padding: '18px 18px 16px',
-  borderRadius: 22,
-  border: '1px solid rgba(212, 184, 126, 0.12)',
-  backgroundColor: 'rgba(27, 21, 16, 0.9)',
+  border: '1px solid rgba(92, 62, 31, 0.12)',
+  backgroundColor: 'rgba(126, 93, 53, 0.12)',
+  color: '#6a4623',
+  fontSize: 11,
+  lineHeight: 1.4,
 }
 
 const segmentCardStyle = {
