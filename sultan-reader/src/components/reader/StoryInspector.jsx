@@ -370,14 +370,12 @@ export default function StoryInspector({ type, data, onClose }) {
     <div style={{
       minHeight: '100%',
       display: 'grid',
-      gridTemplateRows: '1fr auto',
-      gap: 18,
       color: '#f1e8d5',
     }}>
       <div style={{
         minHeight: 0,
         display: 'grid',
-        gridTemplateColumns: model.slots.length > 0 ? '220px minmax(0, 1fr)' : '1fr',
+        gridTemplateColumns: model.slots.length > 0 ? '220px minmax(280px, 360px) minmax(0, 1fr)' : 'minmax(280px, 360px) minmax(0, 1fr)',
         gap: 22,
       }}>
         {model.slots.length > 0 && (
@@ -427,14 +425,55 @@ export default function StoryInspector({ type, data, onClose }) {
           </div>
         )}
 
+        <div style={candidateStageStyle}>
+          <div>
+            <div style={sectionTitleStyle}>卡牌候选</div>
+            <div style={{ ...smallLineStyle, marginTop: 8 }}>
+              当前显示的是 {selectedSlot?.title || '当前槽位'} 的候选卡牌或条件分支。
+            </div>
+          </div>
+
+          {selectedSlot?.candidates?.length > 0 ? (
+            <div style={{
+              marginTop: 16,
+              display: 'grid',
+              gap: 14,
+              overflowY: 'auto',
+              paddingRight: 4,
+            }}>
+              {selectedSlot.candidates.map((candidate) => (
+                <CandidateHandItem
+                  key={candidate.id}
+                  candidate={candidate}
+                  active={slotSelections[selectedSlot.id] === candidate.id}
+                  onSelect={() => handleChangeCandidate(candidate.id)}
+                />
+              ))}
+            </div>
+          ) : (
+            <div style={emptyCandidateStyle}>
+              <div style={{ fontSize: 18, fontWeight: 700, color: '#f5e5c4' }}>
+                当前槽位没有显式候选
+              </div>
+              <div style={{ ...smallLineStyle, marginTop: 10, textAlign: 'center' }}>
+                这个槽位没有直接给出 `pops` 候选卡牌。
+                <br />
+                目前先按槽位说明与后续结算文本继续阅读。
+              </div>
+              {selectedSlot?.conditions?.length > 0 && (
+                <div style={{ ...smallLineStyle, marginTop: 12, textAlign: 'center' }}>
+                  条件：{selectedSlot.conditions.join('，')}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
         <div style={{
           minHeight: 0,
           display: 'grid',
-          gridTemplateColumns: model.image ? 'minmax(300px, 420px) minmax(0, 1fr)' : '1fr',
-          gap: 20,
+          gridTemplateColumns: '1fr',
         }}>
-          {model.image && <PreviewImage pic={model.image} maxHeight={520} />}
-
           <div style={{
             minHeight: 0,
             borderRadius: 32,
@@ -457,35 +496,39 @@ export default function StoryInspector({ type, data, onClose }) {
               backgroundPosition: READER_CHROME.assets.noteBackground.backgroundPosition,
               color: READER_CHROME.header.metaColor,
             }}>
-              {titleEmblem && (
-                <div
-                  aria-hidden="true"
-                  style={{
-                    position: 'absolute',
-                    top: READER_CHROME.assets.titleEmblem.top,
-                    right: READER_CHROME.assets.titleEmblem.right,
-                    width: READER_CHROME.assets.titleEmblem.width,
-                    height: READER_CHROME.assets.titleEmblem.height,
-                    opacity: READER_CHROME.assets.titleEmblem.opacity,
-                    backgroundImage: `url("${titleEmblem}")`,
-                    backgroundRepeat: 'no-repeat',
-                    backgroundSize: READER_CHROME.assets.titleEmblem.backgroundSize,
-                    backgroundPosition: READER_CHROME.assets.titleEmblem.backgroundPosition,
-                  }}
-                />
-              )}
               <div style={{ fontSize: 12, letterSpacing: '0.24em', textTransform: 'uppercase', color: READER_CHROME.header.subtitleColor }}>
                 {model.subtitle || model.kind}
               </div>
               <div style={{
                 marginTop: 10,
-                fontSize: 40,
-                fontWeight: 900,
-                lineHeight: 1.08,
-                color: READER_CHROME.header.titleColor,
-                textShadow: READER_CHROME.header.titleShadow,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 12,
               }}>
-                {model.title}
+                {titleEmblem && (
+                  <div
+                    aria-hidden="true"
+                    style={{
+                      width: 44,
+                      height: 44,
+                      flexShrink: 0,
+                      opacity: 0.92,
+                      backgroundImage: `url("${titleEmblem}")`,
+                      backgroundRepeat: 'no-repeat',
+                      backgroundSize: '100% 100%',
+                      backgroundPosition: 'center',
+                    }}
+                  />
+                )}
+                <div style={{
+                  fontSize: 40,
+                  fontWeight: 900,
+                  lineHeight: 1.08,
+                  color: READER_CHROME.header.titleColor,
+                  textShadow: READER_CHROME.header.titleShadow,
+                }}>
+                  {model.title}
+                </div>
               </div>
               {model.meta.length > 0 && (
                 <div style={{
@@ -523,6 +566,10 @@ export default function StoryInspector({ type, data, onClose }) {
                     </div>
                   )}
                 </div>
+              )}
+
+              {model.image && (
+                <PreviewImage pic={model.image} maxHeight={260} />
               )}
 
               {visibleLines.length > 0 && (
@@ -670,39 +717,6 @@ export default function StoryInspector({ type, data, onClose }) {
           </div>
         </div>
       </div>
-
-      {selectedSlot?.candidates?.length > 0 && (
-        <div style={handPanelStyle}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 14, alignItems: 'center' }}>
-            <div>
-              <div style={sectionTitleStyle}>当前手牌候选</div>
-              <div style={{ ...smallLineStyle, marginTop: 8 }}>
-                每个 `pops` 都会映射成一个候选手牌或条件分支。切换后会重置仪式阅读流。
-              </div>
-            </div>
-            <div style={{ ...smallLineStyle, textAlign: 'right' }}>
-              当前槽位：{selectedSlot.title}
-            </div>
-          </div>
-
-          <div style={{
-            marginTop: 16,
-            display: 'flex',
-            gap: 14,
-            overflowX: 'auto',
-            paddingBottom: 6,
-          }}>
-            {selectedSlot.candidates.map((candidate) => (
-              <CandidateHandItem
-                key={candidate.id}
-                candidate={candidate}
-                active={slotSelections[selectedSlot.id] === candidate.id}
-                onSelect={() => handleChangeCandidate(candidate.id)}
-              />
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   )
 
@@ -766,12 +780,28 @@ const segmentCardStyle = {
   backgroundImage: 'linear-gradient(180deg, rgba(31, 24, 18, 0.96), rgba(20, 16, 12, 0.96))',
 }
 
-const handPanelStyle = {
+const candidateStageStyle = {
   borderRadius: 32,
   border: '1px solid rgba(212, 184, 126, 0.14)',
   backgroundColor: 'rgba(16, 14, 11, 0.95)',
   boxShadow: '0 18px 42px rgba(0, 0, 0, 0.26)',
-  padding: '20px 22px 18px',
+  padding: '20px 18px 18px',
+  minHeight: 0,
+  display: 'grid',
+  gridTemplateRows: 'auto 1fr',
+}
+
+const emptyCandidateStyle = {
+  marginTop: 16,
+  borderRadius: 24,
+  border: '1px dashed rgba(212, 184, 126, 0.18)',
+  backgroundColor: 'rgba(22, 18, 14, 0.92)',
+  padding: '22px 18px',
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  justifyContent: 'center',
+  textAlign: 'center',
 }
 
 const primaryButtonStyle = {
