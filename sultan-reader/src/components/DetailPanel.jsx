@@ -1,22 +1,15 @@
 import { useState, useEffect } from 'react'
 import useCanvasStore from '../stores/useCanvasStore'
-import EventDetail from './details/EventDetail'
-import RiteDetail from './details/RiteDetail'
-import AfterStoryDetail from './details/AfterStoryDetail'
-import CardDetail from './details/CardDetail'
-import LootDetail from './details/LootDetail'
-import OverDetail from './details/OverDetail'
-import UpgradeDetail from './details/UpgradeDetail'
-import DTDetail from './details/DTDetail'
 import RawFileView from './RawFileView'
+import StoryInspector from './reader/StoryInspector'
 
 // 面板整体样式
 const panelStyle = {
   width: '100%',
   height: '100%',
-  background: '#1e1e2e',
-  color: '#cdd6f4',
-  padding: 16,
+  background: 'linear-gradient(180deg, #15100b 0%, #0f0c08 100%)',
+  color: '#f1e8d5',
+  padding: 18,
   boxSizing: 'border-box',
   overflowY: 'auto',
   display: 'flex',
@@ -28,17 +21,19 @@ const emptyStyle = {
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
-  color: '#585b70',
-  fontSize: 13,
+  color: 'rgba(241, 232, 213, 0.52)',
+  fontSize: 14,
+  lineHeight: 1.8,
+  textAlign: 'center',
 }
 
 const rawBtnStyle = {
   marginTop: 16,
-  padding: '6px 14px',
-  background: '#313244',
-  color: '#cdd6f4',
-  border: 'none',
-  borderRadius: 4,
+  padding: '8px 14px',
+  background: 'rgba(212, 184, 126, 0.08)',
+  color: '#f1e8d5',
+  border: '1px solid rgba(212, 184, 126, 0.2)',
+  borderRadius: 999,
   cursor: 'pointer',
   fontSize: 12,
   alignSelf: 'flex-start',
@@ -46,7 +41,7 @@ const rawBtnStyle = {
 }
 
 const errorStyle = {
-  color: '#f38ba8',
+  color: '#ffb6a3',
   fontSize: 12,
   padding: '8px 0',
 }
@@ -102,35 +97,18 @@ export default function DetailPanel() {
     }
   }
 
-  // 根据 type 分发到对应子组件
-  function renderDetail() {
-    if (!selectedNodeId) return null
-    const colonIdx = selectedNodeId.indexOf(':')
-    const type = colonIdx !== -1 ? selectedNodeId.slice(0, colonIdx) : ''
-
-    switch (type) {
-      case 'event':       return <EventDetail data={data} />
-      case 'rite':        return <RiteDetail data={data} />
-      case 'after_story': return <AfterStoryDetail data={data} />
-      case 'card':        return <CardDetail data={data} />
-      case 'loot':        return <LootDetail data={data} />
-      case 'over':        return <OverDetail data={data} />
-      case 'upgrade':     return <UpgradeDetail data={data} />
-      case 'dt':          return <DTDetail data={data} />
-      default:
-        return (
-          <div style={{ color: '#a6adc8', fontSize: 12 }}>
-            未知类型：{type}
-          </div>
-        )
-    }
-  }
+  const colonIdx = selectedNodeId?.indexOf(':') ?? -1
+  const type = colonIdx !== -1 ? selectedNodeId.slice(0, colonIdx) : ''
 
   // 无选中节点
   if (!selectedNodeId) {
     return (
       <div style={panelStyle}>
-        <div style={emptyStyle}>点击节点查看详情</div>
+        <div style={emptyStyle}>
+          选择一个仪式或事件开始阅读。
+          <br />
+          右侧将逐步展示正文、卡槽和后续分支。
+        </div>
       </div>
     )
   }
@@ -148,7 +126,7 @@ export default function DetailPanel() {
       {/* 详情内容 */}
       {!loading && !error && data && (
         <div style={{ flex: 1 }}>
-          {renderDetail()}
+          <StoryInspector type={type} data={data} />
         </div>
       )}
 

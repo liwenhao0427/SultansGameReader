@@ -61,6 +61,15 @@ const useCanvasStore = create((set, get) => ({
   },
 
   /**
+   * 覆盖设置节点数组
+   * 用于 React Flow 拖拽、自动布局后的受控更新
+   * @param {Array} nodes
+   */
+  setNodes: (nodes) => {
+    set({ nodes });
+  },
+
+  /**
    * 设置当前选中节点
    * @param {string | null} id - 节点 ID（"{type}:{id}" 格式）
    */

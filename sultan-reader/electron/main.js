@@ -13,6 +13,7 @@
 const { app, BrowserWindow, ipcMain, protocol, net, dialog } = require('electron');
 const path   = require('path');
 const fs     = require('fs');
+const { pathToFileURL } = require('url');
 const { spawn, exec } = require('child_process');
 
 // 动态 require electron-store（ESM 包，需要用 import() 或 createRequire）
@@ -553,8 +554,7 @@ ipcMain.handle('asset:extract', async (event, { gamePath, outputDir }) => {
 ipcMain.handle('asset:resolveImage', async (_event, pic) => {
   if (!pic) return null;
 
-  const resourceDir = getResourceDir();
-  if (!resourceDir) return null;
+  const configuredResourceDir = getResourceDir();
 
   // 提取文件名（去掉 "cards/" 等前缀目录）
   const name = path.basename(pic);
@@ -567,9 +567,20 @@ ipcMain.handle('asset:resolveImage', async (_event, pic) => {
     { rel: `Texture2D/${name}.png.png`,  url: `sultan-asset://Texture2D/${name}.png.png` },
   ];
 
-  for (const { rel, url } of candidates) {
-    if (fs.existsSync(path.join(resourceDir, rel))) {
-      return url;
+  const resourceRoots = [];
+  if (configuredResourceDir) resourceRoots.push(configuredResourceDir);
+  if (WORKSPACE_ROOT) resourceRoots.push(path.join(WORKSPACE_ROOT, 'resource'));
+
+  for (const root of resourceRoots) {
+    for (const { rel, url } of candidates) {
+      if (fs.existsSync(path.join(root, rel))) {
+        // workspace/resource 命中时也通过 sultan-asset 协议返回
+        if (root === configuredResourceDir) {
+          return url;
+        }
+
+        return pathToFileURL(path.join(root, rel)).toString();
+      }
     }
   }
 

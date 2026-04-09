@@ -6,6 +6,7 @@ import {
   MiniMap,
   useReactFlow,
   ReactFlowProvider,
+  applyNodeChanges,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import dagre from 'dagre'
@@ -71,7 +72,7 @@ function applyDagreLayout(nodes, edges) {
 
 // ── 内部画布组件（需要在 ReactFlowProvider 内部使用 useReactFlow） ──────────
 function CanvasInner() {
-  const { nodes, edges, nodeIdSet, addNode, addEdges, setSelectedNode } =
+  const { nodes, edges, nodeIdSet, addNode, addEdges, setSelectedNode, setNodes: setCanvasNodes } =
     useCanvasStore()
   const { setNodes, screenToFlowPosition } = useReactFlow()
 
@@ -235,6 +236,10 @@ function CanvasInner() {
     setTooltip(null)
   }, [])
 
+  const onNodesChange = useCallback((changes) => {
+    setCanvasNodes(applyNodeChanges(changes, useCanvasStore.getState().nodes))
+  }, [setCanvasNodes])
+
   return (
     <div
       style={{ width: '100%', height: '100%', position: 'relative' }}
@@ -251,17 +256,19 @@ function CanvasInner() {
         nodeTypes={nodeTypes}
         onDrop={onDrop}
         onDragOver={onDragOver}
+        onNodesChange={onNodesChange}
         onNodeClick={onNodeClick}
         onEdgeClick={onEdgeClick}
         onPaneClick={onPaneClick}
+        nodesDraggable
         fitView
       >
-        <Background color="#313244" gap={20} />
+        <Background color="rgba(172, 141, 88, 0.18)" gap={24} />
         <Controls />
         <MiniMap
-          nodeColor="#45475a"
-          maskColor="rgba(17,17,27,0.7)"
-          style={{ background: '#1e1e2e' }}
+          nodeColor="#7f6241"
+          maskColor="rgba(15,12,8,0.76)"
+          style={{ background: '#1a140f', border: '1px solid rgba(212, 184, 126, 0.16)' }}
         />
       </ReactFlow>
 

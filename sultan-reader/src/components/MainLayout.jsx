@@ -1,113 +1,498 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import useConfigStore from '../stores/useConfigStore'
-import SearchPanel from './SearchPanel'
+import useCanvasStore from '../stores/useCanvasStore'
 import Canvas from './Canvas'
 import DetailPanel from './DetailPanel'
-import CounterPanel from './CounterPanel'
+import { extractEdges } from '../services/edgeExtractor'
 
-// 顶部导航栏高度
-const NAV_HEIGHT = 44
+const TYPE_TABS = [
+  { key: 'rite', label: '仪式' },
+  { key: 'event', label: '事件' },
+  { key: 'loot', label: '战利品' },
+  { key: 'over', label: '结局' },
+  { key: 'after_story', label: '后日谈' },
+  { key: 'card', label: '卡牌' },
+  { key: 'dt', label: '对话树' },
+]
 
-/**
- * 三栏主布局组件
- * 左：SearchPanel（240px）| 中：Canvas（flex:1）| 右：DetailPanel（320px）
- * 右侧可打开 CounterPanel 侧拉栏
- */
+const PAGE_SIZE = 18
+
+function chunkSummary(entry) {
+  return entry.name || entry.text || entry.id
+}
+
+async function mountNodeOnCanvas(item, position, autoSelect = true) {
+  const store = useCanvasStore.getState()
+  const nodeKey = `${item.type}:${item.id}`
+  if (store.nodeIdSet.has(nodeKey)) {
+    if (autoSelect) store.setSelectedNode(nodeKey)
+    return
+  }
+
+  const data = await window.electronAPI.configReadCache(item.type, item.id)
+  if (!data) return
+
+  store.addNode(item.id, item.type, {
+    label: chunkSummary(item),
+    nodeType: item.type,
+    rawData: data,
+  }, position)
+
+  const relations = extractEdges(item.type, item.id, data)
+  const EDGE_COLORS = { success: '#8fbf77', failed: '#c35b5b', default: '#927453' }
+
+  store.addEdges(relations.map((relation) => ({
+    id: `${relation.source}->${relation.target}:${relation.path}`,
+    source: relation.source,
+    target: relation.target,
+    style: { stroke: EDGE_COLORS[relation.branchType] ?? EDGE_COLORS.default },
+    data: { conditionText: relation.conditionText, branchType: relation.branchType },
+  })))
+
+  if (autoSelect) {
+    store.setSelectedNode(nodeKey)
+  }
+}
+
 export default function MainLayout({ onNavigate }) {
-  const isLoaded = useConfigStore(s => s.isLoaded)
-  const [counterPanelVisible, setCounterPanelVisible] = useState(false)
+  const isLoaded = useConfigStore((s) => s.isLoaded)
+  const initialize = useConfigStore((s) => s.initialize)
+  const indexStats = useConfigStore((s) => s.indexStats)
+  const nodeIdSet = useCanvasStore((s) => s.nodeIdSet)
+  const clearCanvas = useCanvasStore((s) => s.clearCanvas)
 
-  // 组件挂载时初始化搜索索引和卡牌映射
+  const [activeType, setActiveType] = useState('rite')
+  const [items, setItems] = useState([])
+  const [currentPage, setCurrentPage] = useState(1)
+  const [loadingItems, setLoadingItems] = useState(false)
+  const [bootstrapped, setBootstrapped] = useState(false)
+
   useEffect(() => {
-    useConfigStore.getState().initialize()
-  }, [])
+    initialize()
+  }, [initialize])
 
-  // 加载中状态
+  useEffect(() => {
+    if (!isLoaded) return
+
+    let cancelled = false
+
+    async function loadItems() {
+      setLoadingItems(true)
+      setCurrentPage(1)
+      try {
+        const result = await window.electronAPI.configListCache(activeType)
+        if (!cancelled) {
+          setItems(result || [])
+        }
+      } catch {
+        if (!cancelled) {
+          setItems([])
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingItems(false)
+        }
+      }
+    }
+
+    loadItems()
+
+    return () => {
+      cancelled = true
+    }
+  }, [activeType, isLoaded])
+
+  useEffect(() => {
+    if (!isLoaded || bootstrapped || nodeIdSet.size > 0) return
+
+    let cancelled = false
+
+    async function bootstrapRites() {
+      try {
+        const rites = await window.electronAPI.configListCache('rite')
+        if (!rites?.length || cancelled) return
+
+        const randomRites = [...rites]
+          .sort(() => Math.random() - 0.5)
+          .slice(0, 4)
+
+        const positions = [
+          { x: 80, y: 70 },
+          { x: 420, y: 60 },
+          { x: 160, y: 320 },
+          { x: 520, y: 300 },
+        ]
+
+        for (let i = 0; i < randomRites.length; i++) {
+          await mountNodeOnCanvas(randomRites[i], positions[i] || { x: 140 + i * 180, y: 120 + i * 110 }, i === 0)
+        }
+
+        if (!cancelled) {
+          setBootstrapped(true)
+        }
+      } catch {
+        if (!cancelled) {
+          setBootstrapped(true)
+        }
+      }
+    }
+
+    bootstrapRites()
+
+    return () => {
+      cancelled = true
+    }
+  }, [bootstrapped, isLoaded, nodeIdSet.size])
+
+  const totalPages = Math.max(1, Math.ceil(items.length / PAGE_SIZE))
+  const visibleItems = useMemo(() => {
+    const start = (currentPage - 1) * PAGE_SIZE
+    return items.slice(start, start + PAGE_SIZE)
+  }, [currentPage, items])
+
   if (!isLoaded) {
     return (
-      <div style={{
-        width: '100vw',
-        height: '100vh',
-        background: '#11111b',
-        color: '#a6adc8',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        fontSize: 14,
-      }}>
-        正在加载索引…
+      <div style={loadingScreenStyle}>
+        正在整理剧情索引与阅读资源…
       </div>
     )
   }
 
   return (
-    <div style={{ width: '100vw', height: '100vh', display: 'flex', flexDirection: 'column', background: '#11111b' }}>
-      {/* 顶部导航栏 */}
-      <div style={{
-        height: NAV_HEIGHT,
-        minHeight: NAV_HEIGHT,
-        background: '#181825',
-        borderBottom: '1px solid #313244',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        padding: '0 16px',
-        flexShrink: 0,
-      }}>
-        {/* 左侧标题 */}
-        <span style={{ color: '#cba6f7', fontWeight: 'bold', fontSize: 15 }}>
-          苏丹的游戏 剧情阅读器
-        </span>
-        {/* 右侧按钮组 */}
-        <div style={{ display: 'flex', gap: 8 }}>
+    <div style={shellStyle}>
+      <div style={heroBarStyle}>
+        <div>
+          <div style={eyebrowStyle}>Sultan's Game Reader</div>
+          <div style={titleStyle}>仪式优先的剧情阅读工作台</div>
+          <div style={subTitleStyle}>
+            默认加载几个仪式到画布，画布负责导航，右侧负责阅读。
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 10 }}>
           <button
-            onClick={() => setCounterPanelVisible(v => !v)}
-            style={{
-              background: counterPanelVisible ? '#cba6f7' : '#313244',
-              color: counterPanelVisible ? '#1e1e2e' : '#cdd6f4',
-              border: 'none', borderRadius: 4,
-              padding: '5px 12px', cursor: 'pointer', fontSize: 13,
+            type="button"
+            style={secondaryActionStyle}
+            onClick={async () => {
+              clearCanvas()
+              setBootstrapped(false)
             }}
           >
-            🎲 计数器
+            换一组仪式
           </button>
           <button
+            type="button"
+            style={secondaryActionStyle}
             onClick={() => onNavigate('settings')}
-            style={{
-              background: '#313244',
-              color: '#cdd6f4',
-              border: 'none',
-              borderRadius: 4,
-              padding: '5px 12px',
-              cursor: 'pointer',
-              fontSize: 13,
-            }}
           >
-            ⚙ 设置
+            设置
           </button>
         </div>
       </div>
 
-      {/* 三栏内容区 */}
-      <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
-        {/* 左侧搜索面板（固定 240px） */}
-        <div style={{ width: 240, flexShrink: 0, overflow: 'hidden' }}>
-          <SearchPanel />
-        </div>
+      <div style={workspaceStyle}>
+        <aside style={leftRailStyle}>
+          <div style={railHeaderStyle}>
+            <div style={railTitleStyle}>内容目录</div>
+            <div style={railMetaStyle}>
+              {typeof indexStats?.counts === 'object'
+                ? `已索引 ${Object.values(indexStats.counts).reduce((sum, value) => sum + value, 0)} 项`
+                : '可直接切换类型'}
+            </div>
+          </div>
 
-        {/* 中间画布（flex: 1） */}
-        <div style={{ flex: 1, overflow: 'hidden' }}>
-          <Canvas />
-        </div>
+          <div style={tabRowStyle}>
+            {TYPE_TABS.map((tab) => (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => setActiveType(tab.key)}
+                style={{
+                  ...tabStyle,
+                  ...(activeType === tab.key ? activeTabStyle : null),
+                }}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
 
-        {/* 右侧详情面板（固定 320px） */}
-        <div style={{ width: 320, flexShrink: 0, borderLeft: '1px solid #313244', overflow: 'hidden' }}>
+          <div style={listWrapStyle}>
+            {loadingItems && <div style={listHintStyle}>正在读取 {TYPE_TABS.find((tab) => tab.key === activeType)?.label}…</div>}
+            {!loadingItems && visibleItems.length === 0 && <div style={listHintStyle}>该类型下暂无可读条目。</div>}
+
+            {!loadingItems && visibleItems.map((item, index) => {
+              const nodeKey = `${activeType}:${item.id}`
+              const inCanvas = nodeIdSet.has(nodeKey)
+              return (
+                <button
+                  key={nodeKey}
+                  type="button"
+                  onClick={() => mountNodeOnCanvas({ ...item, type: activeType }, { x: 120 + (index % 3) * 180, y: 120 + index * 24 }, true)}
+                  style={{
+                    ...listItemStyle,
+                    ...(inCanvas ? mountedItemStyle : null),
+                  }}
+                >
+                  <div style={listItemIdStyle}>{item.id}</div>
+                  <div style={listItemTitleStyle}>{chunkSummary(item)}</div>
+                </button>
+              )
+            })}
+          </div>
+
+          <div style={paginationStyle}>
+            <button
+              type="button"
+              style={pagerBtnStyle}
+              disabled={currentPage === 1}
+              onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+            >
+              上一页
+            </button>
+            <span style={{ color: '#cdb589', fontSize: 12 }}>
+              {currentPage} / {totalPages}
+            </span>
+            <button
+              type="button"
+              style={pagerBtnStyle}
+              disabled={currentPage === totalPages}
+              onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+            >
+              下一页
+            </button>
+          </div>
+        </aside>
+
+        <section style={canvasStageStyle}>
+          <div style={stageHeaderStyle}>
+            <div>
+              <div style={stageTitleStyle}>节点图导航</div>
+              <div style={stageHintStyle}>现在可以直接拖动画布中的节点，阅读区会跟随当前选择更新。</div>
+            </div>
+          </div>
+          <div style={canvasFrameStyle}>
+            <Canvas />
+          </div>
+        </section>
+
+        <aside style={readerStageStyle}>
           <DetailPanel />
-        </div>
+        </aside>
       </div>
-
-      {/* 计数器侧拉栏 */}
-      <CounterPanel visible={counterPanelVisible} onClose={() => setCounterPanelVisible(false)} />
     </div>
   )
+}
+
+const shellStyle = {
+  width: '100%',
+  height: '100%',
+  display: 'grid',
+  gridTemplateRows: 'auto 1fr',
+  background: `
+    radial-gradient(circle at top, rgba(173, 134, 70, 0.16), transparent 35%),
+    linear-gradient(180deg, #1a140f 0%, #100d09 100%)
+  `,
+  color: '#f1e8d5',
+}
+
+const loadingScreenStyle = {
+  width: '100%',
+  height: '100%',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  background: 'linear-gradient(180deg, #1a140f 0%, #100d09 100%)',
+  color: '#f1e8d5',
+  fontSize: 15,
+  letterSpacing: '0.08em',
+}
+
+const heroBarStyle = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'flex-start',
+  gap: 16,
+  padding: '22px 28px 18px',
+  borderBottom: '1px solid rgba(212, 184, 126, 0.14)',
+  background: 'linear-gradient(180deg, rgba(27, 21, 16, 0.92), rgba(20, 16, 12, 0.8))',
+}
+
+const eyebrowStyle = {
+  color: '#b99759',
+  fontSize: 11,
+  letterSpacing: '0.28em',
+  textTransform: 'uppercase',
+}
+
+const titleStyle = {
+  marginTop: 8,
+  fontSize: 28,
+  fontWeight: 700,
+  lineHeight: 1.2,
+}
+
+const subTitleStyle = {
+  marginTop: 8,
+  fontSize: 13,
+  color: 'rgba(241, 232, 213, 0.7)',
+}
+
+const secondaryActionStyle = {
+  padding: '10px 14px',
+  borderRadius: 999,
+  border: '1px solid rgba(212, 184, 126, 0.2)',
+  background: 'rgba(212, 184, 126, 0.08)',
+  color: '#f1e8d5',
+  cursor: 'pointer',
+}
+
+const workspaceStyle = {
+  minHeight: 0,
+  display: 'grid',
+  gridTemplateColumns: '300px minmax(420px, 1fr) 500px',
+  gap: 18,
+  padding: 18,
+}
+
+const panelBaseStyle = {
+  minHeight: 0,
+  borderRadius: 28,
+  overflow: 'hidden',
+  border: '1px solid rgba(212, 184, 126, 0.12)',
+  background: 'linear-gradient(180deg, rgba(27, 21, 16, 0.92), rgba(18, 15, 11, 0.94))',
+  boxShadow: '0 24px 54px rgba(0, 0, 0, 0.26)',
+}
+
+const leftRailStyle = {
+  ...panelBaseStyle,
+  display: 'grid',
+  gridTemplateRows: 'auto auto 1fr auto',
+}
+
+const canvasStageStyle = {
+  ...panelBaseStyle,
+  display: 'grid',
+  gridTemplateRows: 'auto 1fr',
+}
+
+const readerStageStyle = {
+  ...panelBaseStyle,
+}
+
+const railHeaderStyle = {
+  padding: '18px 18px 12px',
+  borderBottom: '1px solid rgba(212, 184, 126, 0.1)',
+}
+
+const railTitleStyle = {
+  fontSize: 18,
+  fontWeight: 700,
+}
+
+const railMetaStyle = {
+  marginTop: 6,
+  fontSize: 12,
+  color: 'rgba(241, 232, 213, 0.6)',
+}
+
+const tabRowStyle = {
+  padding: '14px 14px 8px',
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: 8,
+}
+
+const tabStyle = {
+  padding: '7px 11px',
+  borderRadius: 999,
+  border: '1px solid rgba(212, 184, 126, 0.12)',
+  background: 'rgba(212, 184, 126, 0.04)',
+  color: '#d7c2a0',
+  cursor: 'pointer',
+}
+
+const activeTabStyle = {
+  background: 'rgba(212, 184, 126, 0.18)',
+  color: '#fff3dd',
+  borderColor: 'rgba(212, 184, 126, 0.28)',
+}
+
+const listWrapStyle = {
+  minHeight: 0,
+  overflowY: 'auto',
+  padding: '0 12px 12px',
+  display: 'grid',
+  gap: 10,
+}
+
+const listHintStyle = {
+  padding: '20px 10px',
+  color: 'rgba(241, 232, 213, 0.56)',
+  fontSize: 13,
+  textAlign: 'center',
+}
+
+const listItemStyle = {
+  textAlign: 'left',
+  padding: '12px 14px',
+  borderRadius: 20,
+  border: '1px solid rgba(212, 184, 126, 0.1)',
+  background: 'rgba(212, 184, 126, 0.035)',
+  color: '#f1e8d5',
+  cursor: 'pointer',
+}
+
+const mountedItemStyle = {
+  background: 'rgba(133, 170, 117, 0.08)',
+  borderColor: 'rgba(133, 170, 117, 0.22)',
+}
+
+const listItemIdStyle = {
+  fontFamily: 'Consolas, monospace',
+  fontSize: 11,
+  color: '#c29e61',
+}
+
+const listItemTitleStyle = {
+  marginTop: 6,
+  fontSize: 13,
+  lineHeight: 1.55,
+}
+
+const paginationStyle = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  padding: '12px 14px 16px',
+  borderTop: '1px solid rgba(212, 184, 126, 0.08)',
+}
+
+const pagerBtnStyle = {
+  padding: '7px 12px',
+  borderRadius: 999,
+  border: '1px solid rgba(212, 184, 126, 0.18)',
+  background: 'rgba(212, 184, 126, 0.06)',
+  color: '#f1e8d5',
+  cursor: 'pointer',
+}
+
+const stageHeaderStyle = {
+  padding: '18px 18px 12px',
+  borderBottom: '1px solid rgba(212, 184, 126, 0.08)',
+}
+
+const stageTitleStyle = {
+  fontSize: 18,
+  fontWeight: 700,
+}
+
+const stageHintStyle = {
+  marginTop: 6,
+  fontSize: 12,
+  color: 'rgba(241, 232, 213, 0.62)',
+}
+
+const canvasFrameStyle = {
+  minHeight: 0,
+  padding: 10,
 }
