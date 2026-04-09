@@ -631,9 +631,83 @@ ipcMain.handle('settings:set', async (_event, key, value) => {
 
 // ─── 应用生命周期 ─────────────────────────────────────────────────────────────
 
+/**
+ * 递归复制目录
+ */
+function copyDirSync(src, dest) {
+  if (!fs.existsSync(dest)) fs.mkdirSync(dest, { recursive: true });
+  for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
+    const srcPath  = path.join(src, entry.name);
+    const destPath = path.join(dest, entry.name);
+    if (entry.isDirectory()) {
+      copyDirSync(srcPath, destPath);
+    } else {
+      fs.copyFileSync(srcPath, destPath);
+    }
+  }
+}
+
+/**
+ * 启动时自动迁移缓存：
+ * 如果当前 cacheDir（roaming）下没有缓存文件，
+ * 但运行目录（__dirname 上两级）下有 cache/ 目录，
+ * 则将其复制到 cacheDir 并更新设置。
+ */
+async function migrateCacheIfNeeded() {
+  if (!settings) return;
+
+  const currentCacheDir = settings.get('cacheDir');
+  // 检查当前 cacheDir 是否有实际缓存（至少有一个子目录含 .json 文件）
+  const hasCache = (dir) => {
+    if (!fs.existsSync(dir)) return false;
+    try {
+      for (const sub of fs.readdirSync(dir)) {
+        const subPath = path.join(dir, sub);
+        if (fs.statSync(subPath).isDirectory()) {
+          const files = fs.readdirSync(subPath).filter(f => f.endsWith('.json'));
+          if (files.length > 0) return true;
+        }
+      }
+    } catch {}
+    return false;
+  };
+
+  if (hasCache(currentCacheDir)) return; // 已有缓存，不需要迁移
+
+  // 查找运行目录上两级的 cache/（工作区根）
+  const candidates = [
+    path.resolve(__dirname, '..', '..', 'cache'),  // sultan-reader/electron/ → 工作区根/cache
+    path.resolve(__dirname, '..', 'cache'),         // sultan-reader/ → sultan-reader/cache
+    path.resolve(process.cwd(), 'cache'),           // 当前工作目录/cache
+  ];
+
+  for (const srcCache of candidates) {
+    if (hasCache(srcCache)) {
+      console.log(`[迁移] 发现缓存：${srcCache} → ${currentCacheDir}`);
+      try {
+        copyDirSync(srcCache, currentCacheDir);
+        console.log('[迁移] 缓存复制完成');
+        // 同时迁移 resource/
+        const srcResource = path.join(path.dirname(srcCache), 'resource');
+        const currentResourceDir = settings.get('resourceDir');
+        if (fs.existsSync(srcResource) && !hasCache(currentResourceDir)) {
+          copyDirSync(srcResource, currentResourceDir);
+          console.log('[迁移] resource 复制完成');
+        }
+      } catch (e) {
+        console.warn('[迁移] 复制失败:', e.message);
+      }
+      break;
+    }
+  }
+}
+
 app.whenReady().then(async () => {
   // 初始化 store
   await initStore();
+
+  // 自动迁移缓存：如果 userData/cache 为空但运行目录下有 cache/，复制过去并更新设置
+  await migrateCacheIfNeeded();
 
   // 注册自定义协议 handler（必须在 app.ready 之后）
   registerAssetProtocol();
