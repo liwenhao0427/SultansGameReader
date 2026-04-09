@@ -116,7 +116,7 @@ function PreviewImage({ pic, maxHeight = 320 }) {
         <img
           src={url}
           alt=""
-          style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+          style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
         />
       )}
       {!loading && !url && <div style={imageFallbackStyle}>暂无对应图片</div>}
@@ -368,18 +368,23 @@ export default function StoryInspector({ type, data, onClose }) {
 
   const content = (
     <div style={{
-      minHeight: '100%',
+      height: '100%',
+      minHeight: 0,
       display: 'grid',
       color: '#f1e8d5',
+      overflow: 'hidden',
     }}>
       <div style={{
+        height: '100%',
         minHeight: 0,
         display: 'grid',
         gridTemplateColumns: model.slots.length > 0 ? '220px minmax(280px, 360px) minmax(0, 1fr)' : 'minmax(280px, 360px) minmax(0, 1fr)',
         gap: 22,
+        overflow: 'hidden',
       }}>
         {model.slots.length > 0 && (
           <div style={{
+            height: '100%',
             minHeight: 0,
             borderRadius: 32,
             border: '1px solid rgba(212, 184, 126, 0.12)',
@@ -387,8 +392,9 @@ export default function StoryInspector({ type, data, onClose }) {
             boxShadow: '0 20px 44px rgba(0, 0, 0, 0.26)',
             padding: '20px 16px',
             display: 'grid',
-            gridTemplateRows: 'auto 1fr auto',
+            gridTemplateRows: 'auto minmax(0, 1fr) auto',
             gap: 16,
+            overflow: 'hidden',
           }}>
             <div>
               <div style={sectionTitleStyle}>卡牌槽位</div>
@@ -436,6 +442,7 @@ export default function StoryInspector({ type, data, onClose }) {
           {selectedSlot?.candidates?.length > 0 ? (
             <div style={{
               marginTop: 16,
+              minHeight: 0,
               display: 'grid',
               gap: 14,
               overflowY: 'auto',
@@ -470,11 +477,14 @@ export default function StoryInspector({ type, data, onClose }) {
         </div>
 
         <div style={{
+          height: '100%',
           minHeight: 0,
           display: 'grid',
           gridTemplateColumns: '1fr',
+          overflow: 'hidden',
         }}>
           <div style={{
+            height: '100%',
             minHeight: 0,
             borderRadius: 32,
             border: '1px solid rgba(212, 184, 126, 0.14)',
@@ -482,7 +492,7 @@ export default function StoryInspector({ type, data, onClose }) {
             backgroundColor: 'rgba(22, 17, 13, 0.92)',
             overflow: 'hidden',
             display: 'grid',
-            gridTemplateRows: 'auto 1fr auto',
+            gridTemplateRows: 'auto minmax(0, 1fr) auto',
           }}>
             <div style={{
               padding: '22px 24px 18px',
@@ -496,6 +506,24 @@ export default function StoryInspector({ type, data, onClose }) {
               backgroundPosition: READER_CHROME.assets.noteBackground.backgroundPosition,
               color: READER_CHROME.header.metaColor,
             }}>
+              {titleEmblem && (
+                <div
+                  aria-hidden="true"
+                  style={{
+                    position: 'absolute',
+                    top: READER_CHROME.assets.titleEmblem.top,
+                    right: READER_CHROME.assets.titleEmblem.right,
+                    width: READER_CHROME.assets.titleEmblem.width,
+                    height: READER_CHROME.assets.titleEmblem.height,
+                    opacity: READER_CHROME.assets.titleEmblem.opacity,
+                    pointerEvents: 'none',
+                    backgroundImage: `url("${titleEmblem}")`,
+                    backgroundRepeat: 'no-repeat',
+                    backgroundSize: READER_CHROME.assets.titleEmblem.backgroundSize,
+                    backgroundPosition: READER_CHROME.assets.titleEmblem.backgroundPosition,
+                  }}
+                />
+              )}
               <div style={{ fontSize: 12, letterSpacing: '0.24em', textTransform: 'uppercase', color: READER_CHROME.header.subtitleColor }}>
                 {model.subtitle || model.kind}
               </div>
@@ -503,23 +531,7 @@ export default function StoryInspector({ type, data, onClose }) {
                 marginTop: 10,
                 display: 'flex',
                 alignItems: 'center',
-                gap: 12,
               }}>
-                {titleEmblem && (
-                  <div
-                    aria-hidden="true"
-                    style={{
-                      width: 44,
-                      height: 44,
-                      flexShrink: 0,
-                      opacity: 0.92,
-                      backgroundImage: `url("${titleEmblem}")`,
-                      backgroundRepeat: 'no-repeat',
-                      backgroundSize: '100% 100%',
-                      backgroundPosition: 'center',
-                    }}
-                  />
-                )}
                 <div style={{
                   fontSize: 40,
                   fontWeight: 900,
@@ -732,7 +744,7 @@ export default function StoryInspector({ type, data, onClose }) {
           </div>
           <button type="button" onClick={onClose} style={closeButtonStyle}>关闭</button>
         </div>
-        <div style={{ minHeight: 0, overflow: 'hidden', padding: 24 }}>
+        <div style={{ height: '100%', minHeight: 0, overflow: 'hidden', padding: 24 }}>
           {content}
         </div>
       </div>
@@ -781,6 +793,7 @@ const segmentCardStyle = {
 }
 
 const candidateStageStyle = {
+  height: '100%',
   borderRadius: 32,
   border: '1px solid rgba(212, 184, 126, 0.14)',
   backgroundColor: 'rgba(16, 14, 11, 0.95)',
@@ -788,7 +801,8 @@ const candidateStageStyle = {
   padding: '20px 18px 18px',
   minHeight: 0,
   display: 'grid',
-  gridTemplateRows: 'auto 1fr',
+  gridTemplateRows: 'auto minmax(0, 1fr)',
+  overflow: 'hidden',
 }
 
 const emptyCandidateStyle = {
