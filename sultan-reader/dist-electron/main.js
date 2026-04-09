@@ -2,10 +2,12 @@
 const { app, BrowserWindow, ipcMain, protocol, net, dialog } = require("electron");
 const path = require("path");
 const fs = require("fs");
+const { pathToFileURL } = require("url");
 const { spawn, exec } = require("child_process");
 const { CacheManager, resolveConfigDir } = require("./parser/cacheManager");
 const CONFIG_SUBPATH = path.join("Sultan's Game_Data", "StreamingAssets", "config");
 const isDev = process.env.NODE_ENV === "development" || !app.isPackaged;
+const WORKSPACE_ROOT = isDev ? path.resolve(__dirname, "..", "..") : null;
 protocol.registerSchemesAsPrivileged([
   {
     scheme: "sultan-asset",
@@ -22,31 +24,48 @@ let searchIndex = [];
 let mainWindow = null;
 async function initStore() {
   if (settings) return settings;
+  const dataRoot = path.join(app.getPath("appData"), "sultan-reader-data");
+  const defaultCacheDir = path.join(dataRoot, "cache");
+  const defaultResourceDir = path.join(dataRoot, "resource");
   try {
-    const { default: ElectronStore } = await Promise.resolve().then(() => require("./index-C3TWDn_P.js")).then((n) => n.index);
+    const { default: ElectronStore } = await Promise.resolve().then(() => require("./index-Xn56FFjk.js")).then((n) => n.index);
     settings = new ElectronStore({
       name: "sultan-reader-settings",
       defaults: {
         gamePath: "",
         cliPath: "",
-        resourceDir: path.join(app.getPath("userData"), "resource"),
-        cacheDir: path.join(app.getPath("userData"), "cache")
+        resourceDir: defaultResourceDir,
+        cacheDir: defaultCacheDir
       }
     });
+    const savedCacheDir = settings.get("cacheDir");
+    const oldUserDataCache = path.join(app.getPath("userData"), "cache");
+    if (savedCacheDir === oldUserDataCache || savedCacheDir.toLowerCase() === oldUserDataCache.toLowerCase()) {
+      if (fs.existsSync(savedCacheDir) && hasJsonFiles(savedCacheDir)) {
+        console.log(`[迁移] 旧缓存路径 ${savedCacheDir} → ${defaultCacheDir}`);
+        copyDirSync(savedCacheDir, defaultCacheDir);
+      }
+      settings.set("cacheDir", defaultCacheDir);
+    }
+    const savedResourceDir = settings.get("resourceDir");
+    const oldUserDataResource = path.join(app.getPath("userData"), "resource");
+    if (savedResourceDir === oldUserDataResource || savedResourceDir.toLowerCase() === oldUserDataResource.toLowerCase()) {
+      settings.set("resourceDir", defaultResourceDir);
+    }
   } catch (e) {
     console.warn("electron-store 加载失败，使用 JSON 降级存储:", e.message);
-    settings = createFallbackStore();
+    settings = createFallbackStore(defaultCacheDir, defaultResourceDir);
   }
   return settings;
 }
-function createFallbackStore() {
+function createFallbackStore(defaultCacheDir, defaultResourceDir) {
   const storePath = path.join(app.getPath("userData"), "settings.json");
   let data = {};
   const defaults = {
     gamePath: "",
     cliPath: "",
-    resourceDir: path.join(app.getPath("userData"), "resource"),
-    cacheDir: path.join(app.getPath("userData"), "cache")
+    resourceDir: defaultResourceDir || path.join(app.getPath("userData"), "resource"),
+    cacheDir: defaultCacheDir || path.join(app.getPath("userData"), "cache")
   };
   try {
     if (fs.existsSync(storePath)) {
@@ -143,7 +162,11 @@ ipcMain.handle("config:rebuildCache", async (event) => {
       event.sender.send("config:progress", { current, total: total2, id });
     }
   };
-  const { results, errors } = manager.scanAll(onProgress);
+  const { results, errors } = await new Promise((resolve) => {
+    setImmediate(() => {
+      resolve(manager.scanAll(onProgress));
+    });
+  });
   try {
     const singleDir = path.join(cacheDir, "single");
     ensureDir(singleDir);
@@ -171,6 +194,7 @@ ipcMain.handle("config:rebuildCache", async (event) => {
     total += map.size;
   }
   return {
+    success: true,
     total,
     errors: errors.map((e) => typeof e === "string" ? e : `${e.id}: ${e.error}`)
   };
@@ -329,8 +353,7 @@ ipcMain.handle("asset:extract", async (event, { gamePath, outputDir }) => {
 });
 ipcMain.handle("asset:resolveImage", async (_event, pic) => {
   if (!pic) return null;
-  const resourceDir = getResourceDir();
-  if (!resourceDir) return null;
+  const configuredResourceDir = getResourceDir();
   const name = path.basename(pic);
   const candidates = [
     { rel: `Sprite/${name}.png`, url: `sultan-asset://Sprite/${name}.png` },
@@ -338,9 +361,17 @@ ipcMain.handle("asset:resolveImage", async (_event, pic) => {
     { rel: `Texture2D/${name}.png`, url: `sultan-asset://Texture2D/${name}.png` },
     { rel: `Texture2D/${name}.png.png`, url: `sultan-asset://Texture2D/${name}.png.png` }
   ];
-  for (const { rel, url } of candidates) {
-    if (fs.existsSync(path.join(resourceDir, rel))) {
-      return url;
+  const resourceRoots = [];
+  if (configuredResourceDir) resourceRoots.push(configuredResourceDir);
+  if (WORKSPACE_ROOT) resourceRoots.push(path.join(WORKSPACE_ROOT, "resource"));
+  for (const root of resourceRoots) {
+    for (const { rel, url } of candidates) {
+      if (fs.existsSync(path.join(root, rel))) {
+        if (root === configuredResourceDir) {
+          return url;
+        }
+        return pathToFileURL(path.join(root, rel)).toString();
+      }
     }
   }
   return null;
@@ -380,8 +411,58 @@ ipcMain.handle("settings:get", async (_event, key) => {
 ipcMain.handle("settings:set", async (_event, key, value) => {
   if (settings) settings.set(key, value);
 });
+function hasJsonFiles(dir) {
+  if (!fs.existsSync(dir)) return false;
+  try {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (entry.isDirectory()) {
+        const sub = path.join(dir, entry.name);
+        if (fs.readdirSync(sub).some((f) => f.endsWith(".json"))) return true;
+      } else if (entry.name.endsWith(".json")) {
+        return true;
+      }
+    }
+  } catch {
+  }
+  return false;
+}
+function copyDirSync(src, dest) {
+  if (!fs.existsSync(dest)) fs.mkdirSync(dest, { recursive: true });
+  for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
+    const srcPath = path.join(src, entry.name);
+    const destPath = path.join(dest, entry.name);
+    if (entry.isDirectory()) {
+      copyDirSync(srcPath, destPath);
+    } else if (!fs.existsSync(destPath)) {
+      fs.copyFileSync(srcPath, destPath);
+    }
+  }
+}
+async function migrateCacheIfNeeded() {
+  if (!settings) return;
+  const currentCacheDir = settings.get("cacheDir");
+  if (hasJsonFiles(currentCacheDir)) return;
+  const candidates = [
+    path.resolve(__dirname, "..", "..", "cache"),
+    path.resolve(__dirname, "..", "cache"),
+    path.resolve(process.cwd(), "cache")
+  ];
+  for (const srcCache of candidates) {
+    if (hasJsonFiles(srcCache)) {
+      console.log(`[迁移] 发现缓存：${srcCache} → ${currentCacheDir}`);
+      try {
+        copyDirSync(srcCache, currentCacheDir);
+        console.log("[迁移] 缓存复制完成");
+      } catch (e) {
+        console.warn("[迁移] 复制失败:", e.message);
+      }
+      break;
+    }
+  }
+}
 app.whenReady().then(async () => {
   await initStore();
+  await migrateCacheIfNeeded();
   registerAssetProtocol();
   await createWindow();
   app.on("activate", async () => {
