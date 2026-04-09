@@ -30,7 +30,7 @@ function splitIntro(text) {
     .filter(Boolean)
 }
 
-function CardPortrait({ card, compact = false }) {
+function CardPortrait({ card, compact = false, showName = true }) {
   const { url } = useResolvedImage(card?.image)
   const { url: rareFrameUrl } = useResolvedImage(rareAssetKey(card?.rare))
   const width = compact ? 72 : 94
@@ -83,20 +83,22 @@ function CardPortrait({ card, compact = false }) {
           </div>
         )}
       </div>
-      <div style={{
-        position: 'absolute',
-        left: 0,
-        right: 0,
-        bottom: 0,
-        padding: compact ? '6px 6px 7px' : '8px 8px 9px',
-        backgroundImage: 'linear-gradient(180deg, transparent, rgba(4, 3, 2, 0.9))',
-        color: '#fff7e6',
-        fontSize: compact ? 10 : 11,
-        lineHeight: 1.4,
-        zIndex: 2,
-      }}>
-        {card?.name}
-      </div>
+      {showName && (
+        <div style={{
+          position: 'absolute',
+          left: 0,
+          right: 0,
+          bottom: 0,
+          padding: compact ? '6px 6px 7px' : '8px 8px 9px',
+          backgroundImage: 'linear-gradient(180deg, transparent, rgba(4, 3, 2, 0.9))',
+          color: '#fff7e6',
+          fontSize: compact ? 10 : 11,
+          lineHeight: 1.4,
+          zIndex: 2,
+        }}>
+          {card?.name}
+        </div>
+      )}
     </div>
   )
 }
@@ -153,85 +155,107 @@ function PreviewImage({ pic, maxHeight = 320 }) {
   )
 }
 
-function SlotButton({ slot, active, candidate, onClick, slotBgKey }) {
+function SlotButton({ slot, active, candidate, tags, onClick, slotBgKey }) {
   const { url: slotBgUrl } = useResolvedImage(slotBgKey)
   const previewCard = candidate?.cards?.[0] || null
+  const slotCaption = candidate?.label || slot.title
 
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      style={{
-        width: READER_CHROME.assets.slotFrame.width,
-        minHeight: READER_CHROME.assets.slotFrame.minHeight,
-        padding: 0,
-        borderRadius: 22,
-        border: active ? '1px solid rgba(239, 215, 169, 0.54)' : '1px solid rgba(219, 207, 181, 0.12)',
-        backgroundColor: 'transparent',
-        boxShadow: active ? '0 0 0 3px rgba(212, 184, 126, 0.12)' : 'none',
-        cursor: 'pointer',
-        overflow: 'hidden',
-        position: 'relative',
-      }}
-    >
-      <div style={{
-        width: READER_CHROME.assets.slotFrame.width,
-        minHeight: READER_CHROME.assets.slotFrame.minHeight,
-        borderRadius: 22,
-        backgroundImage: slotBgUrl
-          ? `linear-gradient(180deg, rgba(8, 8, 8, 0.18), rgba(8, 8, 8, 0.48)), url("${slotBgUrl}")`
-          : 'linear-gradient(180deg, rgba(180, 165, 139, 0.88), rgba(94, 80, 57, 0.92))',
-        backgroundRepeat: 'no-repeat',
-        backgroundSize: READER_CHROME.assets.slotFrame.backgroundSize,
-        backgroundPosition: READER_CHROME.assets.slotFrame.backgroundPosition,
-        position: 'relative',
-      }}>
-        {previewCard ? (
-          <div style={{ position: 'absolute', inset: '6px 7px 10px' }}>
-            <CardPortrait card={previewCard} compact />
-          </div>
-        ) : (
+    <div style={{ display: 'grid', gap: 6, justifyItems: 'center' }}>
+      <button
+        type="button"
+        onClick={onClick}
+        style={{
+          width: READER_CHROME.assets.slotFrame.width,
+          minHeight: READER_CHROME.assets.slotFrame.minHeight,
+          padding: 0,
+          borderRadius: 22,
+          border: active ? '1px solid rgba(239, 215, 169, 0.54)' : '1px solid rgba(219, 207, 181, 0.12)',
+          backgroundColor: 'transparent',
+          boxShadow: active ? '0 0 0 3px rgba(212, 184, 126, 0.12)' : 'none',
+          cursor: 'pointer',
+          overflow: 'hidden',
+          position: 'relative',
+        }}
+      >
+        <div style={{
+          width: READER_CHROME.assets.slotFrame.width,
+          minHeight: READER_CHROME.assets.slotFrame.minHeight,
+          borderRadius: 22,
+          backgroundImage: slotBgUrl
+            ? `linear-gradient(180deg, rgba(8, 8, 8, 0.18), rgba(8, 8, 8, 0.48)), url("${slotBgUrl}")`
+            : 'linear-gradient(180deg, rgba(180, 165, 139, 0.88), rgba(94, 80, 57, 0.92))',
+          backgroundRepeat: 'no-repeat',
+          backgroundSize: READER_CHROME.assets.slotFrame.backgroundSize,
+          backgroundPosition: READER_CHROME.assets.slotFrame.backgroundPosition,
+          position: 'relative',
+        }}>
           <div style={{
             position: 'absolute',
-            inset: 0,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: '#fff1d4',
-            fontWeight: 800,
-            fontSize: 16,
+            top: 8,
+            left: 8,
+            padding: '2px 6px',
+            borderRadius: 999,
+            background: 'rgba(12, 10, 8, 0.6)',
+            color: '#f3e3c1',
+            fontSize: 10,
+            fontWeight: 700,
+            letterSpacing: '0.08em',
           }}>
             {slot.title}
           </div>
-        )}
-        <div style={{
-          position: 'absolute',
-          left: 0,
-          right: 0,
-          bottom: 8,
-          textAlign: 'center',
-          color: '#f4e8cf',
-          fontWeight: 800,
-          fontSize: 16,
-          textShadow: '0 2px 6px rgba(0,0,0,0.55)',
-        }}>
-          {slot.title}
+          {previewCard ? (
+            <div style={{ position: 'absolute', inset: '6px 7px 10px' }}>
+              <CardPortrait card={previewCard} compact showName={false} />
+            </div>
+          ) : (
+            <div style={{
+              position: 'absolute',
+              inset: '10px 10px 12px',
+              borderRadius: 18,
+              background: 'linear-gradient(180deg, rgba(40, 33, 24, 0.4), rgba(12, 10, 8, 0.72))',
+            }} />
+          )}
+          <div style={{
+            position: 'absolute',
+            left: 8,
+            right: 8,
+            bottom: 8,
+            color: '#fff4dd',
+            fontWeight: 800,
+            fontSize: 12,
+            lineHeight: 1.25,
+            textShadow: '0 2px 6px rgba(0,0,0,0.68)',
+            whiteSpace: 'pre-wrap',
+            wordBreak: 'break-word',
+          }}>
+            {slotCaption}
+          </div>
         </div>
-      </div>
-    </button>
+      </button>
+      {tags?.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, justifyContent: 'center' }}>
+          {tags.map((tag) => (
+            <span key={tag.id} style={slotTagStyle}>{tag.label}</span>
+          ))}
+        </div>
+      )}
+    </div>
   )
 }
 
 function CandidateHandItem({ candidate, active, onSelect }) {
+  const previewCard = candidate.cards?.[0] || null
+
   return (
     <button
       type="button"
       onClick={onSelect}
       style={{
-        minWidth: 184,
-        maxWidth: 270,
-        padding: 14,
-        borderRadius: 24,
+        width: '100%',
+        minWidth: 0,
+        padding: 12,
+        borderRadius: 20,
         border: active
           ? '1px solid rgba(239, 215, 169, 0.54)'
           : '1px solid rgba(212, 184, 126, 0.16)',
@@ -244,42 +268,120 @@ function CandidateHandItem({ candidate, active, onSelect }) {
         textAlign: 'left',
         display: 'grid',
         gap: 10,
-        alignContent: 'start',
       }}
     >
-      {candidate.cards.length > 0 ? (
-        candidate.cards.length === 1 ? (
-          <CardPortrait card={candidate.cards[0]} />
-        ) : (
-          <CardStack cards={candidate.cards} />
-        )
-      ) : (
+      <div style={{
+        minHeight: 122,
+        borderRadius: 18,
+        overflow: 'hidden',
+        position: 'relative',
+        background: 'linear-gradient(180deg, rgba(41, 33, 24, 0.96), rgba(24, 18, 13, 0.96))',
+      }}>
+        {candidate.cards.length > 1 ? (
+          <div style={{ position: 'absolute', inset: '10px 12px 12px' }}>
+            <CardStack cards={candidate.cards} />
+          </div>
+        ) : previewCard ? (
+          <div style={{ position: 'absolute', inset: '8px 10px 10px' }}>
+            <CardPortrait card={previewCard} showName={false} />
+          </div>
+        ) : null}
         <div style={{
-          minHeight: 142,
-          borderRadius: 18,
-          border: '1px dashed rgba(212, 184, 126, 0.18)',
-          backgroundColor: 'rgba(30, 24, 18, 0.92)',
-          color: '#f6e6c4',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: 16,
-          textAlign: 'center',
-          lineHeight: 1.7,
+          position: 'absolute',
+          inset: 0,
+          background: 'linear-gradient(180deg, rgba(8, 7, 6, 0.12), rgba(8, 7, 6, 0.68))',
+        }} />
+        <div style={{
+          position: 'absolute',
+          left: 14,
+          right: 14,
+          bottom: 12,
+          zIndex: 2,
         }}>
-          {candidate.label}
+          <div style={{ fontSize: 16, fontWeight: 800, lineHeight: 1.3, color: '#fff2d7' }}>
+            {candidate.label}
+          </div>
+          {candidate.conditionText && (
+            <div style={{ ...smallLineStyle, marginTop: 6, color: '#e1cfad' }}>
+              条件：{candidate.conditionText}
+            </div>
+          )}
         </div>
-      )}
-
-      <div style={{ fontSize: 15, fontWeight: 700, lineHeight: 1.5 }}>
-        {candidate.label}
+        {!previewCard && candidate.cards.length <= 1 && (
+          <div style={{
+            position: 'absolute',
+            inset: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '16px 18px 44px',
+            textAlign: 'center',
+            color: 'rgba(246, 230, 196, 0.4)',
+            fontSize: 18,
+            fontWeight: 700,
+          }}>
+            {candidate.label}
+          </div>
+        )}
       </div>
-      {candidate.conditionText && (
-        <div style={smallLineStyle}>条件：{candidate.conditionText}</div>
-      )}
-      {candidate.primaryText && (
-        <div style={smallLineStyle}>执行后台词：{candidate.primaryText}</div>
-      )}
+    </button>
+  )
+}
+
+function SettlementHintItem({ hint, active, onToggle }) {
+  const previewCard = hint.cards?.[0] || null
+
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      style={{
+        width: '100%',
+        padding: 10,
+        borderRadius: 18,
+        border: active ? '1px solid rgba(143, 191, 119, 0.42)' : '1px solid rgba(212, 184, 126, 0.14)',
+        background: active ? 'rgba(100, 140, 83, 0.12)' : 'rgba(22, 18, 14, 0.94)',
+        color: '#f1e8d5',
+        cursor: 'pointer',
+        textAlign: 'left',
+        display: 'grid',
+        gap: 8,
+      }}
+    >
+      <div style={{
+        minHeight: 94,
+        borderRadius: 14,
+        position: 'relative',
+        overflow: 'hidden',
+        background: 'linear-gradient(180deg, rgba(40, 31, 23, 0.98), rgba(21, 16, 12, 0.98))',
+      }}>
+        {previewCard && (
+          <div style={{ position: 'absolute', inset: '8px 10px 10px' }}>
+            <CardPortrait card={previewCard} compact showName={false} />
+          </div>
+        )}
+        <div style={{
+          position: 'absolute',
+          inset: 0,
+          background: 'linear-gradient(180deg, rgba(8, 7, 6, 0.15), rgba(8, 7, 6, 0.74))',
+        }} />
+        <div style={{
+          position: 'absolute',
+          left: 12,
+          right: 12,
+          bottom: 10,
+          zIndex: 2,
+        }}>
+          <div style={{ fontSize: 14, fontWeight: 800, lineHeight: 1.3, color: '#fff0d3' }}>
+            {hint.label}
+          </div>
+          {hint.conditionText && (
+            <div style={{ ...smallLineStyle, marginTop: 4, color: '#dcc8a3', fontSize: 12 }}>
+              条件：{hint.conditionText}
+            </div>
+          )}
+        </div>
+      </div>
     </button>
   )
 }
@@ -294,13 +396,18 @@ export default function StoryInspector({ type, data, onClose }) {
 
   const [activeSlotId, setActiveSlotId] = useState(null)
   const [slotSelections, setSlotSelections] = useState({})
+  const [settlementSelections, setSettlementSelections] = useState({})
   const [revealedLineCount, setRevealedLineCount] = useState(1)
   const [revealedSegmentCount, setRevealedSegmentCount] = useState(0)
 
-  function buildDialogueLines(slotId, selections) {
+  function buildDialogueLines(slotId, selections, settlementState) {
     const slot = model?.slots?.find((entry) => entry.id === slotId) || null
     const candidate = slot?.candidates?.find((entry) => entry.id === selections?.[slotId]) || slot?.candidates?.[0] || null
-    return splitIntro(model?.intro).concat((candidate?.choiceTexts || []).map((entry) => entry.text))
+    const selectedHints = (slot?.settlementHints || []).filter((hint) => settlementState?.[slotId]?.includes(hint.id))
+
+    return splitIntro(model?.intro)
+      .concat((candidate?.choiceTexts || []).map((entry) => entry.text))
+      .concat(selectedHints.map((hint) => hint.primaryText).filter(Boolean))
   }
 
   useEffect(() => {
@@ -309,11 +416,15 @@ export default function StoryInspector({ type, data, onClose }) {
     const defaults = Object.fromEntries(
       (model.slots || []).map((slot) => [slot.id, slot.candidates?.[0]?.id || null])
     )
+    const hintDefaults = Object.fromEntries(
+      (model.slots || []).map((slot) => [slot.id, []])
+    )
     const firstSlotId = model.slots?.[0]?.id || null
     const firstCandidate = model.slots?.[0]?.candidates?.[0] || null
     const initialLines = splitIntro(model.intro).concat((firstCandidate?.choiceTexts || []).map((entry) => entry.text))
 
     setSlotSelections(defaults)
+    setSettlementSelections(hintDefaults)
     setActiveSlotId(firstSlotId)
     setRevealedLineCount(initialLines.length > 0 ? 1 : 0)
     setRevealedSegmentCount(0)
@@ -356,11 +467,17 @@ export default function StoryInspector({ type, data, onClose }) {
     return selectedSlot.candidates?.find((candidate) => candidate.id === slotSelections[selectedSlot.id]) || selectedSlot.candidates?.[0] || null
   }, [selectedSlot, slotSelections])
 
+  const selectedSettlementHints = useMemo(() => {
+    if (!selectedSlot) return []
+    return (selectedSlot.settlementHints || []).filter((hint) => settlementSelections[selectedSlot.id]?.includes(hint.id))
+  }, [selectedSlot, settlementSelections])
+
   const dialogueLines = useMemo(() => {
     const introLines = splitIntro(model?.intro)
     const candidateLines = (selectedCandidate?.choiceTexts || []).map((entry) => entry.text)
-    return [...introLines, ...candidateLines].filter(Boolean)
-  }, [model?.intro, selectedCandidate])
+    const settlementLines = selectedSettlementHints.map((hint) => hint.primaryText).filter(Boolean)
+    return [...introLines, ...candidateLines, ...settlementLines].filter(Boolean)
+  }, [model?.intro, selectedCandidate, selectedSettlementHints])
 
   const visibleLines = dialogueLines.slice(0, revealedLineCount)
   const visibleSegments = (model?.segments || []).slice(0, revealedSegmentCount)
@@ -410,8 +527,8 @@ export default function StoryInspector({ type, data, onClose }) {
     return (segment.choiceActions || []).filter((action) => action.branch === branch)
   }
 
-  function resetFlow(nextSlotId = activeSlotId) {
-    const nextLines = buildDialogueLines(nextSlotId, slotSelections)
+  function resetFlow(nextSlotId = activeSlotId, nextSelections = slotSelections, nextSettlementSelections = settlementSelections) {
+    const nextLines = buildDialogueLines(nextSlotId, nextSelections, nextSettlementSelections)
     setRevealedLineCount(nextLines.length > 0 ? 1 : 0)
     setRevealedSegmentCount(0)
   }
@@ -430,16 +547,37 @@ export default function StoryInspector({ type, data, onClose }) {
     }
 
     setSlotSelections(nextSelections)
-    const nextLines = buildDialogueLines(selectedSlot.id, nextSelections)
+    const nextLines = buildDialogueLines(selectedSlot.id, nextSelections, settlementSelections)
     setRevealedLineCount(nextLines.length > 0 ? 1 : 0)
     setRevealedSegmentCount(0)
+  }
+
+  function handleToggleSettlementHint(hintId) {
+    if (!selectedSlot) return
+
+    const slotId = selectedSlot.id
+    const activeIds = settlementSelections[slotId] || []
+    const nextIds = activeIds.includes(hintId)
+      ? activeIds.filter((id) => id !== hintId)
+      : [...activeIds, hintId]
+    const nextSettlementSelections = {
+      ...settlementSelections,
+      [slotId]: nextIds,
+    }
+
+    setSettlementSelections(nextSettlementSelections)
+    resetFlow(slotId, slotSelections, nextSettlementSelections)
   }
 
   function handleManualReset() {
     const defaults = Object.fromEntries(
       (model.slots || []).map((slot) => [slot.id, slot.candidates?.[0]?.id || null])
     )
+    const hintDefaults = Object.fromEntries(
+      (model.slots || []).map((slot) => [slot.id, []])
+    )
     setSlotSelections(defaults)
+    setSettlementSelections(hintDefaults)
     setActiveSlotId(model.slots?.[0]?.id || null)
 
     const firstCandidate = model.slots?.[0]?.candidates?.[0] || null
@@ -460,7 +598,7 @@ export default function StoryInspector({ type, data, onClose }) {
         height: '100%',
         minHeight: 0,
         display: 'grid',
-        gridTemplateColumns: model.slots.length > 0 ? '164px minmax(280px, 360px) minmax(0, 1fr)' : 'minmax(280px, 360px) minmax(0, 1fr)',
+        gridTemplateColumns: model.slots.length > 0 ? '232px minmax(280px, 360px) minmax(0, 0.92fr)' : 'minmax(280px, 360px) minmax(0, 0.92fr)',
         gap: 22,
         overflow: 'hidden',
       }}>
@@ -483,14 +621,16 @@ export default function StoryInspector({ type, data, onClose }) {
             </div>
 
             <div style={{
-              display: 'flex',
-              flexDirection: 'column',
+              display: 'grid',
+              gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
               gap: 14,
               overflowY: 'auto',
               paddingRight: 4,
+              alignContent: 'start',
             }}>
               {model.slots.map((slot) => {
                 const currentCandidate = slot.candidates?.find((candidate) => candidate.id === slotSelections[slot.id]) || slot.candidates?.[0] || null
+                const activeTags = (slot.settlementHints || []).filter((hint) => settlementSelections[slot.id]?.includes(hint.id))
                 return (
                   <SlotButton
                     key={slot.id}
@@ -498,6 +638,7 @@ export default function StoryInspector({ type, data, onClose }) {
                     slotBgKey={slotBackgroundMap?.[slot.id]?.slot_bg || templateData?.nomal_slot_bg || READER_CHROME.assets.slotFrame.asset}
                     active={activeSlotId === slot.id}
                     candidate={currentCandidate}
+                    tags={activeTags}
                     onClick={() => handleSelectSlot(slot.id)}
                   />
                 )
@@ -533,6 +674,7 @@ export default function StoryInspector({ type, data, onClose }) {
               marginTop: 16,
               minHeight: 0,
               display: 'grid',
+              gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
               gap: 14,
               overflowY: 'auto',
               paddingRight: 4,
@@ -653,6 +795,37 @@ export default function StoryInspector({ type, data, onClose }) {
               display: 'grid',
               gap: 18,
             }}>
+              {selectedSlot?.settlementHints?.length > 0 && (
+                <div style={settlementPanelStyle}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
+                    <div>
+                      <div style={sectionTitleStyle}>结算条件</div>
+                      <div style={{ ...smallLineStyle, marginTop: 6 }}>
+                        可为 {selectedSlot.title} 勾选多个附加分支，右侧对白只会按当前勾选推进。
+                      </div>
+                    </div>
+                    <div style={settlementCountStyle}>
+                      已选 {selectedSettlementHints.length}
+                    </div>
+                  </div>
+                  <div style={{
+                    marginTop: 14,
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+                    gap: 10,
+                  }}>
+                    {selectedSlot.settlementHints.map((hint) => (
+                      <SettlementHintItem
+                        key={hint.id}
+                        hint={hint}
+                        active={settlementSelections[selectedSlot.id]?.includes(hint.id)}
+                        onToggle={() => handleToggleSettlementHint(hint.id)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {model.image && (
                 <PreviewImage pic={model.image} maxHeight={260} />
               )}
@@ -846,6 +1019,16 @@ const smallLineStyle = {
   color: '#cbb391',
 }
 
+const slotTagStyle = {
+  padding: '2px 7px',
+  borderRadius: 999,
+  backgroundColor: 'rgba(212, 184, 126, 0.12)',
+  border: '1px solid rgba(212, 184, 126, 0.14)',
+  color: '#dcc9a6',
+  fontSize: 10,
+  lineHeight: 1.3,
+}
+
 const metaChipCompactStyle = {
   padding: '4px 10px',
   borderRadius: 999,
@@ -861,6 +1044,22 @@ const segmentCardStyle = {
   borderRadius: 24,
   border: '1px solid rgba(212, 184, 126, 0.12)',
   backgroundImage: 'linear-gradient(180deg, rgba(31, 24, 18, 0.96), rgba(20, 16, 12, 0.96))',
+}
+
+const settlementPanelStyle = {
+  padding: '16px 16px 14px',
+  borderRadius: 22,
+  border: '1px solid rgba(212, 184, 126, 0.12)',
+  background: 'linear-gradient(180deg, rgba(28, 22, 16, 0.94), rgba(19, 15, 11, 0.98))',
+}
+
+const settlementCountStyle = {
+  padding: '5px 10px',
+  borderRadius: 999,
+  border: '1px solid rgba(143, 191, 119, 0.18)',
+  background: 'rgba(143, 191, 119, 0.08)',
+  color: '#d8e8ca',
+  fontSize: 12,
 }
 
 const candidateStageStyle = {
