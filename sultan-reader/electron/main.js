@@ -624,7 +624,32 @@ ipcMain.handle('asset:checkDotnet', async () => {
  */
 ipcMain.handle('file:readRaw', async (_event, filePath) => {
   try {
-    return fs.readFileSync(filePath, 'utf-8');
+    const candidates = [];
+
+    if (path.isAbsolute(filePath)) {
+      candidates.push(filePath);
+    } else {
+      const normalized = filePath.replace(/^config[\\/]/i, '');
+      const gamePath = settings?.get('gamePath');
+
+      if (gamePath) {
+        candidates.push(path.join(resolveConfigDir(gamePath), normalized));
+      }
+
+      if (WORKSPACE_ROOT) {
+        candidates.push(path.join(WORKSPACE_ROOT, 'config', normalized));
+      }
+
+      candidates.push(path.resolve(process.cwd(), filePath));
+    }
+
+    for (const candidate of candidates) {
+      if (candidate && fs.existsSync(candidate)) {
+        return fs.readFileSync(candidate, 'utf-8');
+      }
+    }
+
+    throw new Error(`ENOENT: no such file or directory, open '${candidates[0] || filePath}'`);
   } catch (e) {
     throw new Error(`读取文件失败: ${e.message}`);
   }

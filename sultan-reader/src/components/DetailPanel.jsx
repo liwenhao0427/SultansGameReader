@@ -52,6 +52,7 @@ const errorStyle = {
  */
 export default function DetailPanel() {
   const selectedNodeId = useCanvasStore(s => s.selectedNodeId)
+  const setSelectedNode = useCanvasStore(s => s.setSelectedNode)
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
@@ -126,7 +127,7 @@ export default function DetailPanel() {
       {/* 详情内容 */}
       {!loading && !error && data && (
         <div style={{ flex: 1 }}>
-          <StoryInspector type={type} data={data} />
+          <StoryInspector type={type} data={data} onClose={() => setSelectedNode(null)} />
         </div>
       )}
 

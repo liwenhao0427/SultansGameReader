@@ -5,6 +5,26 @@ function normalizeArray(value) {
   return Array.isArray(value) ? value : [value]
 }
 
+function actionTargetType(key) {
+  switch (key) {
+    case 'event_on':
+    case 'event_off':
+    case 'rite_end':
+      return 'event'
+    case 'rite':
+      return 'rite'
+    case 'loot':
+      return 'loot'
+    case 'card':
+    case 'link_card':
+      return 'card'
+    case 'over':
+      return 'over'
+    default:
+      return null
+  }
+}
+
 function extractActionTargets(action = {}) {
   const results = []
 
@@ -16,7 +36,15 @@ function extractActionTargets(action = {}) {
       for (const [branchKey, branchValue] of Object.entries(value || {})) {
         if (branchKey.endsWith('__c') || branchKey.endsWith('__ca') || branchKey.endsWith('__ci')) continue
         normalizeArray(branchValue).forEach((item) => {
-          results.push(`${key} -> ${branchKey}: ${item}`)
+          const targetType = actionTargetType(branchKey)
+          results.push({
+            branch: key,
+            key: branchKey,
+            value: item,
+            targetType,
+            targetId: targetType ? String(item) : null,
+            text: `${key} -> ${branchKey}: ${item}`,
+          })
         })
       }
       continue
@@ -24,7 +52,15 @@ function extractActionTargets(action = {}) {
 
     normalizeArray(value).forEach((item) => {
       if (typeof item !== 'object') {
-        results.push(`${key}: ${item}`)
+        const targetType = actionTargetType(key)
+        results.push({
+          branch: 'direct',
+          key,
+          value: item,
+          targetType,
+          targetId: targetType ? String(item) : null,
+          text: `${key}: ${item}`,
+        })
       }
     })
   }
@@ -55,6 +91,7 @@ function buildPhaseItem(item, cardsMap, phase) {
     text: item.result_text || item.tips_text || '',
     conditions: parseConditionObject(item.condition, cardsMap),
     actions: extractActionTargets(item.action),
+    choiceActions: extractActionTargets(item.action).filter((entry) => entry.targetType === 'event' || entry.targetType === 'rite' || entry.targetType === 'over'),
     options: extractChoiceOptions(item.result?.choose || item.action?.choose),
     note: item.__ca || item.__c || '',
   }

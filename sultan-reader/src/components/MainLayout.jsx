@@ -3,7 +3,7 @@ import useConfigStore from '../stores/useConfigStore'
 import useCanvasStore from '../stores/useCanvasStore'
 import Canvas from './Canvas'
 import DetailPanel from './DetailPanel'
-import { extractEdges } from '../services/edgeExtractor'
+import { mountNodeOnCanvas } from '../services/graphNavigation'
 
 const TYPE_TABS = [
   { key: 'rite', label: '仪式' },
@@ -19,39 +19,6 @@ const PAGE_SIZE = 18
 
 function chunkSummary(entry) {
   return entry.name || entry.text || entry.id
-}
-
-async function mountNodeOnCanvas(item, position, autoSelect = true) {
-  const store = useCanvasStore.getState()
-  const nodeKey = `${item.type}:${item.id}`
-  if (store.nodeIdSet.has(nodeKey)) {
-    if (autoSelect) store.setSelectedNode(nodeKey)
-    return
-  }
-
-  const data = await window.electronAPI.configReadCache(item.type, item.id)
-  if (!data) return
-
-  store.addNode(item.id, item.type, {
-    label: chunkSummary(item),
-    nodeType: item.type,
-    rawData: data,
-  }, position)
-
-  const relations = extractEdges(item.type, item.id, data)
-  const EDGE_COLORS = { success: '#8fbf77', failed: '#c35b5b', default: '#927453' }
-
-  store.addEdges(relations.map((relation) => ({
-    id: `${relation.source}->${relation.target}:${relation.path}`,
-    source: relation.source,
-    target: relation.target,
-    style: { stroke: EDGE_COLORS[relation.branchType] ?? EDGE_COLORS.default },
-    data: { conditionText: relation.conditionText, branchType: relation.branchType },
-  })))
-
-  if (autoSelect) {
-    store.setSelectedNode(nodeKey)
-  }
 }
 
 export default function MainLayout({ onNavigate }) {
@@ -124,7 +91,7 @@ export default function MainLayout({ onNavigate }) {
         ]
 
         for (let i = 0; i < randomRites.length; i++) {
-          await mountNodeOnCanvas(randomRites[i], positions[i] || { x: 140 + i * 180, y: 120 + i * 110 }, i === 0)
+          await mountNodeOnCanvas(randomRites[i], positions[i] || { x: 140 + i * 180, y: 120 + i * 110 }, { autoSelect: i === 0 })
         }
 
         if (!cancelled) {
@@ -227,7 +194,7 @@ export default function MainLayout({ onNavigate }) {
                 <button
                   key={nodeKey}
                   type="button"
-                  onClick={() => mountNodeOnCanvas({ ...item, type: activeType }, { x: 120 + (index % 3) * 180, y: 120 + index * 24 }, true)}
+                  onClick={() => mountNodeOnCanvas({ ...item, type: activeType }, { x: 120 + (index % 3) * 180, y: 120 + index * 24 }, { autoSelect: true })}
                   style={{
                     ...listItemStyle,
                     ...(inCanvas ? mountedItemStyle : null),
