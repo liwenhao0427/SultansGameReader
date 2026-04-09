@@ -1,10 +1,24 @@
-# 苏丹的游戏资源读取器 - 项目说明
+# 苏丹的游戏本地剧情阅读器 - 项目说明
 
 ## 项目概述
 
-本项目是一个**桌面端游戏资源阅读器**，目标是在本地实时读取游戏配置文件和图片资源，提供比 `sudans-game-reader`（纯 Web 端）更完整的功能体验。
+本项目是一个基于 Electron 的桌面端游戏剧情阅读器，用于读取《苏丹的游戏》（Sultan's Game）本地配置文件和图片资源，以节点图 + 类视觉小说形式呈现游戏剧情结构。
 
-游戏名称：《苏丹的游戏》（Sultan's Game）
+技术栈：Electron + React + Vite + @xyflow/react + Zustand
+
+数据流：用户选择游戏目录 → Parser 读取 config/ → CacheManager 写入 cache/ → Renderer 通过 IPC 从 cache/ 读取。图片资源通过 AssetStudio CLI 提取到 resource/，Renderer 通过 Image_Resolver 解析路径后加载。
+
+核心设计决策：
+- 前端只依赖 `cache/` 和 `resource/` 两个目录，不直接读取游戏原始配置文件
+- 解析器模块（commentStripper、gameConfigParser、cacheManager）已完成并通过 2934 个文件 100% 验证，作为已有资产直接集成
+- 条件表达式保留原始 key 名（含 `!`、`>=`、`.` 等特殊字符），仅在展示层通过 Condition_Parser 转义为人类可读文本
+- 图片查找需同时尝试 `.png` 和 `.png.png` 双后缀（AssetStudio 提取产物）
+
+---
+
+## 语言规范
+
+所有代码注释、回复、文档均使用中文。
 
 ---
 
@@ -14,287 +28,340 @@
 工作区根目录/
 ├── AssetStudio-net8.0-win/   # 游戏资源提取工具（只读，不可修改）
 ├── config/                   # 游戏配置文件副本（只读，开发参考用）
+├── cache/                    # 解析后的缓存文件（由 CacheManager 生成）
 ├── resource/                 # 提取出的游戏图片资源（只读，不可修改）
 ├── sudans-game-reader/       # 参考项目：旧版 Web 端剧情阅读器（只读，不可修改）
+├── sultan-reader/            # 本项目源码
+│   ├── electron/             # Electron 主进程代码
+│   │   ├── main.js           # 入口，注册 IPC handlers，管理 BrowserWindow
+│   │   ├── preload.js        # contextBridge 暴露 IPC API 到 renderer
+│   │   └── parser/           # 配置解析器模块（已完成）
+│   │       ├── commentStripper.js   # 注释剥离（状态机实现）
+│   │       ├── gameConfigParser.js  # 配置解析（重复 key 合并、注释内联）
+│   │       ├── cacheManager.js      # 缓存管理（mtime 增量缓存）
+│   │       └── test.js              # 解析器测试
+│   ├── src/                  # React 渲染进程代码
+│   │   ├── main.jsx          # React 入口
+│   │   ├── App.jsx           # 路由：设置页 vs 主布局
+│   │   ├── components/       # UI 组件
+│   │   │   ├── SettingsPage.jsx     # 设置页
+│   │   │   ├── MainLayout.jsx       # 三栏主布局
+│   │   │   ├── SearchPanel.jsx      # 左侧搜索面板
+│   │   │   ├── Canvas.jsx           # @xyflow/react 节点图画布
+│   │   │   ├── DetailPanel.jsx      # 右侧详情面板（类型分发）
+│   │   │   ├── CounterPanel.jsx     # 计数器/开关管理侧拉栏
+│   │   │   ├── RawFileView.jsx      # 原始文件对比视图
+│   │   │   ├── nodes/               # 自定义节点组件
+│   │   │   │   ├── EventNode.jsx
+│   │   │   │   ├── RiteNode.jsx
+│   │   │   │   ├── LootNode.jsx
+│   │   │   │   ├── AfterStoryNode.jsx
+│   │   │   │   ├── CardNode.jsx
+│   │   │   │   └── GenericNode.jsx  # Over/Upgrade/DT 通用节点
+│   │   │   └── details/             # 详情子组件
+│   │   │       ├── EventDetail.jsx
+│   │   │       ├── RiteDetail.jsx
+│   │   │       ├── AfterStoryDetail.jsx
+│   │   │       ├── CardDetail.jsx
+│   │   │       ├── LootDetail.jsx
+│   │   │       ├── OverDetail.jsx
+│   │   │       ├── UpgradeDetail.jsx
+│   │   │       └── DTDetail.jsx
+│   │   ├── stores/           # Zustand 状态管理
+│   │   │   ├── useConfigStore.js    # 搜索索引、卡牌映射、计数器注册表
+│   │   │   ├── useCanvasStore.js    # 画布节点/边状态
+│   │   │   └── usePlayerStore.js    # 玩家模拟状态
+│   │   └── services/         # 业务逻辑服务
+│   │       ├── configLoader.js      # 通过 IPC 从 cache 加载数据
+│   │       ├── imageResolver.js     # 图片路径解析
+│   │       ├── edgeExtractor.js     # 关联边提取
+│   │       ├── conditionParser.js   # 条件表达式 → 人类可读文本
+│   │       └── conditionEvaluator.js # 条件求值（玩家状态模拟）
+│   ├── index.html            # Vite 入口
+│   ├── vite.config.js        # Vite 配置
+│   └── package.json          # 项目依赖
 └── Agents.md                 # 本文档
 ```
 
-> **重要约束**：以上四个目录均为只读参考资料，开发过程中只允许查看，不允许修改。
+> **重要约束**：`AssetStudio-net8.0-win/`、`config/`、`resource/`、`sudans-game-reader/` 四个目录均为只读参考资料，开发过程中只允许查看，不允许修改。
 
 ---
 
-## 各目录详细说明
+## 架构设计
 
-### AssetStudio-net8.0-win/
-- 用途：从游戏安装包中提取原始资源（图片、音频等）
-- 技术：.NET 8.0 桌面工具，提供 GUI（`AssetStudio.GUI.exe`）和 CLI（`AssetStudio.CLI.exe`）两种使用方式
-- 使用场景：当游戏更新后，用此工具重新提取最新资源到 `resource/` 目录
+### 双进程架构
 
-### config/
-- 用途：游戏配置文件的本地副本，供开发时离线参考
-- 实际使用：**生产环境应从游戏真实安装目录读取**，此处仅为开发便利
-- 数据格式：JSON5（支持注释和尾随逗号的宽松 JSON）
-- 主要子目录：
-  - `after_story/` — 后日谈剧情（文件名为角色/事件 ID，如 `2000001.json`）
-  - `event/` — 游戏事件（1337 个文件，ID 以 `53xxxxx` 开头）
-  - `loot/` — 战利品配置（147 个文件，ID 以 `60xxxxx` 开头）
-  - `rite/` — 仪式配置
-  - `rite_template/` — 仪式模板
-  - `dt/` — DT 系列配置（DT1.json ~ DT9.json）
-  - `wizard/` — 向导配置
-  - `init/` — 初始化配置（0.json, 1.json）
-  - `cards.json` — 卡牌数据
-  - `quest.json` — 任务数据
-  - `variable.json` — 游戏变量定义
-  - `tag.json` — 标签定义
-  - `upgrade.json` — 升级配置
-  - `over.json` — 结局配置
-  - `credits.json` — 制作人员名单
+```
+Electron Main Process          Renderer Process (React + Vite)
+┌─────────────────────┐        ┌──────────────────────────────┐
+│ main.js             │        │ App.jsx (路由)                │
+│ ├── Parser Module   │  IPC   │ ├── SettingsPage             │
+│ │   ├── comment-    │◄──────►│ └── MainLayout               │
+│ │   │   Stripper    │        │     ├── SearchPanel (左)      │
+│ │   ├── gameConfig- │        │     ├── Canvas (中)           │
+│ │   │   Parser      │        │     ├── DetailPanel (右)      │
+│ │   └── cache-      │        │     └── CounterPanel (侧拉)  │
+│ │       Manager     │        │                               │
+│ ├── IPC Handlers    │        │ Stores (Zustand)              │
+│ ├── Settings Store  │        │ ├── useConfigStore            │
+│ └── AssetStudio CLI │        │ ├── useCanvasStore            │
+└─────────────────────┘        │ └── usePlayerStore            │
+                               │                               │
+                               │ Services                      │
+                               │ ├── configLoader              │
+                               │ ├── imageResolver              │
+                               │ ├── edgeExtractor             │
+                               │ ├── conditionParser           │
+                               │ └── conditionEvaluator        │
+                               └──────────────────────────────┘
+```
 
-### resource/
-- 用途：已提取的游戏图片资源
-- 子目录：
-  - `Sprite/` — UI 精灵图（角色立绘、图标、背景等）
-  - `Texture2D/` — 原始纹理贴图（含法线贴图 `_n`、金属度贴图 `_mt` 等）
-- 命名规律：
-  - 数字 ID（如 `2000001.png`）对应游戏内角色/事件 ID
-  - 带后缀变体（如 `2000001_1.png`、`2000001_2.png`）为同一角色的不同立绘
-  - 中文命名（如 `阿哞.png`、`崔家瑞.png`）为 NPC 角色立绘
-  - `_bg` / `_fg` 后缀分别表示背景层和前景层
+### IPC 通道
 
-### sudans-game-reader/
-- 用途：参考项目，了解数据结构和业务逻辑
-- 技术栈：Vue 2 + Webpack + Element Plus
-- 局限性（本项目需要解决的问题）：
-  - 纯 Web 端，无法实时读取本地文件系统
-  - 不支持图片显示
-  - 配置数据需要预先打包，无法跟随游戏更新自动同步
-- 参考价值：
-  - `src/services/eventService.js` — 数据加载和解析逻辑
-  - `src/components/` — 各类数据的展示组件（事件、仪式、战利品、结局、后日谈、卡牌）
-  - `scripts/` — Python 数据处理脚本（JSON5 解析、数据提取等）
+所有文件系统操作封装在 Main Process 中，Renderer 无直接 fs 访问权限。通过 `preload.js` 的 `contextBridge` 暴露 `window.electronAPI` 对象。
+
+| 通道组 | 通道名 | 说明 |
+|--------|--------|------|
+| config: | setGameDir | 设置游戏目录，验证路径有效性 |
+| config: | rebuildCache | 增量重建缓存，带进度回调 |
+| config: | clearCache | 清除缓存 |
+| config: | readCache | 读取单个缓存文件 |
+| config: | listCache | 列出某类型下所有缓存条目 |
+| config: | buildIndex | 构建全量搜索索引 |
+| asset: | setCliPath | 设置 AssetStudio CLI 路径 |
+| asset: | extract | 执行资源提取 |
+| asset: | resolveImage | 图片路径解析（4 步回退链） |
+| file: | readRaw | 读取原始文件内容 |
+| settings: | get / set | 用户设置持久化 |
+
+### 状态管理
+
+- **useConfigStore**: 搜索索引（Map<id, entry>）、卡牌名称映射表（供 conditionParser 解析 `have.卡牌ID`）、计数器注册表
+- **useCanvasStore**: 画布节点/边状态、节点去重集合（Set<nodeId>）、当前选中节点
+- **usePlayerStore**: 玩家模拟状态（已触发事件 Set、计数器模拟值 Map），持久化到 Electron userData
 
 ---
 
 ## 配置文件数据格式
 
-游戏配置**不是标准 JSON，也不是 JSON5**，而是游戏策划团队自定义的格式，由游戏引擎内部解析器读取。它在语法上接近 JSON5，但存在若干 JSON5 也不支持的特性，解析时需要特别处理。
+游戏配置**不是标准 JSON，也不是 JSON5**，而是游戏策划团队自定义的格式。它在语法上接近 JSON5，但存在若干 JSON5 也不支持的特性。
 
 ### 格式特性
 
 - 支持单行注释（`//`）和块注释（`/* */`）
 - 支持尾随逗号
-- **支持同一对象内的重复 key**（这是标准 JSON 和 JSON5 都不支持的）
-- key 中可包含特殊字符：`!`、`>=`、`<=`、`>`、`<`、`+`、`-`、`.` 等（这些在 JSON 规范中是合法字符串，但在 JS 对象字面量中不合法）
+- **支持同一对象内的重复 key**（标准 JSON 和 JSON5 都不支持）
+- key 中可包含特殊字符：`!`、`>=`、`<=`、`>`、`<`、`+`、`-`、`.` 等
 
-### 典型数据结构示例（event）
+### 典型数据结构示例
 
 ```json5
+// event 示例
 {
   "id": 5300000,
   "text": "开场介绍",  // 策划备注
-  "settlement": [
-    {
-      "action": {
-        "success": {
-          "event_on": [5300300, 5300301],  // 数组形式
-          "event_on": 5300066              // 重复 key！游戏引擎会合并处理
-        }
+  "settlement": [{
+    "action": {
+      "success": {
+        "event_on": [5300300, 5300301],  // 数组形式
+        "event_on": 5300066              // 重复 key！游戏引擎会合并处理
       }
     }
-  ]
+  }]
 }
-```
 
-### 典型数据结构示例（after_story）
-
-```json5
+// after_story 示例
 {
   "id": 2000001,
   "name": "主角",
-  "prior": [],
-  "extra": [
-    {
-      "key": "2000001_extra_1",
-      "sort": 99,
-      "pic": "cards/yrl",
-      "condition": {
-        "counter.7000490>=": 1,   // key 中含特殊字符 >= 和 .
-        "!have.妻子": 1           // key 中含 ! 和 .
-      },
-      "result_text": "..."
-    }
-  ]
+  "extra": [{
+    "key": "2000001_extra_1",
+    "pic": "cards/yrl",
+    "condition": {
+      "counter.7000490>=": 1,   // key 中含 >= 和 .
+      "!have.妻子": 1           // key 中含 ! 和 .
+    },
+    "result_text": "..."
+  }]
 }
 ```
 
-### 条件系统说明
+### 条件系统
 
-配置中的 `condition` 字段使用游戏内部条件语法，**条件表达式编码在 key 名中**：
-- `"have.卡牌ID": 1` — 拥有指定卡牌
-- `"!have.卡牌ID": 1` — 不拥有指定卡牌
-- `"counter.计数器ID>=": 值` — 计数器大于等于某值
-- `"counter.计数器ID<": 值` — 计数器小于某值
-- `"counter+计数器ID": 值` — 计数器加法操作（action 中）
-- `"counter-计数器ID": 值` — 计数器减法操作（action 中）
-- `"table_have.表ID.字段": 1` — 表中存在指定字段
-- `"any": { ... }` — 满足其中任意一个条件
+条件表达式编码在 key 名中：
+
+| 原始 key 模式 | 含义 |
+|---|---|
+| `have.<卡牌ID>` | 拥有指定卡牌 |
+| `!have.<卡牌ID>` | 不拥有指定卡牌 |
+| `counter.<ID>>=` | 计数器 ≥ 某值 |
+| `counter.<ID><` | 计数器 < 某值 |
+| `counter+<ID>` | 计数器加法（action 中） |
+| `counter-<ID>` | 计数器减法（action 中） |
+| `table_have.<表ID>.<字段>` | 表中存在指定字段 |
+| `any` | 满足其中任意一个条件 |
+| `s<数字>.is` | 卡位是某卡牌 |
+| `r<数字>:<属性>+<属性>>=` | 检定属性 ≥ 阈值 |
 
 ---
 
-## 配置文件解析：坑点与标准处理方式
+## 解析坑点
 
 ### 坑点一：重复 key（最核心问题）
 
-这是与 JSON5 最本质的区别。同一个对象内可以出现多个同名 key，游戏引擎会将它们合并处理（通常视为数组或取最后一个值）。
+同一对象内可出现多个同名 key，`JSON.parse()` 和 `JSON5.parse()` 都会静默丢弃前面的值。
 
-**实际案例**（`config/event/5300000.json`）：
-```json
-"success": {
-    "event_on": [5300300, 5300301, 5300302, 5300303],
-    "event_on": 5300066   // 同一对象内第二个 event_on
-}
-```
+**处理方式**：自定义解析器在词法层面收集重复 key，合并为数组。
 
-**影响**：
-- `JSON.parse()` 会静默丢弃前面的值，只保留最后一个
-- `JSON5.parse()` 行为相同，同样会丢失数据
-- Python 的 `json.loads()` 默认也只保留最后一个
-
-**标准处理方式**：使用支持 `object_pairs_hook` 的解析器，在解析阶段收集所有重复 key，合并为数组：
-
-```python
-# Python 推荐方案
-from collections import defaultdict
-import commentjson  # pip install commentjson
-
-def hook(pairs):
-    result = defaultdict(list)
-    for key, value in pairs:
-        result[key].append(value)
-    # 只有真正重复的 key 才转为数组，单个值保持原样
-    return {k: v if len(v) > 1 else v[0] for k, v in result.items()}
-
-data = commentjson.loads(json_str, object_pairs_hook=hook)
-```
-
-```javascript
-// JavaScript 推荐方案：自定义解析器
-// JSON.parse 和 JSON5.parse 均无法处理重复 key
-// 需要在词法层面手动扫描，收集重复 key 后合并
-// 参考 sudans-game-reader/src/services/eventService.js 中的 parseJSONWithDuplicateKeys
-```
-
-**已知需要合并为数组的 key**（来自旧项目经验）：
-`rite`、`event_on`、`rite_end`、`card`、`loot`
+**已知需要合并的 key**：`rite`、`event_on`、`rite_end`、`card`、`loot`、`choose`
 
 ### 坑点二：key 中含特殊字符
 
-条件表达式直接编码在 key 名里，包含 `!`、`>=`、`<=`、`>`、`<`、`+`、`-`、`.` 等字符。这些字符在 JSON 字符串中是合法的，但：
-
-- 如果用 `new Function('return ' + json)()` 方式解析（JS eval 风格），这些 key 会导致语法错误
-- Python 的 `json.loads()` 可以正常处理（key 是字符串，特殊字符无影响）
-- 旧项目的预处理脚本会将这些字符替换为中文（`>=` → `大于等于`、`!` → `非`），**本项目实时读取时不应做此替换**，应保留原始 key 名，在展示层做转义处理
+条件表达式直接编码在 key 名里。**本项目保留原始 key 名，不做字符替换**，在展示层通过 Condition_Parser 转义。
 
 ### 坑点三：注释中可能包含引号或特殊字符
 
-用正则表达式移除注释时，需要注意注释内容本身可能包含 `"` 或 `{}`，简单的正则可能误匹配。
-
-**推荐**：优先使用 `commentjson` 库（Python）或专门的注释剥离库，而非手写正则。
-
-**危险的正则**（旧项目中出现过的问题）：
-```javascript
-// 错误：会误匹配字符串内的 //
-jsonString.replace(/\/\/[^\n]*/g, '')
-
-// 较好：跳过引号内的内容（但仍不完美）
-jsonString.replace(/([^"\\]|^)\/\/[^\n]*/g, '$1')
-```
+使用状态机方式剥离注释（已在 `commentStripper.js` 中实现），不使用正则。
 
 ### 坑点四：尾随逗号
 
-标准 JSON 不允许尾随逗号，但此格式大量使用。处理顺序很重要：**必须先移除注释，再处理尾随逗号**，否则注释中的 `}` 或 `]` 会干扰尾随逗号的正则匹配。
+处理顺序：**先移除注释，再处理尾随逗号**。
 
-```python
-# 正确顺序
-content = remove_comments(content)   # 先去注释
-content = re.sub(r',(\s*[}\]])', r'\1', content)  # 再去尾随逗号
-```
+### 坑点五：旧项目的预处理（本项目需要绕过）
 
-### 坑点五：旧项目的预处理做了什么（本项目需要绕过）
-
-`sudans-game-reader/scripts/json5_parser.py` 对配置做了以下**不可逆转换**，本项目实时读取时**不应复现**：
-
-1. 将重复 key 合并为数组（✅ 应保留此逻辑）
-2. 将 key 中的特殊字符替换为中文（`>=` → `大于等于` 等）（❌ 不应做，会破坏原始语义）
-3. 将稀有度数字转为中文（`1` → `石`、`2` → `铜` 等）（❌ 不应做，展示层处理）
-4. 生成了 `game_data_index.json` 索引文件（❌ 本项目需要实时扫描目录替代）
+旧项目 `sudans-game-reader/scripts/json5_parser.py` 做了不可逆转换（特殊字符替换为中文、稀有度数字转中文等），本项目**不应复现**这些转换。
 
 ### 坑点六：`.png.png` 双后缀图片
 
-`resource/Sprite/` 和 `resource/Texture2D/` 下存在大量 `文件名.png.png` 的文件，这是 AssetStudio 提取时的产物（原始资源名已含 `.png`，提取工具又追加了一次）。
-
-查找图片时需要同时尝试两种路径：
+AssetStudio 提取产物可能产生双后缀。查找图片时需同时尝试：
 ```
-resource/Sprite/2000001.png       ← 优先
-resource/Sprite/2000001.png.png   ← 备选
+resource/Sprite/{name}.png       ← 优先
+resource/Sprite/{name}.png.png   ← 备选
+resource/Texture2D/{name}.png    ← 再备选
+resource/Texture2D/{name}.png.png ← 最后
 ```
 
 ### 推荐解析流程
 
 ```
-原始文件
-  ↓
-1. 读取文本（UTF-8）
-  ↓
-2. 使用 commentjson（Python）或手写状态机剥离注释
-  ↓
-3. 移除尾随逗号
-  ↓
-4. 使用 object_pairs_hook 解析，收集重复 key 合并为数组
-  ↓
-5. 保留原始 key 名（不做字符替换）
-  ↓
-解析结果（Python dict / JS object）
+原始文件 → 读取 UTF-8 → 状态机剥离注释（保留注释文本到 __c/__ca/__ci）
+→ 移除尾随逗号 → 收集重复 key 合并为数组 → 保留原始 key 名 → 解析结果
 ```
 
 ---
 
+## 已完成模块
+
+### Parser 模块（`sultan-reader/electron/parser/`）
+
+已完成并通过 2934 个文件 100% 验证：
+
+- **commentStripper.js** — 状态机实现的注释剥离器，保留注释文本
+- **gameConfigParser.js** — 配置解析器，处理重复 key 合并、注释内联（`__c`、`__ca`、`__ci` 字段后缀）
+- **cacheManager.js** — 基于 mtime 的增量缓存管理器，写入元数据（`_source_path`、`_cached_at`、`_source_mtime`、`_parse_error`）
+
+这些模块作为已有资产直接集成，不需要重新创建。
+
+---
+
+## 缓存数据结构
+
+所有缓存文件共享元数据前缀：
+
+```javascript
+{
+  _source_path: "原始文件绝对路径",
+  _cached_at: 1234567890,    // 缓存时间戳 (ms)
+  _source_mtime: 1234567890, // 原始文件 mtime (ms)
+  _parse_error: null         // 解析错误信息
+}
+```
+
+### 缓存目录结构
+
+| 目录 | ID 格式 | 说明 |
+|------|---------|------|
+| cache/event/ | 53xxxxx | 游戏事件（1337 个文件） |
+| cache/rite/ | 50xxxxx | 仪式配置 |
+| cache/loot/ | 60xxxxx | 战利品配置（147 个文件） |
+| cache/after_story/ | 20xxxxx | 后日谈剧情 |
+| cache/dt/ | DT1~DT9 | 对话树 |
+| cache/init/ | 0, 1 | 初始化配置 |
+| cache/wizard/ | — | 向导配置 |
+| cache/rite_template/ | — | 仪式模板 |
+| cache/single/ | — | 大型单文件（cards.json、over.json、upgrade.json 等） |
+
+---
+
+## 节点类型与画布
+
+8 种节点类型：event、rite、loot、after_story、card、over、upgrade、dt
+
+### 节点 ID 格式
+
+`{type}:{id}`，例如 `event:5300000`
+
+### Edge 提取规则
+
+| 源字段 | 目标类型 | 说明 |
+|--------|---------|------|
+| `event_on` | event | 触发事件 |
+| `event_off` | event | 关闭事件 |
+| `rite` | rite | 关联仪式 |
+| `loot` | loot | 关联战利品 |
+| `rite_end` | event | 仪式结束触发 |
+| `card` | card | 关联卡牌 |
+| `link_card` | card | 升级关联卡牌 |
+
+Edge 颜色：绿色 = success 分支，红色 = failed 分支，灰色 = 默认
+
+自动展开规则：关联数 ≤ 10 自动展开，> 10 折叠状态（手动展开）
+
+Edge 提取需递归遍历 settlement 数组中的 `action.success`、`action.failed`、以及嵌套的 condition 对象。branchType 由所在路径决定。
+
+---
+
 ## 图片资源与配置的对应关系
 
-配置中的 `pic` 字段指向图片路径，规则如下：
+配置中的 `pic` 字段指向图片路径：
 - `"pic": "cards/2000001"` → `resource/Sprite/2000001.png`
 - `"pic": "cards/yrl"` → `resource/Sprite/yrl.png`
-- 数字 ID 图片（如 `2000001.png`）通常是角色立绘
-- 部分角色有多张立绘变体（`2000001_1.png`、`2000001_2.png` 等）
+- 数字 ID 图片对应角色立绘，部分角色有多张变体（`_1`、`_2` 后缀）
+- 查找时需同时尝试 `.png` 和 `.png.png` 两种后缀
 
 ---
 
-## 新项目开发目标
+## 各只读目录说明
 
-相比 `sudans-game-reader`，新项目需要实现：
+### AssetStudio-net8.0-win/
+- 用途：从游戏安装包提取原始资源
+- 提供 GUI（`AssetStudio.GUI.exe`）和 CLI（`AssetStudio.CLI.exe`）两种方式
+- 需要 .NET 8.0 运行时
 
-1. **本地文件读取** — 直接读取游戏安装目录的配置文件，无需手动复制
-2. **图片显示** — 展示角色立绘和游戏图片
-3. **实时同步** — 游戏更新后自动读取最新配置
-4. **桌面端体验** — 原生桌面应用或本地服务，不依赖网络
+### config/
+- 游戏配置文件的本地副本，供开发时离线参考
+- 生产环境应从游戏真实安装目录读取（`<gamePath>/Sultan's Game_Data/StreamingAssets/config`）
+- 主要子目录：after_story/、event/、loot/、rite/、rite_template/、dt/、wizard/、init/
+- 单文件：cards.json、quest.json、variable.json、tag.json、upgrade.json、over.json、credits.json
+
+### resource/
+- 已提取的游戏图片资源
+- `Sprite/` — UI 精灵图（角色立绘、图标、背景等）
+- `Texture2D/` — 原始纹理贴图
+- 命名规律：数字 ID 对应角色/事件 ID，`_bg`/`_fg` 后缀表示背景/前景层
+
+### sudans-game-reader/
+- 旧版 Web 端剧情阅读器（Vue 2 + Webpack + Element Plus）
+- 参考价值：`src/services/eventService.js`（数据解析逻辑）、`src/components/`（展示组件）
+- 注意：`src/assets/config/` 是经过预处理的版本，key 名已被修改，**不能作为格式参考**
 
 ---
 
-## 图片资源与配置的对应关系
+## 开发注意事项
 
-配置中的 `pic` 字段指向图片路径，规则如下：
-- `"pic": "cards/2000001"` → `resource/Sprite/2000001.png`
-- `"pic": "cards/yrl"` → `resource/Sprite/yrl.png`
-- 数字 ID 图片（如 `2000001.png`）通常是角色立绘
-- 部分角色有多张立绘变体（`2000001_1.png`、`2000001_2.png` 等）
-- 查找图片时需同时尝试 `.png` 和 `.png.png` 两种后缀（见坑点六）
-
----
-
-## 其他开发注意事项
-
-- 配置文件**不是 JSON5**，是游戏自定义格式，详见上方"坑点"章节
-- 部分配置文件体积较大（如 `after_story/2000001.json` 超过 1400 行），实时读取时注意性能
+- 配置文件**不是 JSON5**，是游戏自定义格式，详见"解析坑点"章节
+- 部分配置文件体积较大（如 `after_story/2000001.json` 超过 1400 行），注意性能
 - 游戏真实配置目录路径需要在应用中可配置，不能硬编码
-- 旧项目 `sudans-game-reader` 的 `src/assets/config/` 是经过预处理的版本，key 名已被修改，**不能作为格式参考**，应以 `config/` 目录下的原始文件为准
+- 大型单文件（cards.json ~27000 行）缓存到 `cache/single/` 下
+- 搜索索引构建需在 5 秒内完成（约 2934 个缓存文件）
+- 超过 1000 行的详情内容使用虚拟化或分页渲染
