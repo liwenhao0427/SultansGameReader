@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useState } from 'react'
 import {
   ReactFlow,
   Background,
@@ -73,7 +73,7 @@ function applyDagreLayout(nodes, edges) {
 function CanvasInner() {
   const { nodes, edges, nodeIdSet, addNode, addEdges, setSelectedNode } =
     useCanvasStore()
-  const { setNodes } = useReactFlow()
+  const { setNodes, screenToFlowPosition } = useReactFlow()
 
   // 玩家模拟状态（用于条件高亮）
   const { triggeredEvents, counterValues } = usePlayerStore()
@@ -103,7 +103,6 @@ function CanvasInner() {
 
   // 浮动 tooltip 状态（边点击时显示 conditionText）
   const [tooltip, setTooltip] = useState(null) // { x, y, text }
-  const reactFlowWrapper = useRef(null)
 
   /**
    * 添加节点并自动展开一层关联（含循环防护）
@@ -199,11 +198,8 @@ function CanvasInner() {
       const { id, type } = payload
       if (!id || !type) return
 
-      // 计算落点位置（相对于画布）
-      const bounds = reactFlowWrapper.current?.getBoundingClientRect()
-      const position = bounds
-        ? { x: e.clientX - bounds.left, y: e.clientY - bounds.top }
-        : { x: 100, y: 100 }
+      // 用 screenToFlowPosition 将屏幕坐标转为画布坐标（正确处理缩放和平移）
+      const position = screenToFlowPosition({ x: e.clientX, y: e.clientY })
 
       // 通过 IPC 加载缓存数据
       try {
@@ -215,7 +211,7 @@ function CanvasInner() {
         // 静默处理
       }
     },
-    [addNodeWithExpand]
+    [addNodeWithExpand, screenToFlowPosition]
   )
 
   // ── 节点点击 ──────────────────────────────────────────────────────────────
@@ -241,7 +237,6 @@ function CanvasInner() {
 
   return (
     <div
-      ref={reactFlowWrapper}
       style={{ width: '100%', height: '100%', position: 'relative' }}
     >
       <ReactFlow

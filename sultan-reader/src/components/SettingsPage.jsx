@@ -95,7 +95,8 @@ export default function SettingsPage({ onNavigate }) {
       const result = await window.electronAPI.configRebuildCache((current, total) => {
         setRebuildProgress({ current, total })
       })
-      setRebuildResult(result)
+      // 兼容：result 可能没有 success 字段，有 total 就算成功
+      setRebuildResult({ success: result.success !== false, total: result.total, errors: result.errors })
     } catch (err) {
       setRebuildResult({ success: false, error: err.message })
     } finally {

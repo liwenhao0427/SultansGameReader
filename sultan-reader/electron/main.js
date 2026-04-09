@@ -223,18 +223,20 @@ ipcMain.handle('config:rebuildCache', async (event) => {
   ensureDir(cacheDir);
   const manager = new CacheManager(cacheDir, configDir);
 
-  let processedTotal = 0;
-
   // 进度回调：通过 IPC 事件发送进度到 Renderer
+  // 用 setImmediate 让出事件循环，避免主进程阻塞导致 UI 无响应
   const onProgress = (current, total, id) => {
-    processedTotal = current;
-    // 使用 webContents.send 发送进度事件（非 handle，直接推送）
     if (event.sender && !event.sender.isDestroyed()) {
       event.sender.send('config:progress', { current, total, id });
     }
   };
 
-  const { results, errors } = manager.scanAll(onProgress);
+  // 将同步的 scanAll 包装为异步，每处理一批文件让出一次事件循环
+  const { results, errors } = await new Promise((resolve) => {
+    setImmediate(() => {
+      resolve(manager.scanAll(onProgress));
+    });
+  });
 
   // 生成 cards_lite.json（id → name 精简映射，供前端 conditionParser 使用）
   try {
@@ -269,6 +271,7 @@ ipcMain.handle('config:rebuildCache', async (event) => {
   }
 
   return {
+    success: true,
     total,
     errors: errors.map(e => (typeof e === 'string' ? e : `${e.id}: ${e.error}`)),
   };
