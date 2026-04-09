@@ -81,3 +81,23 @@ export async function mountNodeOnCanvas(item, position, options = {}) {
 
   return nodeKey
 }
+
+export function linkNodesOnCanvas(sourceNodeKey, targetType, targetId, branchType = 'default', conditionText = '') {
+  if (!sourceNodeKey || !targetType || !targetId) return
+
+  const targetNodeKey = `${targetType}:${targetId}`
+  const store = useCanvasStore.getState()
+  if (!store.nodeIdSet.has(sourceNodeKey) || !store.nodeIdSet.has(targetNodeKey)) return
+
+  store.addEdges([{
+    id: `${sourceNodeKey}->${targetNodeKey}:manual:${branchType}:${conditionText}`,
+    source: sourceNodeKey,
+    target: targetNodeKey,
+    style: { stroke: EDGE_COLORS[branchType] ?? EDGE_COLORS.default },
+    data: {
+      conditionText,
+      branchType,
+      conditionObj: null,
+    },
+  }])
+}

@@ -625,12 +625,12 @@ ipcMain.handle('asset:checkDotnet', async () => {
 ipcMain.handle('file:readRaw', async (_event, filePath) => {
   try {
     const candidates = [];
+    const gamePath = settings?.get('gamePath');
 
-    if (path.isAbsolute(filePath)) {
-      candidates.push(filePath);
-    } else {
-      const normalized = filePath.replace(/^config[\\/]/i, '');
-      const gamePath = settings?.get('gamePath');
+    const appendConfigFallbacks = (relativeLikePath) => {
+      const normalized = relativeLikePath
+        .replace(/^.*?[\\/]config[\\/]/i, '')
+        .replace(/^config[\\/]/i, '');
 
       if (gamePath) {
         candidates.push(path.join(resolveConfigDir(gamePath), normalized));
@@ -639,6 +639,15 @@ ipcMain.handle('file:readRaw', async (_event, filePath) => {
       if (WORKSPACE_ROOT) {
         candidates.push(path.join(WORKSPACE_ROOT, 'config', normalized));
       }
+    };
+
+    if (path.isAbsolute(filePath)) {
+      candidates.push(filePath);
+      if (!fs.existsSync(filePath) && /[\\/]config[\\/]/i.test(filePath)) {
+        appendConfigFallbacks(filePath);
+      }
+    } else {
+      appendConfigFallbacks(filePath);
 
       candidates.push(path.resolve(process.cwd(), filePath));
     }

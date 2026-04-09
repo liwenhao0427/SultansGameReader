@@ -2,11 +2,21 @@ import { useEffect, useMemo, useState } from 'react'
 import useConfigStore from '../../stores/useConfigStore'
 import { useResolvedImage } from '../../services/imageResolver'
 import { adaptStoryData } from '../../services/storyAdapter'
-import { READER_CHROME } from '../../config/readerChrome'
-import { mountNodeOnCanvas } from '../../services/graphNavigation'
+import { READER_CHROME } from '../../readerChromeConfig'
+import { linkNodesOnCanvas, mountNodeOnCanvas } from '../../services/graphNavigation'
 
 function useChromeAsset(assetKey) {
   return useResolvedImage(READER_CHROME.assets[assetKey]?.asset)
+}
+
+function parseChoiceKey(choiceId) {
+  if (!choiceId) return { scope: '', role: '', targetId: '' }
+  const parts = String(choiceId).split('.')
+  return {
+    scope: parts[1] || '',
+    role: parts[parts.length - 1] || '',
+    targetId: parts.length > 2 ? parts[parts.length - 2] : '',
+  }
 }
 
 function PreviewImage({ pic, maxHeight = 260 }) {
@@ -82,14 +92,19 @@ export default function StoryInspector({ type, data, onClose }) {
   const cardsLite = useConfigStore((s) => s.cardsLite)
   const model = adaptStoryData(type, data, cardsLite)
   const { url: noteBg } = useChromeAsset('noteBackground')
+  const { url: titleEmblem } = useChromeAsset('titleEmblem')
   const { url: slotBg } = useChromeAsset('slotFrame')
   const { url: textFrame } = useChromeAsset('dialogueFrame')
   const [selectedSlotId, setSelectedSlotId] = useState(null)
+  const [selectedSlotOptionId, setSelectedSlotOptionId] = useState(null)
+  const [selectedSegmentOptionIds, setSelectedSegmentOptionIds] = useState({})
   const [revealedIntroCount, setRevealedIntroCount] = useState(1)
   const [revealedSegmentCount, setRevealedSegmentCount] = useState(0)
 
   useEffect(() => {
     setSelectedSlotId(null)
+    setSelectedSlotOptionId(null)
+    setSelectedSegmentOptionIds({})
     setRevealedIntroCount(1)
     setRevealedSegmentCount(0)
   }, [type, data?._source_path])
@@ -100,6 +115,7 @@ export default function StoryInspector({ type, data, onClose }) {
     [model?.slots, selectedSlotId]
   )
   const selectedSlotOptions = selectedSlot?.options || []
+  const selectedSlotChoice = selectedSlotOptions.find((option) => option.id === selectedSlotOptionId) || null
   const visibleIntro = introChunks.slice(0, Math.max(1, revealedIntroCount))
   const visibleSegments = (model?.segments || []).slice(0, revealedSegmentCount)
   const currentGateSegment = visibleSegments.find((segment) => segment.options?.length > 0)
@@ -112,7 +128,7 @@ export default function StoryInspector({ type, data, onClose }) {
   async function handleOpenAction(action, offsetIndex = 0) {
     if (!action?.targetType || !action?.targetId) return
 
-    await mountNodeOnCanvas(
+    const targetNodeKey = await mountNodeOnCanvas(
       {
         id: action.targetId,
         type: action.targetType,
@@ -121,10 +137,49 @@ export default function StoryInspector({ type, data, onClose }) {
       { x: 460 + offsetIndex * 60, y: 180 + offsetIndex * 50 },
       { autoSelect: true, expandRelations: true }
     )
+
+    if (targetNodeKey && data?.id != null) {
+      linkNodesOnCanvas(
+        `${type}:${data.id}`,
+        action.targetType,
+        action.targetId,
+        action.branch === 'success' ? 'success' : action.branch === 'failed' ? 'failed' : 'default',
+        action.text
+      )
+    }
   }
 
   function branchActions(segment, branch) {
     return (segment.choiceActions || []).filter((action) => action.branch === branch)
+  }
+
+  function handleSelectSlot(slotId) {
+    setSelectedSlotId((current) => current === slotId ? null : slotId)
+    setSelectedSlotOptionId(null)
+    setSelectedSegmentOptionIds({})
+    setRevealedIntroCount(1)
+    setRevealedSegmentCount(0)
+  }
+
+  function handleResetFlow() {
+    setSelectedSlotId(null)
+    setSelectedSlotOptionId(null)
+    setSelectedSegmentOptionIds({})
+    setRevealedIntroCount(1)
+    setRevealedSegmentCount(0)
+  }
+
+  function handleSelectSlotOption(optionId) {
+    setSelectedSlotOptionId(optionId)
+    setSelectedSegmentOptionIds({})
+    setRevealedSegmentCount(0)
+  }
+
+  function handleSelectSegmentOption(segmentKey, optionId) {
+    setSelectedSegmentOptionIds((current) => ({
+      ...current,
+      [segmentKey]: current[segmentKey] === optionId ? null : optionId,
+    }))
   }
 
   const inspectorContent = (
@@ -150,23 +205,12 @@ export default function StoryInspector({ type, data, onClose }) {
               slot={slot}
               slotBgUrl={slotBg}
               active={selectedSlotId === slot.id}
-              onClick={() => {
-                setSelectedSlotId((current) => {
-                  const next = current === slot.id ? null : slot.id
-                  return next
-                })
-                setRevealedIntroCount(1)
-                setRevealedSegmentCount(0)
-              }}
+              onClick={() => handleSelectSlot(slot.id)}
             />
           ))}
           <button
             type="button"
-            onClick={() => {
-              setSelectedSlotId(null)
-              setRevealedIntroCount(1)
-              setRevealedSegmentCount(0)
-            }}
+            onClick={handleResetFlow}
             style={smallResetButtonStyle}
           >
             重置仪式
@@ -183,14 +227,34 @@ export default function StoryInspector({ type, data, onClose }) {
         <div style={{
           padding: '18px 18px 20px',
           borderRadius: 24,
+          position: 'relative',
+          overflow: 'hidden',
           background: noteBg
-            ? `linear-gradient(180deg, rgba(18, 13, 9, 0.16), rgba(18, 13, 9, 0.44)), url("${noteBg}")`
+            ? `${READER_CHROME.header.panelOverlay}, url("${noteBg}")`
             : 'linear-gradient(180deg, #efe3c6 0%, #d9c9a6 100%)',
-          backgroundSize: 'cover',
-          backgroundPosition: 'center',
+          backgroundSize: READER_CHROME.assets.noteBackground.backgroundSize,
+          backgroundPosition: READER_CHROME.assets.noteBackground.backgroundPosition,
           color: READER_CHROME.header.metaColor,
           boxShadow: '0 24px 60px rgba(0, 0, 0, 0.24)',
         }}>
+          {titleEmblem && (
+            <div
+              aria-hidden="true"
+              style={{
+                position: 'absolute',
+                top: READER_CHROME.assets.titleEmblem.top,
+                right: READER_CHROME.assets.titleEmblem.right,
+                width: READER_CHROME.assets.titleEmblem.width,
+                height: READER_CHROME.assets.titleEmblem.height,
+                opacity: READER_CHROME.assets.titleEmblem.opacity,
+                backgroundImage: `url("${titleEmblem}")`,
+                backgroundSize: READER_CHROME.assets.titleEmblem.backgroundSize,
+                backgroundPosition: READER_CHROME.assets.titleEmblem.backgroundPosition,
+                backgroundRepeat: 'no-repeat',
+                pointerEvents: 'none',
+              }}
+            />
+          )}
           <div style={{ fontSize: 12, letterSpacing: '0.24em', textTransform: 'uppercase', color: READER_CHROME.header.subtitleColor }}>
             {model.subtitle || model.kind}
           </div>
@@ -200,7 +264,7 @@ export default function StoryInspector({ type, data, onClose }) {
             marginTop: 10,
             lineHeight: 1.15,
             color: READER_CHROME.header.titleColor,
-            textShadow: '0 1px 0 rgba(0,0,0,0.28)',
+            textShadow: READER_CHROME.header.titleShadow,
           }}>
             {model.title}
           </div>
@@ -281,6 +345,22 @@ export default function StoryInspector({ type, data, onClose }) {
                     可放入条件：{selectedSlot.conditions.join('，')}
                   </div>
                 )}
+                {selectedSlotChoice && (
+                  <div style={{
+                    marginTop: 12,
+                    padding: '14px 16px',
+                    borderRadius: 18,
+                    background: 'rgba(6, 6, 6, 0.22)',
+                    border: '1px solid rgba(212, 184, 126, 0.12)',
+                  }}>
+                    <div style={{ fontSize: 12, color: '#cbb391', letterSpacing: '0.12em', textTransform: 'uppercase' }}>
+                      当前卡槽回应
+                    </div>
+                    <div style={{ marginTop: 8, fontSize: 15, lineHeight: 1.8, color: '#f7ecd5' }}>
+                      {selectedSlotChoice.text}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -315,7 +395,15 @@ export default function StoryInspector({ type, data, onClose }) {
             <div style={sectionTitleStyle}>卡槽分支选项</div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
               {selectedSlotOptions.map((option) => (
-                <button key={option.id} type="button" style={choiceButtonStyle}>
+                <button
+                  key={option.id}
+                  type="button"
+                  style={{
+                    ...choiceButtonStyle,
+                    ...(selectedSlotOptionId === option.id ? activeChoiceButtonStyle : null),
+                  }}
+                  onClick={() => handleSelectSlotOption(option.id)}
+                >
                   {option.text}
                 </button>
               ))}
@@ -371,10 +459,42 @@ export default function StoryInspector({ type, data, onClose }) {
                 {segment.options.length > 0 && (
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 14 }}>
                     {segment.options.slice(0, 8).map((option) => (
-                      <button key={option.id} type="button" style={choiceButtonStyle}>
+                      <button
+                        key={option.id}
+                        type="button"
+                        style={{
+                          ...choiceButtonStyle,
+                          ...(selectedSegmentOptionIds[`${segment.phase}-${index}`] === option.id ? activeChoiceButtonStyle : null),
+                        }}
+                        onClick={() => handleSelectSegmentOption(`${segment.phase}-${index}`, option.id)}
+                      >
                         {option.text}
                       </button>
                     ))}
+                  </div>
+                )}
+
+                {selectedSegmentOptionIds[`${segment.phase}-${index}`] && (
+                  <div style={{
+                    marginTop: 12,
+                    padding: '12px 14px',
+                    borderRadius: 16,
+                    background: 'rgba(212, 184, 126, 0.06)',
+                    border: '1px solid rgba(212, 184, 126, 0.1)',
+                  }}>
+                    <div style={{ fontSize: 12, color: '#cbb391', letterSpacing: '0.12em', textTransform: 'uppercase' }}>
+                      当前选择
+                    </div>
+                    <div style={{ marginTop: 8, fontSize: 14, lineHeight: 1.8 }}>
+                      {segment.options.find((option) => option.id === selectedSegmentOptionIds[`${segment.phase}-${index}`])?.text}
+                    </div>
+                    <div style={{ ...smallLineStyle, marginTop: 6 }}>
+                      {(() => {
+                        const meta = parseChoiceKey(selectedSegmentOptionIds[`${segment.phase}-${index}`])
+                        if (!meta.scope && !meta.role && !meta.targetId) return '该选择目前只作为阅读分支记录。'
+                        return `来源：${meta.scope || '未标记'} / 角色：${meta.role || '未标记'} / 目标：${meta.targetId || '未标记'}`
+                      })()}
+                    </div>
                   </div>
                 )}
 
@@ -532,6 +652,12 @@ const choiceButtonStyle = {
   background: 'rgba(212, 184, 126, 0.08)',
   color: '#f2ead5',
   cursor: 'pointer',
+}
+
+const activeChoiceButtonStyle = {
+  background: 'rgba(212, 184, 126, 0.2)',
+  borderColor: 'rgba(239, 215, 169, 0.5)',
+  color: '#fff7e6',
 }
 
 const actionButtonStyle = {
