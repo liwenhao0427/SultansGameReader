@@ -8,6 +8,7 @@ import EventDetail from './details/EventDetail'
 import RiteDetail from './details/RiteDetail'
 import AfterStoryDetail from './details/AfterStoryDetail'
 import DTDetail from './details/DTDetail'
+import OverDetail from './details/OverDetail'
 
 const FULLSCREEN_TYPES = new Set(['rite'])
 
@@ -147,6 +148,7 @@ function renderDetail(type, data) {
   if (type === 'loot') return <LootDetail data={data} />
   if (type === 'event') return <EventDetail data={data} />
   if (type === 'rite') return <RiteDetail data={data} />
+  if (type === 'over') return <OverDetail data={data} />
   if (type === 'after_story') return <AfterStoryDetail data={data} />
   if (type === 'dt') return <DTDetail data={data} />
   return <StoryInspector type={type} data={data} onClose={() => {}} />
