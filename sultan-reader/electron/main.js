@@ -403,7 +403,7 @@ ipcMain.handle('config:readCache', async (_event, type, id) => {
     const entries = readSingleAggregateFile('over.json');
     if (!entries) return null;
     const record = entries[String(id)];
-    return record && typeof record === 'object' ? record : null;
+    return record && typeof record === 'object' ? { id: String(id), ...record } : null;
   }
 
   // rite_template_mappings 是 config 根目录下的单文件，不在 cache 子目录中

@@ -1,7 +1,7 @@
 import useCanvasStore from '../stores/useCanvasStore'
 
 const EDGE_COLORS = { success: '#8fbf77', failed: '#c35b5b', default: '#927453' }
-const CANVAS_NODE_TYPES = new Set(['rite', 'event', 'loot'])
+const CANVAS_NODE_TYPES = new Set(['rite', 'event', 'loot', 'over'])
 
 function summarize(item, data) {
   return item.name || item.text || data?.name || data?.text || item.id
@@ -14,7 +14,6 @@ function hasRelatedRite(data) {
 export async function mountNodeOnCanvas(item, position, options = {}) {
   const {
     autoSelect = true,
-    expandRelations = false,
   } = options
 
   const store = useCanvasStore.getState()
@@ -28,7 +27,9 @@ export async function mountNodeOnCanvas(item, position, options = {}) {
   }
 
   if (store.nodeIdSet.has(nodeKey)) {
-    if (autoSelect) store.setSelectedNode(nodeKey)
+    if (autoSelect) {
+      store.setSelectedNode(nodeKey)
+    }
     return nodeKey
   }
 
@@ -42,12 +43,13 @@ export async function mountNodeOnCanvas(item, position, options = {}) {
     return nodeKey
   }
 
+  const rawData = data?.id != null ? data : { id: String(item.id), ...data }
+
   store.addNode(item.id, item.type, {
-    label: summarize(item, data),
+    label: summarize(item, rawData),
     nodeType: item.type,
-    rawData: data,
+    rawData,
   }, position)
-  void expandRelations
 
   if (autoSelect) {
     store.setSelectedNode(nodeKey)

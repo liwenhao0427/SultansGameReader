@@ -1,4 +1,6 @@
+import { useEffect, useState } from 'react'
 import { useResolvedImage } from '../../services/imageResolver'
+import { getAfterStoryRelations } from '../../services/afterStoryRelations'
 
 const S = {
   title: { color: '#f3e7cb', fontSize: 26, fontWeight: 700, lineHeight: 1.25, marginBottom: 6 },
@@ -36,6 +38,25 @@ const S = {
   },
   extraText: { color: '#dcc9a3', fontSize: 13, lineHeight: '1.8', whiteSpace: 'pre-wrap' },
   meta: { color: 'rgba(241, 232, 213, 0.48)', fontSize: 11, fontFamily: 'Consolas, monospace' },
+  sectionTitle: {
+    color: '#f0d6a0',
+    fontSize: 13,
+    fontWeight: 700,
+    margin: '20px 0 10px',
+    letterSpacing: '0.08em',
+  },
+  relatedGroup: {
+    display: 'grid',
+    gridTemplateColumns: '84px minmax(0, 1fr)',
+    gap: 14,
+    padding: '14px 16px',
+    borderRadius: 18,
+    background: 'rgba(24, 24, 37, 0.64)',
+    border: '1px solid rgba(212, 184, 126, 0.08)',
+    marginBottom: 12,
+  },
+  relatedTitle: { color: '#f3e7cb', fontSize: 15, fontWeight: 700, marginBottom: 8 },
+  relatedSnippet: { color: '#dcc9a3', fontSize: 13, lineHeight: '1.75', whiteSpace: 'pre-wrap', marginTop: 8 },
 }
 
 function OverImage({ pic }) {
@@ -45,18 +66,62 @@ function OverImage({ pic }) {
 
   return (
     <div style={S.imageWrap}>
-      {loading && <div style={S.imagePlaceholder}>加载图片中…</div>}
+      {loading && <div style={S.imagePlaceholder}>加载结局配图中…</div>}
       {!loading && !url && <div style={S.imagePlaceholder}>暂无结局配图</div>}
       {!loading && url && <img src={url} alt="" style={S.image} />}
     </div>
   )
 }
 
+function RelatedAfterStoryGroup({ group }) {
+  const groupImage = group.items.find((item) => item.pic)?.pic || group.afterStoryImage || null
+  const { url, loading } = useResolvedImage(groupImage)
+
+  return (
+    <div style={S.relatedGroup}>
+      <div style={S.imageWrap}>
+        {loading && <div style={{ ...S.imagePlaceholder, height: 120 }}>加载中…</div>}
+        {!loading && !url && <div style={{ ...S.imagePlaceholder, height: 120 }}>后日谈</div>}
+        {!loading && url && <img src={url} alt="" style={{ ...S.image, maxHeight: 120 }} />}
+      </div>
+      <div>
+        <div style={S.relatedTitle}>{group.afterStoryName}</div>
+        {group.items.map((item) => (
+          <div key={item.key} style={S.relatedSnippet}>{item.text}</div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 /**
  * OverDetail - 单个结局详情
- * 结局来自 cache/single/over.json 的单条记录，因此这里按单结局阅读展示。
+ * 结局来自 cache/single/over.json 的单条记录，并额外展示注释匹配出的后日谈片段。
  */
 export default function OverDetail({ data }) {
+  const [relatedAfterStories, setRelatedAfterStories] = useState([])
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadRelations() {
+      if (!data?.id) {
+        setRelatedAfterStories([])
+        return
+      }
+
+      const relations = await getAfterStoryRelations()
+      if (!cancelled) {
+        setRelatedAfterStories(relations.overToAfterStories[String(data.id)] || [])
+      }
+    }
+
+    loadRelations()
+    return () => {
+      cancelled = true
+    }
+  }, [data])
+
   if (!data) return null
 
   const extras = Array.isArray(data.text_extra) ? data.text_extra : []
@@ -82,6 +147,15 @@ export default function OverDetail({ data }) {
           <div style={S.extraText}>{text}</div>
         </div>
       ))}
+
+      {relatedAfterStories.length > 0 && (
+        <div>
+          <div style={S.sectionTitle}>关联后日谈</div>
+          {relatedAfterStories.map((group) => (
+            <RelatedAfterStoryGroup key={group.afterStoryId} group={group} />
+          ))}
+        </div>
+      )}
 
       {data.icon && <div style={S.meta}>icon: {data.icon}</div>}
     </div>

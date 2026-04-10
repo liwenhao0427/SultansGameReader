@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 describe('OverDetail - 单个结局数据处理', () => {
   it('单个结局记录按详情数据结构读取', () => {
     const data = {
+      id: '1',
       name: '伴君如伴虎',
       sub_name: '你死于触怒苏丹',
       text: '这并不有趣，你被苏丹像小丑一样处死。',
