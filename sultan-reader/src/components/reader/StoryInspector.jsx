@@ -686,55 +686,55 @@ export default function StoryInspector({ type, data, onClose }) {
     return () => window.clearInterval(timer)
   }, [autoAdvance, canRevealLine, canRevealSegment, dialogueLines.length, availableSegments.length])
 
+  const headerBlock = (
+    <div style={storyHeaderShellStyle}>
+      <div style={storyHeaderCardStyle}>
+        {model.meta.length > 0 && (
+          <div style={storyMetaWrapStyle}>
+            {model.meta.slice(0, 6).map((item) => (
+              <span key={item} style={metaChipCompactStyle}>
+                {item}
+              </span>
+            ))}
+          </div>
+        )}
+        <div style={{ fontSize: 12, letterSpacing: '0.24em', textTransform: 'uppercase', color: READER_CHROME.header.subtitleColor }}>
+          {model.subtitle || model.kind}
+        </div>
+        <div style={storyHeaderTitleRowStyle}>
+          {headerIconUrl && (
+            <div
+              aria-hidden="true"
+              style={{
+                width: 52,
+                height: 52,
+                flexShrink: 0,
+                borderRadius: 12,
+                backgroundColor: 'rgba(255, 248, 235, 0.28)',
+                backgroundImage: `url("${headerIconUrl}")`,
+                backgroundRepeat: 'no-repeat',
+                backgroundSize: 'contain',
+                backgroundPosition: 'center',
+                boxShadow: '0 10px 24px rgba(72, 46, 19, 0.16)',
+              }}
+            />
+          )}
+          <div style={storyHeaderTitleStyle}>
+            {model.title}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+
   const content = (
     <div style={{
       height: '100%',
       minHeight: 0,
       display: 'grid',
-      gridTemplateRows: 'auto minmax(0, 1fr)',
       color: '#f1e8d5',
       overflow: 'hidden',
-      gap: 18,
     }}>
-      <div style={storyHeaderShellStyle}>
-        <div style={storyHeaderCardStyle}>
-          {model.meta.length > 0 && (
-            <div style={storyMetaWrapStyle}>
-              {model.meta.slice(0, 6).map((item) => (
-                <span key={item} style={metaChipCompactStyle}>
-                  {item}
-                </span>
-              ))}
-            </div>
-          )}
-          <div style={{ fontSize: 12, letterSpacing: '0.24em', textTransform: 'uppercase', color: READER_CHROME.header.subtitleColor }}>
-            {model.subtitle || model.kind}
-          </div>
-          <div style={storyHeaderTitleRowStyle}>
-            {headerIconUrl && (
-              <div
-                aria-hidden="true"
-                style={{
-                  width: 52,
-                  height: 52,
-                  flexShrink: 0,
-                  borderRadius: 12,
-                  backgroundColor: 'rgba(255, 248, 235, 0.28)',
-                  backgroundImage: `url("${headerIconUrl}")`,
-                  backgroundRepeat: 'no-repeat',
-                  backgroundSize: 'contain',
-                  backgroundPosition: 'center',
-                  boxShadow: '0 10px 24px rgba(72, 46, 19, 0.16)',
-                }}
-              />
-            )}
-            <div style={storyHeaderTitleStyle}>
-              {model.title}
-            </div>
-          </div>
-        </div>
-      </div>
-
       <div style={{
         height: '100%',
         minHeight: 0,
@@ -1114,6 +1114,9 @@ export default function StoryInspector({ type, data, onClose }) {
     <div style={overlayShellStyle}>
       <div style={overlayCardStyle}>
         <div style={overlayHeaderStyle}>
+          <div style={overlayHeaderLeftStyle}>
+            {headerBlock}
+          </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             {data?._source_path && (
               <button type="button" onClick={handleViewRaw} style={secondaryButtonStyle}>查看原始文件</button>
@@ -1140,24 +1143,25 @@ const imageFallbackStyle = {
 const storyHeaderShellStyle = {
   display: 'flex',
   justifyContent: 'flex-start',
+  minWidth: 0,
 }
 
 const storyHeaderCardStyle = {
   width: '100%',
-  padding: '22px 24px 18px',
+  padding: '12px 16px 10px',
   position: 'relative',
   overflow: 'hidden',
-  borderRadius: 28,
+  borderRadius: 22,
   background: 'linear-gradient(180deg, rgba(250, 244, 231, 0.98), rgba(227, 212, 186, 0.95))',
   color: READER_CHROME.header.metaColor,
   border: '1px solid rgba(212, 184, 126, 0.14)',
-  boxShadow: '0 18px 40px rgba(0, 0, 0, 0.22)',
+  boxShadow: '0 10px 26px rgba(0, 0, 0, 0.18)',
 }
 
 const storyMetaWrapStyle = {
   position: 'absolute',
-  top: 14,
-  right: 18,
+  top: 10,
+  right: 14,
   display: 'flex',
   flexWrap: 'wrap',
   justifyContent: 'flex-end',
@@ -1166,14 +1170,14 @@ const storyMetaWrapStyle = {
 }
 
 const storyHeaderTitleRowStyle = {
-  marginTop: 10,
+  marginTop: 6,
   display: 'flex',
   alignItems: 'center',
   gap: 12,
 }
 
 const storyHeaderTitleStyle = {
-  fontSize: 26,
+  fontSize: 22,
   fontWeight: 900,
   lineHeight: 1.18,
   color: '#3f2a16',
@@ -1357,10 +1361,15 @@ const overlayCardStyle = {
 const overlayHeaderStyle = {
   display: 'flex',
   alignItems: 'center',
-  justifyContent: 'flex-end',
+  justifyContent: 'space-between',
   gap: 16,
-  padding: '22px 28px 18px',
+  padding: '16px 24px 12px',
   borderBottom: '1px solid rgba(212, 184, 126, 0.12)',
+}
+
+const overlayHeaderLeftStyle = {
+  flex: 1,
+  minWidth: 0,
 }
 
 const closeButtonStyle = {

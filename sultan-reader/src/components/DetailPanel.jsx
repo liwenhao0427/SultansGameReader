@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react'
 import useCanvasStore from '../stores/useCanvasStore'
 import RawFileView from './RawFileView'
 import StoryInspector from './reader/StoryInspector'
+import CardDetail from './details/CardDetail'
+import LootDetail from './details/LootDetail'
 
 const FULLSCREEN_TYPES = new Set(['rite', 'event', 'dt', 'over', 'after_story'])
 
@@ -124,7 +126,7 @@ export default function DetailPanel() {
               <button type="button" onClick={() => setSelectedNode(null)} style={actionButtonStyle}>关闭</button>
             </div>
           </div>
-          <StoryInspector type={type} data={data} onClose={() => setSelectedNode(null)} />
+          {renderDetail(type, data)}
         </div>
       )}
 
@@ -133,6 +135,12 @@ export default function DetailPanel() {
       )}
     </div>
   )
+}
+
+function renderDetail(type, data) {
+  if (type === 'card') return <CardDetail data={data} />
+  if (type === 'loot') return <LootDetail data={data} />
+  return <StoryInspector type={type} data={data} onClose={() => {}} />
 }
 
 const actionButtonStyle = {

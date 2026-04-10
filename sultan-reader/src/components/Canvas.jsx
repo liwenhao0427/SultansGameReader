@@ -96,6 +96,24 @@ function RelationCardChip({ card }) {
 function RelationPickerModal({ picker, onToggle, onConfirm, onClose }) {
   if (!picker) return null
 
+  const keyword = picker.filterText.trim().toLowerCase()
+  const filteredOptions = keyword
+    ? picker.options.filter((option) => {
+      const haystack = [
+        option.targetType,
+        option.targetId,
+        option.targetLabel,
+        option.conditionText,
+        option.resultTitle,
+        option.resultText,
+      ].filter(Boolean).join(' ').toLowerCase()
+      return haystack.includes(keyword)
+    })
+    : picker.options
+
+  const cardOptions = filteredOptions.filter((option) => option.targetType === 'card')
+  const otherOptions = filteredOptions.filter((option) => option.targetType !== 'card')
+
   return (
     <div style={pickerMaskStyle} onClick={onClose}>
       <div style={pickerPanelStyle} onClick={(event) => event.stopPropagation()}>
@@ -119,64 +137,133 @@ function RelationPickerModal({ picker, onToggle, onConfirm, onClose }) {
           </div>
         </div>
 
+        {!picker.loading && !picker.error && picker.options.length > 0 && (
+          <div style={pickerFilterWrapStyle}>
+            <input
+              type="text"
+              value={picker.filterText}
+              onChange={(event) => picker.onFilterChange(event.target.value)}
+              placeholder="按条件 / 名称 / ID 筛选…"
+              style={pickerFilterInputStyle}
+            />
+          </div>
+        )}
+
         {picker.loading && <div style={pickerHintStyle}>正在读取关联信息…</div>}
         {!picker.loading && picker.error && <div style={pickerHintStyle}>读取失败：{picker.error}</div>}
-        {!picker.loading && !picker.error && picker.options.length === 0 && (
+        {!picker.loading && !picker.error && filteredOptions.length === 0 && (
           <div style={pickerHintStyle}>当前节点没有可新增到画布的关联项。</div>
         )}
 
-        {!picker.loading && !picker.error && picker.options.length > 0 && (
+        {!picker.loading && !picker.error && filteredOptions.length > 0 && (
           <div style={pickerListStyle}>
-            {picker.options.map((option) => (
-              <label
-                key={option.optionId}
-                style={{
-                  ...pickerItemStyle,
-                  ...(picker.selectedOptionIds.includes(option.optionId) ? pickerItemActiveStyle : null),
-                }}
-              >
-                <input
-                  type="checkbox"
-                  checked={picker.selectedOptionIds.includes(option.optionId)}
-                  onChange={() => onToggle(option.optionId)}
-                  style={{ marginTop: 4 }}
-                />
-                <div style={{ minWidth: 0 }}>
-                  <div style={pickerItemTopStyle}>
-                    <span style={pickerTargetTypeStyle}>{option.targetType}</span>
-                    <span style={pickerTargetTitleStyle}>{option.targetLabel}</span>
-                    <span style={pickerTargetIdStyle}>{option.targetId}</span>
-                  </div>
-
-                  {option.conditionText && (
-                    <div title={option.conditionText} style={pickerLineClampStyle}>
-                      条件：{option.conditionText}
-                    </div>
-                  )}
-
-                  {(option.resultTitle || option.resultText) && (
-                    <div
-                      title={[option.resultTitle, option.resultText].filter(Boolean).join('\n')}
-                      style={{ ...pickerLineClampStyle, color: '#f0dfbd' }}
-                    >
-                      结果：{option.resultTitle || option.resultText}
-                    </div>
-                  )}
-
-                  {option.relatedCards.length > 0 && (
-                    <div style={pickerCardRowStyle}>
-                      {option.relatedCards.slice(0, 4).map((card) => (
-                        <RelationCardChip key={card.id} card={card} />
-                      ))}
-                    </div>
-                  )}
+            {cardOptions.length > 0 && (
+              <div style={pickerSectionStyle}>
+                <div style={pickerSectionTitleStyle}>卡牌关联</div>
+                <div style={pickerCardGridStyle}>
+                  {cardOptions.map((option) => (
+                    <RelationOptionCard key={option.optionId} option={option} selected={picker.selectedOptionIds.includes(option.optionId)} onToggle={onToggle} />
+                  ))}
                 </div>
-              </label>
-            ))}
+              </div>
+            )}
+
+            {otherOptions.length > 0 && (
+              <div style={pickerSectionStyle}>
+                <div style={pickerSectionTitleStyle}>其他关联</div>
+                <div style={{ display: 'grid', gap: 12 }}>
+                  {otherOptions.map((option) => (
+                    <RelationOptionRow key={option.optionId} option={option} selected={picker.selectedOptionIds.includes(option.optionId)} onToggle={onToggle} />
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
     </div>
+  )
+}
+
+function RelationOptionRow({ option, selected, onToggle }) {
+  return (
+    <label
+      style={{
+        ...pickerItemStyle,
+        ...(selected ? pickerItemActiveStyle : null),
+      }}
+    >
+      <input
+        type="checkbox"
+        checked={selected}
+        onChange={() => onToggle(option.optionId)}
+        style={{ marginTop: 4 }}
+      />
+      <div style={{ minWidth: 0 }}>
+        <div style={pickerItemTopStyle}>
+          <span style={pickerTargetTypeStyle}>{option.targetType}</span>
+          <span style={pickerTargetTitleStyle}>{option.targetLabel}</span>
+          <span style={pickerTargetIdStyle}>{option.targetId}</span>
+        </div>
+
+        {option.conditionText && (
+          <div title={option.conditionText} style={pickerLineClampStyle}>
+            条件：{option.conditionText}
+          </div>
+        )}
+
+        {(option.resultTitle || option.resultText) && (
+          <div
+            title={[option.resultTitle, option.resultText].filter(Boolean).join('\n')}
+            style={{ ...pickerLineClampStyle, color: '#f0dfbd' }}
+          >
+            结果：{option.resultTitle || option.resultText}
+          </div>
+        )}
+
+        {option.relatedCards.length > 0 && (
+          <div style={pickerCardRowStyle}>
+            {option.relatedCards.slice(0, 4).map((card) => (
+              <RelationCardChip key={`${option.optionId}:${card.id}`} card={card} />
+            ))}
+          </div>
+        )}
+      </div>
+    </label>
+  )
+}
+
+function RelationOptionCard({ option, selected, onToggle }) {
+  const { url } = useResolvedImage(option.targetImage)
+
+  return (
+    <label
+      style={{
+        ...pickerCardOptionStyle,
+        ...(selected ? pickerCardOptionActiveStyle : null),
+      }}
+    >
+      <input
+        type="checkbox"
+        checked={selected}
+        onChange={() => onToggle(option.optionId)}
+        style={pickerCardCheckboxStyle}
+      />
+      <div style={pickerCardPosterStyle}>
+        {url ? (
+          <img src={url} alt="" style={pickerCardPosterImageStyle} />
+        ) : (
+          <div style={pickerCardPosterPlaceholderStyle}>卡牌</div>
+        )}
+      </div>
+      <div style={pickerCardNameStyle}>{option.targetLabel}</div>
+      <div style={pickerCardIdCaptionStyle}>{option.targetId}</div>
+      {option.conditionText && (
+        <div title={option.conditionText} style={pickerCardCaptionStyle}>
+          条件：{option.conditionText}
+        </div>
+      )}
+    </label>
   )
 }
 
@@ -220,6 +307,8 @@ function CanvasInner() {
       error: null,
       options: [],
       selectedOptionIds: [],
+      filterText: '',
+      onFilterChange: () => {},
     })
 
     const colonIndex = sourceNodeId.indexOf(':')
@@ -230,24 +319,39 @@ function CanvasInner() {
       const relations = extractEdges(sourceType, sourceRawId, sourceNode.data.rawData)
         .filter((relation) => !nodeIdSet.has(relation.target))
 
-      const options = []
+      const optionMap = new Map()
       for (let index = 0; index < relations.length; index += 1) {
         const relation = relations[index]
         const [targetType, targetId] = relation.target.split(':')
         const targetData = await window.electronAPI.configReadCache(targetType, targetId)
         const conditionLines = parseConditionObject(relation.conditionObj, cardsLite)
-        options.push({
+        const option = {
           optionId: `${relation.path}:${targetType}:${targetId}:${index}`,
           relation,
           targetType,
           targetId,
           targetLabel: summarize({ id: targetId, type: targetType }, targetData || {}),
+          targetImage: targetType === 'card'
+            ? (Array.isArray(targetData?.resource) ? (targetData.resource[0] || null) : (targetData?.resource || null))
+            : null,
           conditionText: conditionLines.join(' / ') || relation.conditionText || '',
           relatedCards: extractRelationCards(relation.conditionObj, cardsLite, cardsById),
           resultTitle: relation.resultTitle || '',
           resultText: relation.resultText || '',
-        })
+        }
+        const dedupeKey = [
+          targetType,
+          targetId,
+          option.conditionText,
+          option.resultTitle,
+          option.resultText,
+        ].join('|')
+        if (!optionMap.has(dedupeKey)) {
+          optionMap.set(dedupeKey, option)
+        }
       }
+
+      const options = Array.from(optionMap.values())
 
       setRelationPicker({
         sourceNodeId,
@@ -255,6 +359,10 @@ function CanvasInner() {
         error: null,
         options,
         selectedOptionIds: [],
+        filterText: '',
+        onFilterChange: (value) => {
+          setRelationPicker((current) => current ? { ...current, filterText: value } : current)
+        },
       })
     } catch (error) {
       setRelationPicker({
@@ -263,6 +371,8 @@ function CanvasInner() {
         error: error?.message || '未知错误',
         options: [],
         selectedOptionIds: [],
+        filterText: '',
+        onFilterChange: () => {},
       })
     }
   }, [cardsById, cardsLite, nodeIdSet, nodeMap])
@@ -511,12 +621,41 @@ const pickerHintStyle = {
   fontSize: 14,
 }
 
+const pickerFilterWrapStyle = {
+  padding: '0 18px 14px',
+  borderBottom: '1px solid rgba(212, 184, 126, 0.08)',
+}
+
+const pickerFilterInputStyle = {
+  width: '100%',
+  boxSizing: 'border-box',
+  padding: '10px 12px',
+  borderRadius: 14,
+  border: '1px solid rgba(212, 184, 126, 0.14)',
+  background: 'rgba(212, 184, 126, 0.05)',
+  color: '#f1e8d5',
+  outline: 'none',
+  fontSize: 13,
+}
+
 const pickerListStyle = {
   minHeight: 0,
   overflowY: 'auto',
   padding: 18,
   display: 'grid',
+  gap: 18,
+}
+
+const pickerSectionStyle = {
+  display: 'grid',
   gap: 12,
+}
+
+const pickerSectionTitleStyle = {
+  fontSize: 13,
+  letterSpacing: '0.16em',
+  textTransform: 'uppercase',
+  color: '#d8bc84',
 }
 
 const pickerItemStyle = {
@@ -578,6 +717,84 @@ const pickerCardRowStyle = {
   display: 'flex',
   flexWrap: 'wrap',
   gap: 8,
+}
+
+const pickerCardGridStyle = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+  gap: 12,
+}
+
+const pickerCardOptionStyle = {
+  position: 'relative',
+  display: 'grid',
+  gap: 8,
+  padding: 12,
+  borderRadius: 20,
+  border: '1px solid rgba(212, 184, 126, 0.12)',
+  background: 'rgba(212, 184, 126, 0.035)',
+  cursor: 'pointer',
+  minWidth: 0,
+}
+
+const pickerCardOptionActiveStyle = {
+  border: '1px solid rgba(212, 184, 126, 0.3)',
+  background: 'rgba(212, 184, 126, 0.12)',
+}
+
+const pickerCardCheckboxStyle = {
+  position: 'absolute',
+  top: 12,
+  right: 12,
+}
+
+const pickerCardPosterStyle = {
+  width: '100%',
+  height: 144,
+  borderRadius: 16,
+  overflow: 'hidden',
+  border: '1px solid rgba(212, 184, 126, 0.12)',
+  background: 'rgba(18, 15, 11, 0.92)',
+}
+
+const pickerCardPosterImageStyle = {
+  width: '100%',
+  height: '100%',
+  display: 'block',
+  objectFit: 'cover',
+}
+
+const pickerCardPosterPlaceholderStyle = {
+  width: '100%',
+  height: '100%',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  color: 'rgba(241, 232, 213, 0.42)',
+  fontSize: 12,
+}
+
+const pickerCardNameStyle = {
+  fontSize: 18,
+  fontWeight: 700,
+  color: '#fff0d3',
+  lineHeight: 1.3,
+}
+
+const pickerCardIdCaptionStyle = {
+  fontSize: 11,
+  color: 'rgba(241, 232, 213, 0.5)',
+  fontFamily: 'Consolas, monospace',
+}
+
+const pickerCardCaptionStyle = {
+  fontSize: 12,
+  lineHeight: 1.6,
+  color: '#d7c3a0',
+  display: '-webkit-box',
+  WebkitBoxOrient: 'vertical',
+  WebkitLineClamp: 3,
+  overflow: 'hidden',
 }
 
 const relationCardChipStyle = {

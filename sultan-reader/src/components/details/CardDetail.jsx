@@ -1,65 +1,84 @@
 import { useResolvedImage } from '../../services/imageResolver'
 
 const S = {
-  title: { color: '#89b4fa', fontSize: 15, fontWeight: 'bold', marginBottom: 2 },
-  subtitle: { color: '#a6adc8', fontSize: 12, marginBottom: 8 },
-  text: { color: '#cdd6f4', fontSize: 13, lineHeight: '1.6', whiteSpace: 'pre-wrap', marginBottom: 10 },
-  img: { maxWidth: '100%', borderRadius: 4, marginBottom: 10 },
-  imgPlaceholder: { width: 80, height: 80, background: '#313244', borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#585b70', fontSize: 11, marginBottom: 10 },
-  sectionTitle: { color: '#89b4fa', fontSize: 12, fontWeight: 'bold', marginBottom: 4 },
-  tagWrap: { display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 10 },
-  tag: { background: '#313244', color: '#cba6f7', fontSize: 11, borderRadius: 3, padding: '1px 6px' },
-  rarity: { color: '#f9e2af', fontSize: 12, marginBottom: 8 },
+  shell: { display: 'grid', gap: 18 },
+  hero: {
+    display: 'grid',
+    gridTemplateColumns: '160px minmax(0, 1fr)',
+    gap: 18,
+    alignItems: 'start',
+  },
+  poster: {
+    width: 160,
+    height: 228,
+    borderRadius: 22,
+    overflow: 'hidden',
+    border: '1px solid rgba(212, 184, 126, 0.16)',
+    background: 'rgba(18, 15, 11, 0.92)',
+    boxShadow: '0 18px 36px rgba(0,0,0,0.24)',
+  },
+  posterImg: { width: '100%', height: '100%', display: 'block', objectFit: 'cover' },
+  posterPlaceholder: {
+    width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+    color: 'rgba(241, 232, 213, 0.48)', fontSize: 13,
+  },
+  title: { color: '#fff0d3', fontSize: 34, fontWeight: 900, lineHeight: 1.15 },
+  subtitle: { marginTop: 8, color: '#d8bc84', fontSize: 15, lineHeight: 1.6 },
+  rarity: { marginTop: 12, color: '#f2d597', fontSize: 14, letterSpacing: '0.12em' },
+  text: { color: '#f1e8d5', fontSize: 15, lineHeight: '1.9', whiteSpace: 'pre-wrap' },
+  sectionTitle: { color: '#d8bc84', fontSize: 12, letterSpacing: '0.22em', textTransform: 'uppercase' },
+  tagWrap: { display: 'flex', flexWrap: 'wrap', gap: 8 },
+  tag: {
+    padding: '6px 10px',
+    borderRadius: 999,
+    border: '1px solid rgba(212, 184, 126, 0.14)',
+    background: 'rgba(212, 184, 126, 0.06)',
+    color: '#f1e8d5',
+    fontSize: 12,
+  },
 }
 
-/** 稀有度星级显示 */
-function Rarity({ rare }) {
-  if (!rare) return null
-  return <div style={S.rarity}>{'★'.repeat(rare)}{'☆'.repeat(Math.max(0, 5 - rare))}</div>
-}
-
-/** 卡牌立绘（resource 字段，可能是字符串或数组） */
 function CardImage({ resource }) {
-  // 取第一张图
   const pic = Array.isArray(resource) ? resource[0] : resource
   const { url, loading } = useResolvedImage(pic)
-  if (!pic) return null
-  if (loading) return <div style={S.imgPlaceholder}>加载中…</div>
-  if (!url) return <div style={S.imgPlaceholder}>无图片</div>
-  return <img src={url} alt="" style={S.img} />
+  if (loading) return <div style={S.posterPlaceholder}>加载中…</div>
+  if (!url) return <div style={S.posterPlaceholder}>暂无图片</div>
+  return <img src={url} alt="" style={S.posterImg} />
 }
 
-/**
- * CardDetail — 卡牌详情组件
- * @param {{ data: object }} props
- */
 export default function CardDetail({ data }) {
   if (!data) return null
 
   const tags = data.tag && typeof data.tag === 'object' ? Object.entries(data.tag) : []
 
   return (
-    <div>
-      {/* 名称和称号 */}
-      <div style={S.title}>{data.name || `卡牌 ${data.id}`}</div>
-      {data.title && <div style={S.subtitle}>{data.title}</div>}
+    <div style={S.shell}>
+      <div style={S.hero}>
+        <div style={S.poster}>
+          <CardImage resource={data.resource} />
+        </div>
+        <div>
+          <div style={S.title}>{data.name || `卡牌 ${data.id}`}</div>
+          {data.title && <div style={S.subtitle}>{data.title}</div>}
+          {data.rare ? <div style={S.rarity}>{'★'.repeat(data.rare)}</div> : null}
+        </div>
+      </div>
 
-      {/* 稀有度 */}
-      <Rarity rare={data.rare} />
+      {data.text && (
+        <div>
+          <div style={S.sectionTitle}>描述</div>
+          <div style={{ ...S.text, marginTop: 10 }}>{data.text}</div>
+        </div>
+      )}
 
-      {/* 立绘 */}
-      <CardImage resource={data.resource} />
-
-      {/* 描述文本 */}
-      {data.text && <div style={S.text}>{data.text}</div>}
-
-      {/* 标签 */}
       {tags.length > 0 && (
         <div>
           <div style={S.sectionTitle}>标签</div>
-          <div style={S.tagWrap}>
-            {tags.map(([k, v]) => (
-              <span key={k} style={S.tag}>{k}{v !== 1 ? ` ${v}` : ''}</span>
+          <div style={{ ...S.tagWrap, marginTop: 10 }}>
+            {tags.map(([key, value]) => (
+              <span key={key} style={S.tag}>
+                {key}{value !== 1 ? ` ${value}` : ''}
+              </span>
             ))}
           </div>
         </div>
