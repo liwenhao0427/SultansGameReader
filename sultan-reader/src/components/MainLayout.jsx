@@ -5,6 +5,7 @@ import Canvas from './Canvas'
 import DetailPanel from './DetailPanel'
 import { mountNodeOnCanvas } from '../services/graphNavigation'
 import { useResolvedImage } from '../services/imageResolver'
+import { getCardRarityFrameAsset } from '../resourceConfig'
 
 const TYPE_TABS = [
   { key: 'rite', label: '仪式' },
@@ -24,6 +25,7 @@ function chunkSummary(entry) {
 
 function CatalogPreview({ item, activeType, cardsById }) {
   let pic = item.image || null
+  let rare = null
 
   if (!pic && activeType === 'rite') {
     // 仪式用 icon 字段
@@ -37,9 +39,20 @@ function CatalogPreview({ item, activeType, cardsById }) {
   if (!pic && activeType === 'card') {
     const card = cardsById?.[String(item.id)]
     pic = Array.isArray(card?.resource) ? (card.resource[0] || null) : (card?.resource || null)
+    rare = card?.rare ?? null
+  }
+
+  if (activeType === 'loot') {
+    const firstCardItem = Array.isArray(item?.item) ? item.item.find((entry) => entry?.type === 'card') : null
+    const card = firstCardItem ? cardsById?.[String(firstCardItem.id)] : null
+    if (card) {
+      pic = Array.isArray(card.resource) ? (card.resource[0] || null) : (card?.resource || null)
+      rare = card?.rare ?? null
+    }
   }
 
   const { url } = useResolvedImage(pic)
+  const { url: rareFrameUrl } = useResolvedImage(rare ? getCardRarityFrameAsset(rare) : null)
   const isCardLike = activeType === 'card' || activeType === 'loot'
 
   return (
@@ -48,6 +61,13 @@ function CatalogPreview({ item, activeType, cardsById }) {
       width: isCardLike ? 40 : 58,
       height: isCardLike ? 87 : 82,
     }}>
+      {rareFrameUrl && (
+        <img
+          src={rareFrameUrl}
+          alt=""
+          style={listPreviewFrameStyle}
+        />
+      )}
       {url ? (
         <img
           src={url}
@@ -545,6 +565,7 @@ const listItemSubTitleStyle = {
 }
 
 const listPreviewStyle = {
+  position: 'relative',
   width: 40,
   height: 87,
   borderRadius: 12,
@@ -555,11 +576,23 @@ const listPreviewStyle = {
 }
 
 const listPreviewImageStyle = {
+  position: 'relative',
+  zIndex: 1,
   width: '100%',
   height: '100%',
   display: 'block',
   objectFit: 'cover',
   objectPosition: 'center',
+}
+
+const listPreviewFrameStyle = {
+  position: 'absolute',
+  inset: 0,
+  zIndex: 0,
+  width: '100%',
+  height: '100%',
+  display: 'block',
+  objectFit: 'fill',
 }
 
 const listPreviewPlaceholderStyle = {

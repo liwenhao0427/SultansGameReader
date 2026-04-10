@@ -7,6 +7,10 @@ function summarize(item, data) {
   return item.name || item.text || data?.name || data?.text || item.id
 }
 
+function hasRelatedRite(data) {
+  return Array.isArray(data?.item) && data.item.some((entry) => entry?.type === 'rite')
+}
+
 export async function mountNodeOnCanvas(item, position, options = {}) {
   const {
     autoSelect = true,
@@ -30,6 +34,13 @@ export async function mountNodeOnCanvas(item, position, options = {}) {
 
   const data = await window.electronAPI.configReadCache(item.type, item.id)
   if (!data) return null
+
+  if (item.type === 'loot' && !hasRelatedRite(data)) {
+    if (autoSelect) {
+      store.setSelectedNode(nodeKey, 'panel')
+    }
+    return nodeKey
+  }
 
   store.addNode(item.id, item.type, {
     label: summarize(item, data),

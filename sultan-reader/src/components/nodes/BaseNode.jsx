@@ -35,29 +35,28 @@ export default function BaseNode({ id, label, color, selected, image, rare }) {
   const { url: imgUrl } = useResolvedImage(image || null)
   const { url: rareFrameUrl } = useResolvedImage(rare ? getCardRarityFrameAsset(rare) : null)
   const isCardLike = rare != null
-  const previewWidth = isCardLike ? 48 : '100%'
-  const previewHeight = isCardLike ? getCardFrameHeight(48) : 72
+  const previewWidth = isCardLike ? 72 : 118
+  const previewHeight = isCardLike ? getCardFrameHeight(72) : 84
+  const displayId = formatDisplayId(id)
 
   return (
     <div style={{
       background: '#1e1e2e',
       border: `${selected ? 3 : 2}px solid ${selected ? lighten(color) : color}`,
       borderRadius: 6,
-      padding: imgUrl ? '6px 8px' : '8px 12px',
-      minWidth: 120,
+      padding: imgUrl ? '8px' : '8px 12px',
+      minWidth: imgUrl ? previewWidth + 16 : 120,
       maxWidth: 200,
       boxSizing: 'border-box',
     }}>
       <Handle type="target" position={Position.Top} />
 
-      {/* 图片预览（有图时显示） */}
       {imgUrl && (
         <div style={{
           width: previewWidth,
           height: previewHeight,
-          borderRadius: 4,
+          borderRadius: 6,
           overflow: 'hidden',
-          marginBottom: 6,
           position: 'relative',
           background: 'rgba(12, 10, 8, 0.8)',
           backgroundImage: rareFrameUrl ? `url("${rareFrameUrl}")` : 'none',
@@ -74,33 +73,44 @@ export default function BaseNode({ id, label, color, selected, image, rare }) {
               display: 'block',
             }}
           />
+          <div style={overlayShadeStyle} />
+          <div style={overlayTextWrapStyle}>
+            <div style={{ ...overlayIdStyle, color }}>
+              {displayId}
+            </div>
+            <div style={overlayLabelStyle}>
+              {label}
+            </div>
+          </div>
         </div>
       )}
 
-      {/* 节点 ID */}
-      <div style={{
-        fontFamily: 'monospace',
-        fontSize: 12,
-        color,
-        marginBottom: 4,
-        overflow: 'hidden',
-        textOverflow: 'ellipsis',
-        whiteSpace: 'nowrap',
-      }}>
-        {formatDisplayId(id)}
-      </div>
+      {!imgUrl && (
+        <>
+          <div style={{
+            fontFamily: 'monospace',
+            fontSize: 12,
+            color,
+            marginBottom: 4,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}>
+            {displayId}
+          </div>
 
-      {/* 名称/摘要，最多 2 行 */}
-      <div style={{
-        fontSize: 11,
-        color: '#a6adc8',
-        display: '-webkit-box',
-        WebkitLineClamp: 2,
-        WebkitBoxOrient: 'vertical',
-        overflow: 'hidden',
-      }}>
-        {label}
-      </div>
+          <div style={{
+            fontSize: 11,
+            color: '#a6adc8',
+            display: '-webkit-box',
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: 'vertical',
+            overflow: 'hidden',
+          }}>
+            {label}
+          </div>
+        </>
+      )}
 
       <Handle type="source" position={Position.Bottom} />
     </div>
@@ -114,4 +124,40 @@ function lighten(hex) {
   const g = Math.min(255, ((n >> 8) & 0xff) + 40)
   const b = Math.min(255, (n & 0xff) + 40)
   return `rgb(${r},${g},${b})`
+}
+
+const overlayShadeStyle = {
+  position: 'absolute',
+  inset: 0,
+  background: 'linear-gradient(180deg, rgba(8, 7, 6, 0.06) 0%, rgba(8, 7, 6, 0.16) 48%, rgba(8, 7, 6, 0.92) 100%)',
+}
+
+const overlayTextWrapStyle = {
+  position: 'absolute',
+  left: 0,
+  right: 0,
+  bottom: 0,
+  padding: '8px 8px 7px',
+}
+
+const overlayIdStyle = {
+  fontFamily: 'monospace',
+  fontSize: 11,
+  lineHeight: 1.2,
+  textShadow: '0 1px 2px rgba(0, 0, 0, 0.8)',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+}
+
+const overlayLabelStyle = {
+  marginTop: 4,
+  fontSize: 11,
+  lineHeight: 1.35,
+  color: '#f1e8d5',
+  textShadow: '0 1px 2px rgba(0, 0, 0, 0.88)',
+  display: '-webkit-box',
+  WebkitLineClamp: 3,
+  WebkitBoxOrient: 'vertical',
+  overflow: 'hidden',
 }

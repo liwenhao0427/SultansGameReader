@@ -314,10 +314,10 @@ function RelationOptionCard({ option, selected, onToggle }) {
 }
 
 function CanvasInner() {
-  const { nodes, edges, setSelectedNode, setNodes: setCanvasNodes } = useCanvasStore()
+  const { nodes, edges, selectedNodeId, setSelectedNode, setNodes: setCanvasNodes } = useCanvasStore()
   const cardsLite = useConfigStore((s) => s.cardsLite)
   const cardsById = useConfigStore((s) => s.cardsById)
-  const { setNodes, screenToFlowPosition } = useReactFlow()
+  const { setNodes, screenToFlowPosition, setCenter } = useReactFlow()
   const { triggeredEvents, counterValues } = usePlayerStore()
 
   const hasPlayerData = triggeredEvents.size > 0 || counterValues.size > 0
@@ -554,6 +554,21 @@ function CanvasInner() {
     if (nodes.length <= 1) return
     runAutoLayout()
   }, [edges, nodes, runAutoLayout])
+
+  useEffect(() => {
+    if (!selectedNodeId) return
+    const activeNode = nodes.find((node) => node.id === selectedNodeId)
+    if (!activeNode) return
+
+    const width = activeNode.measured?.width || AUTO_LAYOUT_NODE_SIZE[activeNode.type]?.width || AUTO_LAYOUT_NODE_SIZE.default.width
+    const height = activeNode.measured?.height || AUTO_LAYOUT_NODE_SIZE[activeNode.type]?.height || AUTO_LAYOUT_NODE_SIZE.default.height
+
+    setCenter(
+      activeNode.position.x + width / 2,
+      activeNode.position.y + height / 2,
+      { duration: 420 }
+    )
+  }, [nodes, selectedNodeId, setCenter])
 
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative' }}>
