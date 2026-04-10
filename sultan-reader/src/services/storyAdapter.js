@@ -1,5 +1,5 @@
 import { parseConditionObject } from './conditionParser'
-import { FIXED_ITEM_SLOT_ASSETS, FIXED_SUDAN_SLOT_ASSETS, FIXED_TAG_CARD_IDS } from '../resourceConfig'
+import { EVENT_READER_DEFAULTS, FIXED_ITEM_SLOT_ASSETS, FIXED_SUDAN_SLOT_ASSETS, FIXED_TAG_CARD_IDS } from '../resourceConfig'
 
 function normalizeArray(value) {
   if (!value) return []
@@ -478,6 +478,115 @@ function pickCardImage(card) {
   return resource || null
 }
 
+function extractCardIdFromIcon(icon) {
+  if (typeof icon !== 'string') return null
+  const match = icon.match(/cards\/(\d+)/)
+  return match?.[1] || null
+}
+
+function buildCardSummaryFromIcon(icon, cardsMap, cardsById) {
+  const cardId = extractCardIdFromIcon(icon)
+  if (!cardId) return null
+  return buildCardSummary(cardId, cardsMap, cardsById)
+}
+
+function normalizePromptEntries(promptValue) {
+  return normalizeArray(promptValue)
+    .map((entry, index) => {
+      if (typeof entry === 'string') {
+        return {
+          id: `prompt:${index}`,
+          text: entry,
+          icon: null,
+        }
+      }
+
+      if (!entry || typeof entry !== 'object') return null
+
+      return {
+        id: entry.id || `prompt:${index}`,
+        text: entry.text || '',
+        icon: entry.icon || null,
+      }
+    })
+    .filter((entry) => entry && (entry.text || entry.icon))
+}
+
+function normalizeOptionEntry(optionValue) {
+  if (!optionValue || typeof optionValue !== 'object') return null
+
+  return {
+    id: optionValue.id || 'option',
+    text: optionValue.text || '',
+    icon: optionValue.icon || null,
+    items: normalizeArray(optionValue.items)
+      .map((item, index) => ({
+        id: item?.tag || item?.id || `${optionValue.id || 'option'}:${index}`,
+        tag: item?.tag || null,
+        text: item?.text || `选项 ${index + 1}`,
+      }))
+      .filter((item) => item.tag || item.text),
+  }
+}
+
+function extractEventEffects(action = {}, cardsMap, cardsById) {
+  if (!action || typeof action !== 'object') return []
+
+  const filtered = Object.fromEntries(
+    Object.entries(action).filter(([key]) => (
+      !key.endsWith('__c') &&
+      !key.endsWith('__ca') &&
+      !key.endsWith('__ci') &&
+      key !== 'prompt' &&
+      key !== 'option' &&
+      key !== 'delay' &&
+      key !== 'event_on' &&
+      key !== 'event_off' &&
+      key !== 'rite' &&
+      key !== 'over' &&
+      key !== 'success' &&
+      key !== 'failed' &&
+      !key.startsWith('case:')
+    ))
+  )
+
+  return buildResultEffects(filtered, cardsMap, cardsById)
+}
+
+function buildEventActionNode(action = {}, cardsMap, cardsById, nodeId = 'event-root') {
+  const promptEntries = normalizePromptEntries(action.prompt)
+  const option = normalizeOptionEntry(action.option)
+  const promptCards = promptEntries
+    .map((entry) => buildCardSummaryFromIcon(entry.icon, cardsMap, cardsById))
+    .filter(Boolean)
+  const optionCard = buildCardSummaryFromIcon(option?.icon, cardsMap, cardsById)
+  const relatedCards = [...promptCards, optionCard].filter(Boolean)
+  const uniqCardMap = new Map(relatedCards.map((card) => [card.id, card]))
+  const choices = (option?.items || []).map((item) => {
+    const branchAction = item.tag ? action[`case:${item.tag}`] : null
+    return {
+      id: `${nodeId}:${item.tag || item.id}`,
+      tag: item.tag || item.id,
+      text: item.text,
+      branch: branchAction ? buildEventActionNode(branchAction, cardsMap, cardsById, `${nodeId}:${item.tag || item.id}`) : null,
+    }
+  })
+
+  return {
+    id: nodeId,
+    promptEntries,
+    option,
+    choices,
+    actions: extractActionTargets(action).filter((entry) => (
+      entry.targetType === 'rite' ||
+      entry.targetType === 'over' ||
+      (entry.targetType === 'event' && entry.key !== 'event_off')
+    )),
+    effects: extractEventEffects(action, cardsMap, cardsById),
+    relatedCards: Array.from(uniqCardMap.values()),
+  }
+}
+
 export function adaptStoryData(type, data, cardsMap, cardsById = {}) {
   if (!data) return null
 
@@ -536,6 +645,12 @@ export function adaptStoryData(type, data, cardsMap, cardsById = {}) {
       }
 
     case 'event':
+      const eventRootAction = normalizeArray(data.settlement)
+        .map((item) => item?.action)
+        .find((action) => action && typeof action === 'object') || {}
+      const eventFlow = buildEventActionNode(eventRootAction, cardsMap, cardsById, `event:${data.id}:root`)
+      const fallbackCharacterCard = buildCardSummary(EVENT_READER_DEFAULTS.fallbackCharacterCardId, cardsMap, cardsById)
+
       return {
         kind: 'event',
         title: data.text || `事件 ${data.id}`,
@@ -544,6 +659,9 @@ export function adaptStoryData(type, data, cardsMap, cardsById = {}) {
         meta: parseConditionObject(data.condition, cardsMap),
         image: pickEventImage(data),
         slots: [],
+        headerIcon: eventFlow.relatedCards?.[0]?.image || null,
+        fallbackCharacterCard,
+        eventFlow,
         segments: normalizeArray(data.settlement)
           .map((item) => buildPhaseItem(item, cardsMap, cardsById, '事件分支'))
           .filter((item) => item.text || item.title || item.conditions.length || item.options.length || item.actions.length),

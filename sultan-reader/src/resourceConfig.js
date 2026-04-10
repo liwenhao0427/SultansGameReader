@@ -44,6 +44,17 @@ export const READER_RESOURCE_ASSETS = {
 }
 
 /**
+ * 事件阅读器固定回退配置。
+ *
+ * 说明：
+ * - 事件正文没有显式 icon 或相关贴图时，右下角回退显示主角卡牌。
+ * - 这里只维护“阅读器展示层”用到的固定默认值，避免组件里直接硬编码卡牌 id。
+ */
+export const EVENT_READER_DEFAULTS = {
+  fallbackCharacterCardId: '2000001',
+}
+
+/**
  * 仪式模板默认配置。
  * 没有 mapping_id 时回退到默认模板，保证背景和槽位布局始终可展示。
  */

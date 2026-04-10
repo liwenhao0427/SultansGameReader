@@ -9,10 +9,30 @@ import RawFileView from '../RawFileView'
 
 const FULLSCREEN_TYPES = new Set(['rite', 'event', 'dt', 'over', 'after_story'])
 
-function splitIntro(text) {
-  if (!text) return []
+function normalizeTextContent(text) {
+  if (text == null) return ''
+  if (typeof text === 'string') return text
+  if (Array.isArray(text)) {
+    return text
+      .map((item) => normalizeTextContent(item))
+      .filter(Boolean)
+      .join('\n\n')
+  }
+  if (typeof text === 'object') {
+    if (typeof text.text === 'string') return text.text
+    if (typeof text.result_text === 'string') return text.result_text
+    if (typeof text.tips_text === 'string') return text.tips_text
+    if (typeof text.word === 'string') return text.word
+    return ''
+  }
+  return String(text)
+}
 
-  return text
+function splitIntro(text) {
+  const normalized = normalizeTextContent(text)
+  if (!normalized) return []
+
+  return normalized
     .split(/(?<=[。！？\n])/)
     .map((chunk) => chunk.trim())
     .filter(Boolean)
@@ -140,6 +160,44 @@ function PreviewImage({ pic, maxHeight = 320 }) {
       )}
       {!loading && !url && <div style={imageFallbackStyle}>暂无对应图片</div>}
     </div>
+  )
+}
+
+function EventBackdrop({ children }) {
+  const { url } = useResolvedImage(READER_RESOURCE_ASSETS.noteBackground)
+
+  return (
+    <div style={eventBackdropShellStyle}>
+      <div style={eventBackdropEdgeStyle}>
+        <div style={{
+          ...eventBackdropHalfStyle,
+          backgroundImage: url ? `url("${url}")` : eventFallbackBoardStyle.backgroundImage,
+        }} />
+        <div style={{
+          ...eventBackdropHalfStyle,
+          backgroundImage: url ? `url("${url}")` : eventFallbackBoardStyle.backgroundImage,
+          transform: 'scaleX(-1)',
+        }} />
+      </div>
+      <div style={eventBackdropCenterStyle}>
+        {children}
+      </div>
+    </div>
+  )
+}
+
+function EventChoiceCard({ option, active, onSelect }) {
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      style={{
+        ...eventChoiceButtonStyle,
+        ...(active ? eventChoiceButtonActiveStyle : null),
+      }}
+    >
+      {option.text}
+    </button>
   )
 }
 
@@ -590,6 +648,7 @@ export default function StoryInspector({ type, data, onClose }) {
   const [executionStepIndex, setExecutionStepIndex] = useState(0)
   const [executionAutoAdvance, setExecutionAutoAdvance] = useState(false)
   const [bgPreviewOpen, setBgPreviewOpen] = useState(false)
+  const [eventChoicePath, setEventChoicePath] = useState([])
   const executionBodyRef = useRef(null)
   const readerBodyRef = useRef(null)
   const bubbleTimersRef = useRef({})
@@ -625,6 +684,7 @@ export default function StoryInspector({ type, data, onClose }) {
     setRevealedSegmentCount(0)
     setExecutionOpen(false)
     setExecutionStepIndex(0)
+    setEventChoicePath([])
   }, [type, data?.id, data?._source_path])
 
   useEffect(() => {
@@ -755,6 +815,37 @@ export default function StoryInspector({ type, data, onClose }) {
   const dialogueLines = useMemo(() => {
     return splitIntro(model?.intro).filter(Boolean)
   }, [model?.intro])
+
+  const eventNodeHistory = useMemo(() => {
+    if (type !== 'event' || !model?.eventFlow) return []
+
+    const history = []
+    let currentNode = model.eventFlow
+    history.push(currentNode)
+
+    for (const choiceTag of eventChoicePath) {
+      const nextChoice = currentNode?.choices?.find((choice) => choice.tag === choiceTag)
+      if (!nextChoice?.branch) break
+      currentNode = nextChoice.branch
+      history.push(currentNode)
+    }
+
+    return history
+  }, [eventChoicePath, model?.eventFlow, type])
+
+  const currentEventNode = eventNodeHistory[eventNodeHistory.length - 1] || null
+
+  const eventVisualCard = useMemo(() => {
+    if (type !== 'event') return null
+
+    const candidates = [
+      ...(currentEventNode?.relatedCards || []),
+      ...(model?.eventFlow?.relatedCards || []),
+      model?.fallbackCharacterCard || null,
+    ].filter(Boolean)
+
+    return candidates[0] || null
+  }, [currentEventNode?.relatedCards, model?.eventFlow?.relatedCards, model?.fallbackCharacterCard, type])
 
   const selectedHintIds = useMemo(() => {
     return new Set(Object.values(settlementSelections).filter(Boolean))
@@ -974,6 +1065,16 @@ export default function StoryInspector({ type, data, onClose }) {
     resetFlow(activeSlotId, slotSelections, settlementSelections, nextId)
   }
 
+  function handleSelectEventChoice(choiceTag, depth) {
+    setEventChoicePath((current) => {
+      const prefix = current.slice(0, depth)
+      if (current[depth] === choiceTag) {
+        return prefix
+      }
+      return [...prefix, choiceTag]
+    })
+  }
+
   function handleOpenExecution() {
     setExecutionStepIndex(0)
     setExecutionAutoAdvance(false)
@@ -1008,6 +1109,7 @@ export default function StoryInspector({ type, data, onClose }) {
     setExecutionOpen(false)
     setExecutionStepIndex(0)
     setExecutionAutoAdvance(false)
+    setEventChoicePath([])
   }
 
   useEffect(() => () => {
@@ -1026,6 +1128,18 @@ export default function StoryInspector({ type, data, onClose }) {
 
     return () => cancelAnimationFrame(frame)
   }, [revealedLineCount, revealedSegmentCount])
+
+  useEffect(() => {
+    if (type !== 'event' || !readerBodyRef.current) return
+
+    const frame = requestAnimationFrame(() => {
+      const element = readerBodyRef.current
+      if (!element) return
+      element.scrollTo({ top: element.scrollHeight, behavior: 'smooth' })
+    })
+
+    return () => cancelAnimationFrame(frame)
+  }, [eventChoicePath, type])
 
   useEffect(() => {
     if (!autoAdvance) return
@@ -1109,7 +1223,92 @@ export default function StoryInspector({ type, data, onClose }) {
     </div>
   )
 
-  const content = (
+  const eventContent = type === 'event' ? (
+    <div style={eventReaderShellStyle}>
+      <EventBackdrop>
+        <div style={eventReaderGridStyle}>
+          <div style={eventReaderTextStageStyle} ref={readerBodyRef}>
+            {headerBlock}
+
+            {eventNodeHistory.map((node, depth) => {
+              const selectedChoice = eventChoicePath[depth] || null
+              const promptLines = node.promptEntries || []
+              const optionText = normalizeTextContent(node.option?.text)
+              const activeChoices = node.choices || []
+
+              return (
+                <div key={node.id} style={eventStoryBlockStyle}>
+                  {promptLines.map((entry) => (
+                    <div key={entry.id} style={eventParagraphStyle}>
+                      {normalizeTextContent(entry.text)}
+                    </div>
+                  ))}
+
+                  {optionText && (
+                    <div style={eventParagraphStyle}>
+                      {optionText}
+                    </div>
+                  )}
+
+                  {node.effects?.length > 0 && (
+                    <EffectSummary effects={node.effects} />
+                  )}
+
+                  {node.actions?.length > 0 && (
+                    <div style={eventActionRowStyle}>
+                      {node.actions.map((action, actionIndex) => (
+                        <button
+                          key={`${node.id}:${action.key}:${action.value}:${actionIndex}`}
+                          type="button"
+                          style={actionButtonStyle}
+                          onClick={() => handleOpenAction(action, actionIndex)}
+                        >
+                          打开{action.targetType === 'rite' ? '仪式' : action.targetType === 'event' ? '事件' : '结局'} {action.targetId}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {activeChoices.length > 0 && (
+                    <div style={eventChoicesWrapStyle}>
+                      {activeChoices.map((choice) => (
+                        <EventChoiceCard
+                          key={choice.id}
+                          option={choice}
+                          active={selectedChoice === choice.tag}
+                          onSelect={() => handleSelectEventChoice(choice.tag, depth)}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+
+            {eventNodeHistory.length === 0 && (
+              <div style={eventParagraphStyle}>
+                这个事件没有可直接阅读的正文，当前仅展示事件底板。
+              </div>
+            )}
+          </div>
+
+          <div style={eventReaderVisualStageStyle}>
+            {model.image ? (
+              <PreviewImage pic={model.image} maxHeight={360} />
+            ) : (
+              <div style={eventVisualSpacerStyle} />
+            )}
+
+            <div style={eventPortraitDockStyle}>
+              <CardPortrait card={eventVisualCard} compact={false} />
+            </div>
+          </div>
+        </div>
+      </EventBackdrop>
+    </div>
+  ) : null
+
+  const content = type === 'event' ? eventContent : (
     <div style={{
       height: '100%',
       minHeight: 0,
@@ -1745,6 +1944,131 @@ export default function StoryInspector({ type, data, onClose }) {
 const imageFallbackStyle = {
   color: 'rgba(241, 232, 213, 0.58)',
   fontSize: 14,
+}
+
+const eventFallbackBoardStyle = {
+  backgroundImage: 'linear-gradient(180deg, rgba(51, 39, 25, 0.92), rgba(17, 13, 10, 0.98))',
+}
+
+const eventReaderShellStyle = {
+  height: '100%',
+  minHeight: 0,
+}
+
+const eventBackdropShellStyle = {
+  position: 'relative',
+  height: '100%',
+  minHeight: 0,
+  borderRadius: 32,
+  overflow: 'hidden',
+  background: 'radial-gradient(circle at top, rgba(67, 48, 27, 0.28), rgba(8, 6, 5, 0.96))',
+  border: '1px solid rgba(212, 184, 126, 0.12)',
+}
+
+const eventBackdropEdgeStyle = {
+  position: 'absolute',
+  inset: 0,
+  display: 'grid',
+  gridTemplateColumns: '1fr 1fr',
+  opacity: 0.96,
+}
+
+const eventBackdropHalfStyle = {
+  backgroundRepeat: 'no-repeat',
+  backgroundSize: '100% 100%',
+  backgroundPosition: 'center',
+}
+
+const eventBackdropCenterStyle = {
+  position: 'relative',
+  zIndex: 1,
+  height: '100%',
+  minHeight: 0,
+  padding: '28px 30px',
+}
+
+const eventReaderGridStyle = {
+  display: 'grid',
+  gridTemplateColumns: 'minmax(0, 1.2fr) 248px',
+  gap: 24,
+  height: '100%',
+  minHeight: 0,
+}
+
+const eventReaderTextStageStyle = {
+  minHeight: 0,
+  overflowY: 'auto',
+  paddingRight: 8,
+  display: 'grid',
+  alignContent: 'start',
+  gap: 18,
+}
+
+const eventReaderVisualStageStyle = {
+  minHeight: 0,
+  display: 'grid',
+  gridTemplateRows: 'minmax(0, 1fr) auto',
+  gap: 16,
+  alignItems: 'end',
+}
+
+const eventVisualSpacerStyle = {
+  minHeight: 0,
+}
+
+const eventPortraitDockStyle = {
+  display: 'flex',
+  justifyContent: 'flex-end',
+  alignItems: 'flex-end',
+  paddingBottom: 6,
+}
+
+const eventStoryBlockStyle = {
+  display: 'grid',
+  gap: 14,
+}
+
+const eventParagraphStyle = {
+  padding: '18px 24px',
+  borderRadius: 18,
+  background: 'linear-gradient(180deg, rgba(7, 7, 6, 0.76), rgba(11, 10, 8, 0.9))',
+  color: '#f4ead6',
+  fontSize: 17,
+  lineHeight: 1.9,
+  whiteSpace: 'pre-wrap',
+  textShadow: '0 1px 6px rgba(0, 0, 0, 0.24)',
+}
+
+const eventChoicesWrapStyle = {
+  display: 'grid',
+  gap: 10,
+  marginTop: 2,
+}
+
+const eventChoiceButtonStyle = {
+  width: '100%',
+  padding: '14px 18px',
+  borderRadius: 14,
+  border: '1px solid rgba(212, 184, 126, 0.2)',
+  background: 'linear-gradient(180deg, rgba(52, 44, 30, 0.86), rgba(23, 18, 13, 0.94))',
+  color: '#efe2c7',
+  fontSize: 16,
+  lineHeight: 1.6,
+  textAlign: 'center',
+  cursor: 'pointer',
+  transition: 'all 160ms ease',
+}
+
+const eventChoiceButtonActiveStyle = {
+  border: '1px solid rgba(239, 215, 169, 0.52)',
+  background: 'linear-gradient(180deg, rgba(95, 73, 43, 0.96), rgba(42, 31, 19, 0.96))',
+  boxShadow: '0 10px 24px rgba(0, 0, 0, 0.22)',
+}
+
+const eventActionRowStyle = {
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: 10,
 }
 
 const storyHeaderShellStyle = {
