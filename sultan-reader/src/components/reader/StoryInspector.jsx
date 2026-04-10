@@ -3,7 +3,7 @@ import useConfigStore from '../../stores/useConfigStore'
 import { useResolvedImage } from '../../services/imageResolver'
 import { adaptStoryData } from '../../services/storyAdapter'
 import { READER_CHROME } from '../../readerChromeConfig'
-import { getCardRarityFrameAsset } from '../../resourceConfig'
+import { getCardRarityFrameAsset, READER_RESOURCE_ASSETS, RITE_TEMPLATE_DEFAULTS } from '../../resourceConfig'
 import { linkNodesOnCanvas, mountNodeOnCanvas } from '../../services/graphNavigation'
 import RawFileView from '../RawFileView'
 
@@ -165,6 +165,32 @@ function ConditionPreview({ text, color = '#dcc8a3', maxLines = 2 }) {
   )
 }
 
+function EffectSummary({ effects, compact = false }) {
+  if (!effects?.length) return null
+
+  return (
+    <div style={{
+      display: 'flex',
+      flexWrap: 'wrap',
+      gap: 8,
+      marginTop: compact ? 6 : 10,
+    }}>
+      {effects.map((effect, index) => (
+        <div
+          key={`${effect.type}-${effect.label}-${index}`}
+          title={effect.cards?.length > 0 ? `${effect.label}：${effect.cards.map((card) => card.name).join(' / ')}` : effect.label}
+          style={effectChipStyle}
+        >
+          {effect.label}
+          {effect.cards?.length > 0 && (
+            <span style={{ opacity: 0.92 }}>：{effect.cards.map((card) => card.name).join(' / ')}</span>
+          )}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function SlotButton({ slot, active, candidate, tags, onClick, slotBgKey, bubbleText }) {
   const { url: slotBgUrl } = useResolvedImage(slotBgKey)
   const previewCard = candidate?.cards?.[0] || slot.defaultCards?.[0] || null
@@ -294,10 +320,11 @@ function CandidateHandItem({ candidate, active, onSelect }) {
         textAlign: 'left',
         display: 'grid',
         gap: 10,
+        gridTemplateRows: '160px',
       }}
     >
       <div style={{
-        minHeight: 122,
+        height: 160,
         borderRadius: 18,
         overflow: 'hidden',
         position: 'relative',
@@ -324,7 +351,19 @@ function CandidateHandItem({ candidate, active, onSelect }) {
           bottom: 12,
           zIndex: 2,
         }}>
-          <div style={{ fontSize: 16, fontWeight: 800, lineHeight: 1.3, color: '#fff2d7' }}>
+          <div
+            title={candidate.label}
+            style={{
+              fontSize: 16,
+              fontWeight: 800,
+              lineHeight: 1.3,
+              color: '#fff2d7',
+              display: '-webkit-box',
+              WebkitBoxOrient: 'vertical',
+              WebkitLineClamp: 2,
+              overflow: 'hidden',
+            }}
+          >
             {candidate.label}
           </div>
           <ConditionPreview text={candidate.conditionText} color="#e1cfad" />
@@ -342,7 +381,17 @@ function CandidateHandItem({ candidate, active, onSelect }) {
             fontSize: 18,
             fontWeight: 700,
           }}>
-            {candidate.label}
+            <span
+              title={candidate.label}
+              style={{
+                display: '-webkit-box',
+                WebkitBoxOrient: 'vertical',
+                WebkitLineClamp: 3,
+                overflow: 'hidden',
+              }}
+            >
+              {candidate.label}
+            </span>
           </div>
         )}
       </div>
@@ -394,14 +443,81 @@ function SettlementHintItem({ hint, active, onToggle }) {
           bottom: 10,
           zIndex: 2,
         }}>
-          <div style={{ fontSize: 14, fontWeight: 800, lineHeight: 1.3, color: '#fff0d3' }}>
+          <div
+            title={hint.label}
+            style={{
+              fontSize: 14,
+              fontWeight: 800,
+              lineHeight: 1.3,
+              color: '#fff0d3',
+              display: '-webkit-box',
+              WebkitBoxOrient: 'vertical',
+              WebkitLineClamp: 2,
+              overflow: 'hidden',
+            }}
+          >
             {hint.label}
           </div>
           <ConditionPreview text={hint.conditionText} />
+          <EffectSummary effects={hint.effects} compact />
         </div>
       </div>
     </button>
   )
+}
+
+function pickDefaultHintId(hints = []) {
+  if (!Array.isArray(hints) || hints.length === 0) return null
+  return hints[hints.length - 1]?.id || null
+}
+
+function buildDefaultSettlementSelections(slots = []) {
+  return Object.fromEntries(
+    slots.map((slot) => [slot.id, pickDefaultHintId(slot.settlementHints)])
+  )
+}
+
+function buildTemplateSlotLayout(slots = {}, activeSlotIds = []) {
+  const entries = activeSlotIds
+    .map((slotId) => ({ slotId, config: slots?.[slotId] || null }))
+    .filter((entry) => entry.config?.pos)
+
+  if (entries.length === 0) return {}
+
+  const xs = entries.map((entry) => Number(entry.config.pos.x) || 0)
+  const ys = entries.map((entry) => Math.abs(Number(entry.config.pos.y) || 0))
+  const minX = Math.min(...xs)
+  const maxX = Math.max(...xs)
+  const minY = Math.min(...ys)
+  const maxY = Math.max(...ys)
+  const rangeX = Math.max(1, maxX - minX)
+  const rangeY = Math.max(1, maxY - minY)
+
+  return Object.fromEntries(entries.map(({ slotId, config }) => {
+    const x = Number(config.pos.x) || 0
+    const y = Math.abs(Number(config.pos.y) || 0)
+    const left = 8 + ((x - minX) / rangeX) * 58
+    const top = 10 + ((y - minY) / rangeY) * 54
+    const scale = Math.max(0.72, Math.min(1.12, Number(config.scale?.x) || 1))
+
+    return [slotId, {
+      left: `${left}%`,
+      top: `${top}%`,
+      transform: `translate(-50%, -50%) scale(${scale}) rotate(${Number(config.rotation_z) || 0}deg)`,
+      zIndex: 2,
+    }]
+  }))
+}
+
+function matchesSlotOccupancyCondition(conditionRaw = {}, slotState = {}) {
+  if (!conditionRaw || typeof conditionRaw !== 'object') return true
+
+  return Object.entries(conditionRaw).every(([key, value]) => {
+    if (!/^!?s\d+$/.test(key) || Number(value) <= 0) return true
+    const slotId = key.startsWith('!') ? key.slice(1) : key
+    const isEmpty = slotState[slotId]?.isEmpty ?? false
+    return key.startsWith('!') ? isEmpty : !isEmpty
+  })
 }
 
 export default function StoryInspector({ type, data, onClose }) {
@@ -415,21 +531,25 @@ export default function StoryInspector({ type, data, onClose }) {
   const [activeSlotId, setActiveSlotId] = useState(null)
   const [slotSelections, setSlotSelections] = useState({})
   const [settlementSelections, setSettlementSelections] = useState({})
-  const [globalSettlementSelections, setGlobalSettlementSelections] = useState([])
+  const [globalSettlementSelection, setGlobalSettlementSelection] = useState(null)
   const [revealedLineCount, setRevealedLineCount] = useState(1)
   const [revealedSegmentCount, setRevealedSegmentCount] = useState(0)
   const [autoAdvance, setAutoAdvance] = useState(false)
   const [conditionFilterText, setConditionFilterText] = useState('')
   const [slotBubbleTexts, setSlotBubbleTexts] = useState({})
+  const [executionOpen, setExecutionOpen] = useState(false)
+  const [executionStepIndex, setExecutionStepIndex] = useState(0)
   const readerBodyRef = useRef(null)
   const bubbleTimersRef = useRef({})
+  const { url: templateBgUrl } = useResolvedImage(templateData?.bg || READER_RESOURCE_ASSETS.defaultRiteBackground)
+  const { url: templateFgUrl } = useResolvedImage(templateData?.fg || null)
 
-  function buildDialogueLines(slotId, selections, settlementState, globalSelections = globalSettlementSelections) {
+  function buildDialogueLines(slotId, selections, settlementState, globalSelection = globalSettlementSelection) {
     const slot = model?.slots?.find((entry) => entry.id === slotId) || null
     void slot
     void selections
     void settlementState
-    void globalSelections
+    void globalSelection
 
     return splitIntro(model?.intro)
   }
@@ -440,41 +560,46 @@ export default function StoryInspector({ type, data, onClose }) {
     const defaults = Object.fromEntries(
       (model.slots || []).map((slot) => [slot.id, slot.candidates?.[0]?.id || null])
     )
-    const hintDefaults = Object.fromEntries(
-      (model.slots || []).map((slot) => [slot.id, []])
-    )
+    const hintDefaults = buildDefaultSettlementSelections(model.slots || [])
     const firstSlotId = model.slots?.[0]?.id || null
-    const firstCandidate = model.slots?.[0]?.candidates?.[0] || null
     const initialLines = splitIntro(model.intro)
 
     setSlotSelections(defaults)
     setSettlementSelections(hintDefaults)
-    setGlobalSettlementSelections([])
+    setGlobalSettlementSelection(pickDefaultHintId(model.globalSettlementHints || []))
     setSlotBubbleTexts({})
     setActiveSlotId(firstSlotId)
     setRevealedLineCount(initialLines.length > 0 ? 1 : 0)
     setRevealedSegmentCount(0)
+    setExecutionOpen(false)
+    setExecutionStepIndex(0)
   }, [type, data?.id, data?._source_path])
 
   useEffect(() => {
     let cancelled = false
 
-    if (type !== 'rite' || !model?.mappingId) {
+    if (type !== 'rite') {
       setTemplateData(null)
       return () => {
         cancelled = true
       }
     }
 
-    window.electronAPI.configReadCache('rite_template', String(model.mappingId))
+    const templateId = String(model?.mappingId || RITE_TEMPLATE_DEFAULTS.id)
+
+    window.electronAPI.configReadCache('rite_template', templateId)
+      .then(async (result) => {
+        if (result || templateId === RITE_TEMPLATE_DEFAULTS.id) return result
+        return window.electronAPI.configReadCache('rite_template', RITE_TEMPLATE_DEFAULTS.id)
+      })
       .then((result) => {
         if (!cancelled) {
-          setTemplateData(result || null)
+          setTemplateData(result || { bg: RITE_TEMPLATE_DEFAULTS.background, slots: {} })
         }
       })
       .catch(() => {
         if (!cancelled) {
-          setTemplateData(null)
+          setTemplateData({ bg: RITE_TEMPLATE_DEFAULTS.background, slots: {} })
         }
       })
 
@@ -493,23 +618,73 @@ export default function StoryInspector({ type, data, onClose }) {
     return selectedSlot.candidates?.find((candidate) => candidate.id === slotSelections[selectedSlot.id]) || selectedSlot.candidates?.[0] || null
   }, [selectedSlot, slotSelections])
 
+  const slotSelectionState = useMemo(() => {
+    return Object.fromEntries((model?.slots || []).map((slot) => {
+      const candidate = slot.candidates?.find((entry) => entry.id === slotSelections[slot.id]) || slot.candidates?.[0] || null
+      return [slot.id, {
+        candidate,
+        isEmpty: Boolean(candidate?.isEmpty),
+      }]
+    }))
+  }, [model?.slots, slotSelections])
+
+  const visibleSettlementHintsBySlot = useMemo(() => {
+    return Object.fromEntries((model?.slots || []).map((slot) => [
+      slot.id,
+      (slot.settlementHints || []).filter((hint) => matchesSlotOccupancyCondition(hint.conditionRaw, slotSelectionState)),
+    ]))
+  }, [model?.slots, slotSelectionState])
+
+  const visibleGlobalSettlementHints = useMemo(() => (
+    (model?.globalSettlementHints || []).filter((hint) => matchesSlotOccupancyCondition(hint.conditionRaw, slotSelectionState))
+  ), [model?.globalSettlementHints, slotSelectionState])
+
   const selectedSettlementHints = useMemo(() => {
     if (!selectedSlot) return []
-    return (selectedSlot.settlementHints || []).filter((hint) => settlementSelections[selectedSlot.id]?.includes(hint.id))
-  }, [selectedSlot, settlementSelections])
+    const selectedId = settlementSelections[selectedSlot.id]
+    return (visibleSettlementHintsBySlot[selectedSlot.id] || []).filter((hint) => hint.id === selectedId)
+  }, [selectedSlot, settlementSelections, visibleSettlementHintsBySlot])
+
+  useEffect(() => {
+    if (!model?.slots?.length) return
+
+    setSettlementSelections((current) => {
+      let changed = false
+      const next = { ...current }
+
+      for (const slot of model.slots) {
+        const visibleHints = visibleSettlementHintsBySlot[slot.id] || []
+        const currentId = next[slot.id] || null
+        const valid = visibleHints.some((hint) => hint.id === currentId)
+        const fallbackId = pickDefaultHintId(visibleHints)
+        if (!valid && currentId !== fallbackId) {
+          next[slot.id] = fallbackId
+          changed = true
+        }
+      }
+
+      return changed ? next : current
+    })
+  }, [model?.slots, visibleSettlementHintsBySlot])
+
+  useEffect(() => {
+    const valid = visibleGlobalSettlementHints.some((hint) => hint.id === globalSettlementSelection)
+    if (!valid) {
+      const fallbackId = pickDefaultHintId(visibleGlobalSettlementHints)
+      if (fallbackId !== globalSettlementSelection) {
+        setGlobalSettlementSelection(fallbackId)
+      }
+    }
+  }, [globalSettlementSelection, visibleGlobalSettlementHints])
 
   const dialogueLines = useMemo(() => {
     return splitIntro(model?.intro).filter(Boolean)
   }, [model?.intro])
 
-  const selectedHintIds = useMemo(
-    () => new Set(Object.values(settlementSelections).flat()),
-    [settlementSelections]
-  )
-  const selectedGlobalHintIds = useMemo(
-    () => new Set(globalSettlementSelections),
-    [globalSettlementSelections]
-  )
+  const selectedHintIds = useMemo(() => {
+    return new Set(Object.values(settlementSelections).filter(Boolean))
+  }, [settlementSelections])
+  const selectedGlobalHintIds = useMemo(() => new Set(globalSettlementSelection ? [globalSettlementSelection] : []), [globalSettlementSelection])
   const selectedHintGuids = useMemo(
     () => new Set(
       (model?.slots || [])
@@ -540,6 +715,7 @@ export default function StoryInspector({ type, data, onClose }) {
         options: [],
         actions: [],
         choiceActions: [],
+        effects: hint.effects || [],
       }))
 
     const globalHintSegments = (model?.globalSettlementHints || [])
@@ -553,6 +729,7 @@ export default function StoryInspector({ type, data, onClose }) {
         options: [],
         actions: [],
         choiceActions: [],
+        effects: hint.effects || [],
       }))
 
     return [...slotHintSegments, ...globalHintSegments]
@@ -572,11 +749,35 @@ export default function StoryInspector({ type, data, onClose }) {
 
   const visibleLines = dialogueLines.slice(0, revealedLineCount)
   const visibleSegments = availableSegments.slice(0, revealedSegmentCount)
+  const executionSteps = useMemo(() => {
+    const introSteps = dialogueLines.map((line, index) => ({
+      id: `line:${index}`,
+      phase: '仪式正文',
+      title: '',
+      text: line,
+      effects: [],
+    }))
+
+    const segmentSteps = availableSegments.map((segment, index) => ({
+      id: `segment:${segment.guid || index}`,
+      phase: segment.phase,
+      title: segment.title,
+      text: segment.text,
+      effects: segment.effects || [],
+      conditions: segment.conditions || [],
+    }))
+
+    return [...introSteps, ...segmentSteps]
+  }, [availableSegments, dialogueLines])
   const currentGateSegment = visibleSegments.find((segment) => segment.options?.length > 0)
   const canRevealLine = revealedLineCount < dialogueLines.length
   const canRevealSegment = !canRevealLine && !currentGateSegment && revealedSegmentCount < availableSegments.length
   const isFullscreenReader = FULLSCREEN_TYPES.has(type)
   const slotBackgroundMap = templateData?.slots || {}
+  const templateSlotLayout = useMemo(
+    () => buildTemplateSlotLayout(slotBackgroundMap, (model?.slots || []).map((slot) => slot.id)),
+    [slotBackgroundMap, model?.slots]
+  )
 
   if (!model) return null
 
@@ -618,10 +819,11 @@ export default function StoryInspector({ type, data, onClose }) {
     return (segment.choiceActions || []).filter((action) => action.branch === branch)
   }
 
-  function resetFlow(nextSlotId = activeSlotId, nextSelections = slotSelections, nextSettlementSelections = settlementSelections, nextGlobalSelections = globalSettlementSelections) {
-    const nextLines = buildDialogueLines(nextSlotId, nextSelections, nextSettlementSelections, nextGlobalSelections)
+  function resetFlow(nextSlotId = activeSlotId, nextSelections = slotSelections, nextSettlementSelections = settlementSelections, nextGlobalSelection = globalSettlementSelection) {
+    const nextLines = buildDialogueLines(nextSlotId, nextSelections, nextSettlementSelections, nextGlobalSelection)
     setRevealedLineCount(nextLines.length > 0 ? 1 : 0)
     setRevealedSegmentCount(0)
+    setExecutionStepIndex(0)
   }
 
   function advanceFlow() {
@@ -669,57 +871,59 @@ export default function StoryInspector({ type, data, onClose }) {
         delete bubbleTimersRef.current[selectedSlot.id]
       }, 2200)
     }
-    const nextLines = buildDialogueLines(selectedSlot.id, nextSelections, settlementSelections, globalSettlementSelections)
+    const nextLines = buildDialogueLines(selectedSlot.id, nextSelections, settlementSelections, globalSettlementSelection)
     setRevealedLineCount(nextLines.length > 0 ? 1 : 0)
     setRevealedSegmentCount(0)
+    setExecutionStepIndex(0)
   }
 
-  function handleToggleSettlementHint(hintId) {
+  function handleSelectSettlementHint(hintId) {
     if (!selectedSlot) return
 
     const slotId = selectedSlot.id
-    const activeIds = settlementSelections[slotId] || []
-    const nextIds = activeIds.includes(hintId)
-      ? activeIds.filter((id) => id !== hintId)
-      : [...activeIds, hintId]
     const nextSettlementSelections = {
       ...settlementSelections,
-      [slotId]: nextIds,
+      [slotId]: hintId,
     }
 
     setSettlementSelections(nextSettlementSelections)
-    resetFlow(slotId, slotSelections, nextSettlementSelections, globalSettlementSelections)
+    resetFlow(slotId, slotSelections, nextSettlementSelections, globalSettlementSelection)
   }
 
-  function handleToggleGlobalSettlementHint(hintId) {
-    const nextIds = globalSettlementSelections.includes(hintId)
-      ? globalSettlementSelections.filter((id) => id !== hintId)
-      : [...globalSettlementSelections, hintId]
+  function handleSelectGlobalSettlementHint(hintId) {
+    setGlobalSettlementSelection(hintId)
+    resetFlow(activeSlotId, slotSelections, settlementSelections, hintId)
+  }
 
-    setGlobalSettlementSelections(nextIds)
-    resetFlow(activeSlotId, slotSelections, settlementSelections, nextIds)
+  function handleOpenExecution() {
+    setExecutionStepIndex(0)
+    setExecutionOpen(true)
+  }
+
+  function handleAdvanceExecution() {
+    setExecutionStepIndex((current) => {
+      if (current >= executionSteps.length - 1) return current
+      return current + 1
+    })
   }
 
   function handleManualReset() {
     const defaults = Object.fromEntries(
       (model.slots || []).map((slot) => [slot.id, slot.candidates?.[0]?.id || null])
     )
-    const hintDefaults = Object.fromEntries(
-      (model.slots || []).map((slot) => [slot.id, []])
-    )
+    const hintDefaults = buildDefaultSettlementSelections(model.slots || [])
     setSlotSelections(defaults)
     setSettlementSelections(hintDefaults)
-    setGlobalSettlementSelections([])
+    setGlobalSettlementSelection(pickDefaultHintId(model.globalSettlementHints || []))
     setConditionFilterText('')
     setSlotBubbleTexts({})
     setActiveSlotId(model.slots?.[0]?.id || null)
-
-    const firstCandidate = model.slots?.[0]?.candidates?.[0] || null
-    void firstCandidate
     const nextLines = splitIntro(model.intro)
     setRevealedLineCount(nextLines.length > 0 ? 1 : 0)
     setRevealedSegmentCount(0)
     setAutoAdvance(false)
+    setExecutionOpen(false)
+    setExecutionStepIndex(0)
   }
 
   useEffect(() => () => {
@@ -753,6 +957,8 @@ export default function StoryInspector({ type, data, onClose }) {
 
     return () => window.clearInterval(timer)
   }, [autoAdvance, canRevealLine, canRevealSegment, dialogueLines.length, availableSegments.length])
+
+  const currentExecutionStep = executionSteps[executionStepIndex] || null
 
   const headerBlock = (
     <div style={storyHeaderShellStyle}>
@@ -840,7 +1046,7 @@ export default function StoryInspector({ type, data, onClose }) {
               {model.slots.map((slot) => {
                 const currentCandidate = slot.candidates?.find((candidate) => candidate.id === slotSelections[slot.id]) || slot.candidates?.[0] || null
                 const activeTags = (slot.settlementHints || [])
-                  .filter((hint) => settlementSelections[slot.id]?.includes(hint.id))
+                  .filter((hint) => settlementSelections[slot.id] === hint.id)
                   .map((hint) => ({
                     id: hint.id,
                     label: hint.label,
@@ -848,9 +1054,9 @@ export default function StoryInspector({ type, data, onClose }) {
                       setSettlementSelections((current) => {
                         const next = {
                           ...current,
-                          [slot.id]: (current[slot.id] || []).filter((id) => id !== hint.id),
+                          [slot.id]: pickDefaultHintId(slot.settlementHints || []),
                         }
-                        resetFlow(activeSlotId, slotSelections, next, globalSettlementSelections)
+                        resetFlow(activeSlotId, slotSelections, next, globalSettlementSelection)
                         return next
                       })
                     },
@@ -961,17 +1167,17 @@ export default function StoryInspector({ type, data, onClose }) {
               display: 'grid',
               gap: 18,
             }} ref={readerBodyRef}>
-              {selectedSlot?.settlementHints?.length > 0 && (
+              {(visibleSettlementHintsBySlot[selectedSlot?.id] || []).length > 0 && (
                 <div style={settlementPanelStyle}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
                     <div>
                       <div style={sectionTitleStyle}>结算条件</div>
                       <div style={{ ...smallLineStyle, marginTop: 6 }}>
-                        可为 {selectedSlot.title} 勾选多个附加分支，右侧对白只会按当前勾选推进。
+                        这里改为单选结算分支，默认采用最后一项优先级最高的结算。
                       </div>
                     </div>
                     <div style={settlementCountStyle}>
-                      已选 {selectedSettlementHints.length}
+                      已选 {selectedSettlementHints.length > 0 ? 1 : 0}
                     </div>
                   </div>
                   <input
@@ -988,6 +1194,7 @@ export default function StoryInspector({ type, data, onClose }) {
                     gap: 10,
                   }}>
                     {selectedSlot.settlementHints
+                      .filter((hint) => matchesSlotOccupancyCondition(hint.conditionRaw, slotSelectionState))
                       .filter((hint) => {
                         const keyword = conditionFilterText.trim().toLowerCase()
                         if (!keyword) return true
@@ -997,25 +1204,25 @@ export default function StoryInspector({ type, data, onClose }) {
                       <SettlementHintItem
                         key={hint.id}
                         hint={hint}
-                        active={settlementSelections[selectedSlot.id]?.includes(hint.id)}
-                        onToggle={() => handleToggleSettlementHint(hint.id)}
+                        active={settlementSelections[selectedSlot.id] === hint.id}
+                        onToggle={() => handleSelectSettlementHint(hint.id)}
                       />
                     ))}
                   </div>
                 </div>
               )}
 
-              {model?.globalSettlementHints?.length > 0 && (
+              {visibleGlobalSettlementHints.length > 0 && (
                 <div style={settlementPanelStyle}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
                     <div>
                       <div style={sectionTitleStyle}>全局条件</div>
                       <div style={{ ...smallLineStyle, marginTop: 6 }}>
-                        这些分支不绑定单一卡槽，也可以提前勾选参与推进。
+                        这些分支同样只允许选择一个，默认采用最后一项。
                       </div>
                     </div>
                     <div style={settlementCountStyle}>
-                      已选 {globalSettlementSelections.length}
+                      已选 {globalSettlementSelection ? 1 : 0}
                     </div>
                   </div>
                   <input
@@ -1031,7 +1238,7 @@ export default function StoryInspector({ type, data, onClose }) {
                     gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
                     gap: 10,
                   }}>
-                    {model.globalSettlementHints
+                    {visibleGlobalSettlementHints
                       .filter((hint) => {
                         const keyword = conditionFilterText.trim().toLowerCase()
                         if (!keyword) return true
@@ -1041,8 +1248,8 @@ export default function StoryInspector({ type, data, onClose }) {
                       <SettlementHintItem
                         key={hint.id}
                         hint={hint}
-                        active={globalSettlementSelections.includes(hint.id)}
-                        onToggle={() => handleToggleGlobalSettlementHint(hint.id)}
+                        active={globalSettlementSelection === hint.id}
+                        onToggle={() => handleSelectGlobalSettlementHint(hint.id)}
                       />
                     ))}
                   </div>
@@ -1100,6 +1307,8 @@ export default function StoryInspector({ type, data, onClose }) {
                           {segment.text}
                         </div>
                       )}
+
+                      <EffectSummary effects={segment.effects} />
 
                       {segment.image && (
                         <div style={{ marginTop: 14 }}>
@@ -1186,6 +1395,15 @@ export default function StoryInspector({ type, data, onClose }) {
                   推进后续
                 </button>
               )}
+              {type === 'rite' && executionSteps.length > 0 && (
+                <button
+                  type="button"
+                  style={primaryButtonStyle}
+                  onClick={handleOpenExecution}
+                >
+                  执行仪式
+                </button>
+              )}
               <button
                 type="button"
                 style={autoAdvance ? activeToggleButtonStyle : secondaryButtonStyle}
@@ -1223,6 +1441,117 @@ export default function StoryInspector({ type, data, onClose }) {
           {content}
         </div>
       </div>
+      {executionOpen && type === 'rite' && (
+        <div style={executionOverlayStyle}>
+          <div style={executionModalStyle}>
+            <div style={executionStageStyle}>
+              <div style={executionToolbarStyle}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ ...sectionTitleStyle, color: '#7a5931' }}>仪式执行</div>
+                  <div style={{ marginTop: 6, fontSize: 28, fontWeight: 900, color: '#3f2a16' }}>
+                    {model.title}
+                  </div>
+                </div>
+                <button type="button" onClick={() => setExecutionOpen(false)} style={closeButtonStyle}>关闭</button>
+              </div>
+
+              <div style={executionBodyStyle}>
+                <div style={{
+                  ...executionCanvasStyle,
+                  backgroundImage: templateBgUrl
+                    ? `linear-gradient(180deg, rgba(255,255,255,0.12), rgba(255,255,255,0.04)), url("${templateBgUrl}")`
+                    : 'linear-gradient(180deg, rgba(244, 236, 220, 0.98), rgba(221, 206, 180, 0.96))',
+                }}>
+                  {templateFgUrl && (
+                    <img
+                      src={templateFgUrl}
+                      alt=""
+                      style={{
+                        position: 'absolute',
+                        inset: 0,
+                        width: '100%',
+                        height: '100%',
+                        objectFit: 'cover',
+                        pointerEvents: 'none',
+                        opacity: 0.96,
+                      }}
+                    />
+                  )}
+                  {(model.slots || []).map((slot) => {
+                    const candidate = slot.candidates?.find((entry) => entry.id === slotSelections[slot.id]) || slot.candidates?.[0] || null
+                    const previewCard = candidate?.cards?.[0] || null
+                    const layout = templateSlotLayout[slot.id] || {}
+
+                    return (
+                      <div
+                        key={`execution-${slot.id}`}
+                        style={{
+                          position: 'absolute',
+                          ...layout,
+                        }}
+                      >
+                        <div style={executionSlotCardStyle}>
+                          <div style={executionSlotLabelStyle}>{slot.title}</div>
+                          {previewCard ? (
+                            <div style={{ display: 'grid', justifyItems: 'center', gap: 8 }}>
+                              <CardPortrait card={previewCard} compact={false} showName={false} />
+                              <div title={previewCard.name} style={executionSlotNameStyle}>{previewCard.name}</div>
+                            </div>
+                          ) : (
+                            <div style={executionEmptySlotStyle}>空置</div>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+
+                <div style={executionDialoguePanelStyle}>
+                  <div>
+                    <div style={sectionTitleStyle}>{currentExecutionStep?.phase || '仪式执行'}</div>
+                    {currentExecutionStep?.title && (
+                      <div title={currentExecutionStep.title} style={executionStepTitleStyle}>
+                        {currentExecutionStep.title}
+                      </div>
+                    )}
+                    {currentExecutionStep?.conditions?.length > 0 && (
+                      <div title={currentExecutionStep.conditions.join(' / ')} style={{ ...smallLineStyle, marginTop: 8 }}>
+                        {currentExecutionStep.conditions.join(' / ')}
+                      </div>
+                    )}
+                  </div>
+
+                  <div style={executionDialogueBoxStyle}>
+                    {currentExecutionStep?.text ? (
+                      <div style={{ fontSize: 17, lineHeight: 1.95, color: '#f7edd8', whiteSpace: 'pre-wrap' }}>
+                        {currentExecutionStep.text}
+                      </div>
+                    ) : (
+                      <div style={{ ...smallLineStyle, color: '#d9c39e' }}>当前步骤没有额外文本。</div>
+                    )}
+                    <EffectSummary effects={currentExecutionStep?.effects} />
+                  </div>
+
+                  <div style={executionFooterStyle}>
+                    <div style={smallLineStyle}>
+                      步骤 {Math.min(executionStepIndex + 1, Math.max(executionSteps.length, 1))} / {Math.max(executionSteps.length, 1)}
+                    </div>
+                    {executionStepIndex < executionSteps.length - 1 ? (
+                      <button type="button" style={primaryButtonStyle} onClick={handleAdvanceExecution}>
+                        推进下一步
+                      </button>
+                    ) : (
+                      <button type="button" style={primaryButtonStyle} onClick={() => setExecutionOpen(false)}>
+                        执行完成
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       {rawContent !== null && (
         <RawFileView content={rawContent} onClose={() => setRawContent(null)} />
       )}
@@ -1337,6 +1666,155 @@ const metaChipCompactStyle = {
   color: '#6a4623',
   fontSize: 11,
   lineHeight: 1.4,
+}
+
+const effectChipStyle = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 4,
+  padding: '5px 10px',
+  borderRadius: 999,
+  border: '1px solid rgba(212, 184, 126, 0.16)',
+  background: 'rgba(45, 34, 23, 0.74)',
+  color: '#ead7b2',
+  fontSize: 12,
+  lineHeight: 1.5,
+}
+
+const executionOverlayStyle = {
+  position: 'fixed',
+  inset: 0,
+  padding: 28,
+  background: 'rgba(7, 6, 5, 0.68)',
+  backdropFilter: 'blur(8px)',
+  zIndex: 70,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+}
+
+const executionModalStyle = {
+  width: 'min(1380px, 100%)',
+  maxHeight: 'calc(100vh - 56px)',
+  borderRadius: 28,
+  overflow: 'hidden',
+  border: '1px solid rgba(212, 184, 126, 0.18)',
+  background: 'linear-gradient(180deg, rgba(39, 28, 18, 0.98), rgba(18, 13, 10, 0.98))',
+  boxShadow: '0 36px 82px rgba(0, 0, 0, 0.34)',
+}
+
+const executionStageStyle = {
+  display: 'grid',
+  gap: 0,
+}
+
+const executionToolbarStyle = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  gap: 16,
+  padding: '22px 24px 18px',
+  background: 'linear-gradient(180deg, rgba(250, 244, 231, 0.98), rgba(227, 212, 186, 0.95))',
+}
+
+const executionBodyStyle = {
+  display: 'grid',
+  gridTemplateColumns: 'minmax(520px, 1.2fr) minmax(340px, 0.86fr)',
+  gap: 18,
+  padding: 18,
+  minHeight: 680,
+}
+
+const executionCanvasStyle = {
+  position: 'relative',
+  minHeight: 640,
+  borderRadius: 24,
+  overflow: 'hidden',
+  backgroundRepeat: 'no-repeat',
+  backgroundSize: 'cover',
+  backgroundPosition: 'center',
+  border: '1px solid rgba(212, 184, 126, 0.16)',
+}
+
+const executionDialoguePanelStyle = {
+  display: 'grid',
+  gridTemplateRows: 'auto minmax(0, 1fr) auto',
+  gap: 14,
+  minHeight: 0,
+  padding: '12px 8px 8px 0',
+}
+
+const executionDialogueBoxStyle = {
+  minHeight: 0,
+  borderRadius: 24,
+  background: 'rgba(23, 18, 13, 0.96)',
+  border: '1px solid rgba(212, 184, 126, 0.14)',
+  padding: '22px 20px',
+  overflowY: 'auto',
+}
+
+const executionFooterStyle = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  gap: 12,
+}
+
+const executionSlotCardStyle = {
+  minWidth: 112,
+  padding: '10px 10px 12px',
+  borderRadius: 22,
+  background: 'rgba(14, 12, 10, 0.82)',
+  border: '1px solid rgba(212, 184, 126, 0.16)',
+  boxShadow: '0 14px 30px rgba(0, 0, 0, 0.26)',
+  display: 'grid',
+  justifyItems: 'center',
+  gap: 8,
+}
+
+const executionSlotLabelStyle = {
+  padding: '3px 8px',
+  borderRadius: 999,
+  background: 'rgba(241, 230, 203, 0.12)',
+  color: '#f0dec1',
+  fontSize: 11,
+  letterSpacing: '0.12em',
+}
+
+const executionSlotNameStyle = {
+  maxWidth: 112,
+  fontSize: 12,
+  lineHeight: 1.35,
+  color: '#fff1d6',
+  fontWeight: 700,
+  textAlign: 'center',
+  whiteSpace: 'nowrap',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+}
+
+const executionEmptySlotStyle = {
+  width: 96,
+  height: 132,
+  borderRadius: 18,
+  border: '1px dashed rgba(228, 208, 170, 0.28)',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  color: '#dcc8a3',
+  fontSize: 14,
+}
+
+const executionStepTitleStyle = {
+  marginTop: 8,
+  fontSize: 24,
+  lineHeight: 1.3,
+  color: '#f8ebd1',
+  fontWeight: 800,
+  display: '-webkit-box',
+  WebkitBoxOrient: 'vertical',
+  WebkitLineClamp: 2,
+  overflow: 'hidden',
 }
 
 const segmentCardStyle = {

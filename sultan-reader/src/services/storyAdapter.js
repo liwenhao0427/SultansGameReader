@@ -161,6 +161,18 @@ function buildFixedItemCard(condition = {}) {
   }
 }
 
+function buildEmptySlotCandidate(slotId, slot) {
+  return {
+    id: `${slotId}:candidate:empty`,
+    label: '空置',
+    mode: 'empty',
+    cards: [],
+    bubbleText: '',
+    conditionText: slot?.is_empty ? '当前槽位允许空置' : '不放入任何卡牌',
+    isEmpty: true,
+  }
+}
+
 function buildFallbackSlotCandidate(slotId, slot, cardsMap, cardsById) {
   const condition = slot?.condition || {}
   const fixedSudanCard = condition.type === 'sudan' ? buildFixedSudanCard(condition) : null
@@ -180,6 +192,7 @@ function buildFallbackSlotCandidate(slotId, slot, cardsMap, cardsById) {
     cards: defaultCards,
     bubbleText: '',
     conditionText: parseConditionObject(condition, cardsMap).join(' / '),
+    isEmpty: false,
   }
 }
 
@@ -252,7 +265,67 @@ function buildSlotCandidate(slotId, pop, index, cardsMap, cardsById) {
     cards,
     bubbleText: extractPopBubbleText(pop?.result, slotId),
     conditionText: parseConditionObject(condition, cardsMap).join(' / '),
+    isEmpty: false,
   }
+}
+
+function buildResultEffects(result = {}, cardsMap, cardsById) {
+  if (!result || typeof result !== 'object') return []
+
+  const effects = []
+
+  for (const [key, value] of Object.entries(result)) {
+    if (key.endsWith('__c') || key.endsWith('__ca') || key.endsWith('__ci')) continue
+    if (key === 'choose' || key.startsWith('pop.')) continue
+    if (value == null) continue
+
+    if (key === 'card' || key === 'link_card') {
+      const cards = normalizeArray(value).map((id) => buildCardSummary(id, cardsMap, cardsById))
+      if (cards.length > 0) {
+        effects.push({
+          type: 'card',
+          label: key === 'link_card' ? '关联卡牌' : '获得卡牌',
+          cards,
+        })
+      }
+      continue
+    }
+
+    if (key.startsWith('global_counter=')) {
+      effects.push({
+        type: 'achievement',
+        label: `成就 ${key.slice('global_counter='.length)}`,
+        value,
+      })
+      continue
+    }
+
+    if (key.startsWith('counter+') || key.startsWith('counter=')) {
+      effects.push({
+        type: 'counter',
+        label: `计数器 ${key.replace(/^counter[+=]/, '')}`,
+        value,
+      })
+      continue
+    }
+
+    if (key.startsWith('clean.')) {
+      effects.push({
+        type: 'clean',
+        label: `清除卡槽 ${key.slice('clean.'.length).toUpperCase()}`,
+        value,
+      })
+      continue
+    }
+
+    effects.push({
+      type: 'raw',
+      label: `${key} = ${String(value)}`,
+      value,
+    })
+  }
+
+  return effects
 }
 
 function buildSettlementSlotHints(slotId, items, cardsMap, cardsById, phaseKey = 'settlement') {
@@ -274,7 +347,9 @@ function buildSettlementSlotHints(slotId, items, cardsMap, cardsById, phaseKey =
         cards: extractConditionCards(scopedCondition, cardsMap, cardsById),
         choiceTexts: [],
         primaryText: item.result_text || '',
+        conditionRaw: scopedCondition,
         conditionText: parseConditionObject(scopedCondition, cardsMap).join(' / '),
+        effects: buildResultEffects(item.result, cardsMap, cardsById),
       }
     })
     .filter(Boolean)
@@ -299,11 +374,13 @@ function buildGlobalSettlementHints(items, cardsMap, cardsById, slotIds = [], ph
       cards: extractConditionCards(item.condition || {}, cardsMap, cardsById),
       choiceTexts: [],
       primaryText: item.result_text || '',
+      conditionRaw: item.condition || {},
       conditionText: parseConditionObject(item.condition, cardsMap).join(' / '),
+      effects: buildResultEffects(item.result, cardsMap, cardsById),
     }))
 }
 
-function buildPhaseItem(item, cardsMap, phase, slotIds = []) {
+function buildPhaseItem(item, cardsMap, cardsById, phase, slotIds = []) {
   const condition = item.condition || {}
   const slotBindingIds = slotIds.filter((slotId) => Object.keys(condition).some((key) => (
     key === slotId ||
@@ -319,10 +396,12 @@ function buildPhaseItem(item, cardsMap, phase, slotIds = []) {
     title: item.result_title || '',
     text: item.result_text || item.tips_text || '',
     conditions: parseConditionObject(condition, cardsMap),
+    conditionRaw: condition,
     slotBindingIds,
     actions: extractActionTargets(item.action),
     choiceActions: extractActionTargets(item.action).filter((entry) => entry.targetType === 'event' || entry.targetType === 'rite' || entry.targetType === 'over'),
     options: extractChoiceOptions(item.result?.choose || item.action?.choose),
+    effects: buildResultEffects(item.result, cardsMap, cardsById),
     note: item.__ca || item.__c || '',
   }
 }
@@ -393,15 +472,16 @@ export function adaptStoryData(type, data, cardsMap, cardsById = {}) {
             const pops = normalizeArray(slot.pops).map((pop, index) => (
               buildSlotCandidate(slotId, pop, index, cardsMap, cardsById)
             ))
-            return pops.length > 0 ? pops : [buildFallbackSlotCandidate(slotId, slot, cardsMap, cardsById)]
+            const resolved = pops.length > 0 ? pops : [buildFallbackSlotCandidate(slotId, slot, cardsMap, cardsById)]
+            return [...resolved, buildEmptySlotCandidate(slotId, slot)]
           })(),
           settlementHints: settlementHintsBySlot[slotId] || [],
         })),
         globalSettlementHints,
         segments: [
-          ...normalizeArray(data.settlement_prior).map((item) => buildPhaseItem(item, cardsMap, '前置结算', riteSlotIds)),
-          ...normalizeArray(data.settlement).map((item) => buildPhaseItem(item, cardsMap, '主结算', riteSlotIds)),
-          ...normalizeArray(data.settlement_extre).map((item) => buildPhaseItem(item, cardsMap, '额外结算', riteSlotIds)),
+          ...normalizeArray(data.settlement_prior).map((item) => buildPhaseItem(item, cardsMap, cardsById, '前置结算', riteSlotIds)),
+          ...normalizeArray(data.settlement).map((item) => buildPhaseItem(item, cardsMap, cardsById, '主结算', riteSlotIds)),
+          ...normalizeArray(data.settlement_extre).map((item) => buildPhaseItem(item, cardsMap, cardsById, '额外结算', riteSlotIds)),
         ].filter((item) => item.text || item.title || item.conditions.length || item.options.length || item.actions.length),
       }
 
@@ -415,7 +495,7 @@ export function adaptStoryData(type, data, cardsMap, cardsById = {}) {
         image: pickEventImage(data),
         slots: [],
         segments: normalizeArray(data.settlement)
-          .map((item) => buildPhaseItem(item, cardsMap, '事件分支'))
+          .map((item) => buildPhaseItem(item, cardsMap, cardsById, '事件分支'))
           .filter((item) => item.text || item.title || item.conditions.length || item.options.length || item.actions.length),
       }
 

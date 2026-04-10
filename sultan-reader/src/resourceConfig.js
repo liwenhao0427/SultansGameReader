@@ -36,10 +36,20 @@ export const CARD_RARITY_FRAME_ASSETS = {
 export const READER_RESOURCE_ASSETS = {
   noteBackground: 'note_bg_new',
   titleEmblem: 'nomal_rite_bg',
+  defaultRiteBackground: 'nomal_rite_bg',
   riteTitlePlate: 'rite_title_bg',
   riteTitleLine: 'rite_title_short',
   slotFrame: 'nomal_slot_bg',
   dialogueFrame: '1-3',
+}
+
+/**
+ * 仪式模板默认配置。
+ * 没有 mapping_id 时回退到默认模板，保证背景和槽位布局始终可展示。
+ */
+export const RITE_TEMPLATE_DEFAULTS = {
+  id: '8000001',
+  background: 'nomal_rite_bg',
 }
 
 /**
