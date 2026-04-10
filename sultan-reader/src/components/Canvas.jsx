@@ -402,7 +402,7 @@ function CanvasInner() {
   }, [screenToFlowPosition])
 
   const onNodeClick = useCallback((_event, node) => {
-    setSelectedNode(node.id, 'fullscreen')
+    setSelectedNode(node.id, node.type === 'rite' ? 'fullscreen' : 'panel')
     setTooltip(null)
   }, [setSelectedNode])
 

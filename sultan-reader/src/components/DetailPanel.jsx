@@ -9,7 +9,7 @@ import RiteDetail from './details/RiteDetail'
 import AfterStoryDetail from './details/AfterStoryDetail'
 import DTDetail from './details/DTDetail'
 
-const FULLSCREEN_TYPES = new Set(['rite', 'event', 'dt', 'over', 'after_story'])
+const FULLSCREEN_TYPES = new Set(['rite'])
 
 // 面板整体样式
 const panelStyle = {
