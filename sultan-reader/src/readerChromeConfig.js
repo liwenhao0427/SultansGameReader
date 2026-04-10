@@ -1,12 +1,14 @@
+import { READER_RESOURCE_ASSETS } from './resourceConfig'
+
 export const READER_CHROME = {
   assets: {
     noteBackground: {
-      asset: 'note_bg_new',
+      asset: READER_RESOURCE_ASSETS.noteBackground,
       backgroundSize: 'cover',
       backgroundPosition: 'center',
     },
     titleEmblem: {
-      asset: 'nomal_rite_bg',
+      asset: READER_RESOURCE_ASSETS.titleEmblem,
       width: 124,
       height: 92,
       top: 18,
@@ -16,20 +18,20 @@ export const READER_CHROME = {
       backgroundPosition: 'center',
     },
     riteTitlePlate: {
-      asset: 'rite_title_bg',
+      asset: READER_RESOURCE_ASSETS.riteTitlePlate,
     },
     riteTitleLine: {
-      asset: 'rite_title_short',
+      asset: READER_RESOURCE_ASSETS.riteTitleLine,
     },
     slotFrame: {
-      asset: 'nomal_slot_bg',
+      asset: READER_RESOURCE_ASSETS.slotFrame,
       width: 82,
       minHeight: 132,
       backgroundSize: 'cover',
       backgroundPosition: 'center',
     },
     dialogueFrame: {
-      asset: '1-3',
+      asset: READER_RESOURCE_ASSETS.dialogueFrame,
       maxWidth: 520,
       minHeight: 120,
       padding: '18px 22px',

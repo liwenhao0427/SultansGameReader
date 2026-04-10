@@ -3,23 +3,9 @@ import useConfigStore from '../../stores/useConfigStore'
 import { useResolvedImage } from '../../services/imageResolver'
 import { adaptStoryData } from '../../services/storyAdapter'
 import { READER_CHROME } from '../../readerChromeConfig'
+import { getCardRarityFrameAsset } from '../../resourceConfig'
 import { linkNodesOnCanvas, mountNodeOnCanvas } from '../../services/graphNavigation'
 import RawFileView from '../RawFileView'
-
-function rareAssetKey(rare) {
-  switch (Number(rare)) {
-    case 1:
-      return 'rare_stone'
-    case 2:
-      return 'rare_copper'
-    case 3:
-      return 'rare_silver'
-    case 4:
-      return 'rare_gold'
-    default:
-      return null
-  }
-}
 
 function splitIntro(text) {
   if (!text) return []
@@ -32,7 +18,7 @@ function splitIntro(text) {
 
 function CardPortrait({ card, compact = false, showName = true }) {
   const { url } = useResolvedImage(card?.image)
-  const { url: rareFrameUrl } = useResolvedImage(rareAssetKey(card?.rare))
+  const { url: rareFrameUrl } = useResolvedImage(getCardRarityFrameAsset(card?.rare))
   const width = compact ? 72 : 94
   const height = compact ? 108 : 142
   const artInset = compact ? '4px 6px 18px' : '5px 8px 22px'
