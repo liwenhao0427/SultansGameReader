@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { useResolvedImage } from '../../services/imageResolver'
 import { getAfterStoryRelations } from '../../services/afterStoryRelations'
 import { buildAfterStoryVariantAnalysis } from '../../services/afterStoryDiff'
+import { resolveAfterStoryFallbackImage } from '../../services/afterStoryImageFallback'
+import useConfigStore from '../../stores/useConfigStore'
 
 const S = {
   title: { color: '#f3e7cb', fontSize: 26, fontWeight: 700, lineHeight: 1.25, marginBottom: 6 },
@@ -208,7 +210,7 @@ function OverImage({ pic }) {
 
 function RelatedAfterStoryCard({ group, onOpen }) {
   const previewItem = group.items[0]
-  const previewImage = previewItem?.pic || group.afterStoryImage || null
+  const previewImage = previewItem?.pic || group.afterStoryImage || group.fallbackImage || null
   const { url, loading } = useResolvedImage(previewImage)
 
   return (
@@ -254,6 +256,9 @@ function VariantText({ item }) {
 
 function AfterStoryVariantModal({ group, onClose }) {
   const [currentIndex, setCurrentIndex] = useState(0)
+  const activeItem = group?.items?.[currentIndex] || null
+  const activeImage = activeItem?.pic || group?.afterStoryImage || group?.fallbackImage || null
+  const { url, loading } = useResolvedImage(activeImage)
 
   useEffect(() => {
     setCurrentIndex(0)
@@ -277,10 +282,6 @@ function AfterStoryVariantModal({ group, onClose }) {
   }, [group, onClose])
 
   if (!group) return null
-
-  const activeItem = group.items[currentIndex]
-  const activeImage = activeItem?.pic || group.afterStoryImage || null
-  const { url, loading } = useResolvedImage(activeImage)
 
   return (
     <div style={S.modalMask} onClick={onClose}>
@@ -339,6 +340,7 @@ function AfterStoryVariantModal({ group, onClose }) {
 export default function OverDetail({ data }) {
   const [relatedAfterStories, setRelatedAfterStories] = useState([])
   const [activeAfterStoryId, setActiveAfterStoryId] = useState(null)
+  const cardsById = useConfigStore((state) => state.cardsById)
 
   useEffect(() => {
     let cancelled = false
@@ -365,9 +367,10 @@ export default function OverDetail({ data }) {
     () => relatedAfterStories.map((group) => ({
       ...group,
       overName: data?.name || '',
+      fallbackImage: resolveAfterStoryFallbackImage(group.afterStoryName, cardsById),
       items: buildAfterStoryVariantAnalysis(group.items),
     })),
-    [data?.name, relatedAfterStories]
+    [cardsById, data?.name, relatedAfterStories]
   )
 
   const activeGroup = analyzedGroups.find((group) => group.afterStoryId === activeAfterStoryId) || null
