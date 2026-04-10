@@ -306,6 +306,7 @@ function buildSlotCandidate(slotId, pop, index, cardsMap, cardsById) {
         mode = 'fallback'
       }
     }
+  }
 
   return {
     id: `${slotId}:candidate:${index}`,

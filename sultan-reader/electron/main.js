@@ -385,6 +385,7 @@ ipcMain.handle('config:readCache', async (_event, type, id) => {
   }
 
   const cacheDir = getCacheDir();
+  if (!type || id == null) return null;
   const filePath = path.join(cacheDir, type, `${id}.json`);
   if (!fs.existsSync(filePath)) {
     return null;
