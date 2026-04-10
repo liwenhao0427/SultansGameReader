@@ -147,6 +147,7 @@ export default function OverDetail({ data }) {
         activeGroupId={activeGroup?.groupId || null}
         activeIndex={activeState.index}
         onGroupChange={(groupId, index) => setActiveState({ groupId, index })}
+        rawSourcePath={activeGroup?.afterStorySourcePath || null}
         onClose={() => setActiveState({ groupId: null, index: 0 })}
       />
     </div>

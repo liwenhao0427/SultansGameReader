@@ -175,6 +175,7 @@ export default function AfterStoryDetail({ data }) {
         activeGroupId={activeGroup?.groupId || null}
         activeIndex={activeState.index}
         onGroupChange={(groupId, index) => setActiveState({ groupId, index })}
+        rawSourcePath={data?._source_path || null}
         onClose={() => setActiveState({ groupId: null, index: 0 })}
       />
     </div>

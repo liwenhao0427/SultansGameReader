@@ -155,6 +155,7 @@ export function buildAfterStoryRelations(afterStoryRecords, overEntries) {
             afterStoryId,
             afterStoryName: record.name || afterStoryId,
             afterStoryImage: extras.find((entry) => entry?.pic)?.pic || null,
+            afterStorySourcePath: record._source_path || null,
             items: [],
             _itemKeys: new Set(),
           })
@@ -197,6 +198,7 @@ export function buildAfterStoryRelations(afterStoryRecords, overEntries) {
         afterStoryId: group.afterStoryId,
         afterStoryName: group.afterStoryName,
         afterStoryImage: group.afterStoryImage,
+        afterStorySourcePath: group.afterStorySourcePath,
         items: group.items.filter((item) => item.text || item.pic),
       }))
       .filter((group) => group.items.length > 0)

@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useResolvedImage } from '../../services/imageResolver'
 import { buildAfterStoryVariantAnalysis } from '../../services/afterStoryDiff'
 import { resolveAfterStoryFallbackImage } from '../../services/afterStoryImageFallback'
 import { parseAfterStoryConditionObject } from '../../services/afterStoryCondition'
+import RawFileView from '../RawFileView'
 
 export const AFTER_STORY_TONE_STYLE = {
   p100: { color: 'rgba(206, 203, 196, 0.74)' },
@@ -14,12 +15,19 @@ export const AFTER_STORY_TONE_STYLE = {
 
 export const AFTER_STORY_VIEWER_STYLE = {
   imageWrap: {
+    aspectRatio: '0.72',
     borderRadius: 20,
     overflow: 'hidden',
     border: '1px solid rgba(212, 184, 126, 0.12)',
     background: 'rgba(22, 18, 13, 0.88)',
   },
-  image: { width: '100%', maxHeight: 320, objectFit: 'cover', display: 'block' },
+  image: {
+    width: '100%',
+    height: '100%',
+    objectFit: 'contain',
+    objectPosition: 'top center',
+    display: 'block',
+  },
   imagePlaceholder: {
     height: 220,
     display: 'flex',
@@ -133,17 +141,11 @@ export const AFTER_STORY_VIEWER_STYLE = {
     alignItems: 'start',
   },
   modalImageWrap: {
+    aspectRatio: '0.72',
     borderRadius: 22,
     overflow: 'hidden',
     border: '1px solid rgba(212, 184, 126, 0.12)',
     background: 'rgba(18, 15, 11, 0.92)',
-  },
-  modalImage: {
-    width: '100%',
-    height: 216,
-    display: 'block',
-    objectFit: 'contain',
-    objectPosition: 'top center',
   },
   modalTextCard: {
     borderRadius: 22,
@@ -193,10 +195,10 @@ function VariantImage({ pic, style, height = 120 }) {
   const { url, loading } = useResolvedImage(pic)
 
   return (
-    <div style={style.imageWrap}>
+    <div style={{ ...style.imageWrap, height }}>
       {loading && <div style={{ ...style.imagePlaceholder, height }}>加载中…</div>}
       {!loading && !url && <div style={{ ...style.imagePlaceholder, height }}>后日谈配图</div>}
-      {!loading && url && <img src={url} alt="" style={{ ...style.image, maxHeight: height, height }} />}
+      {!loading && url && <img src={url} alt="" style={style.image} />}
     </div>
   )
 }
@@ -258,10 +260,11 @@ export function AfterStoryVariantModal({
   activeIndex = 0,
   onClose,
   onGroupChange,
+  rawSourcePath = null,
 }) {
   const group = groups.find((item) => item.groupId === activeGroupId) || null
   const [currentIndex, setCurrentIndex] = useState(activeIndex)
-  const [lockOver, setLockOver] = useState(true)
+  const [rawContent, setRawContent] = useState(null)
 
   useEffect(() => {
     setCurrentIndex(activeIndex)
@@ -278,7 +281,7 @@ export function AfterStoryVariantModal({
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [group, currentIndex, lockOver, groups])
+  }, [group, currentIndex, groups])
 
   if (!group) return null
 
@@ -293,80 +296,103 @@ export function AfterStoryVariantModal({
       return
     }
 
-    if (lockOver) {
-      setCurrentIndex(step > 0 ? 0 : Math.max(0, group.items.length - 1))
-      return
-    }
+    setCurrentIndex(step > 0 ? 0 : Math.max(0, group.items.length - 1))
+  }
 
+  function moveGroup(step) {
+    if (!group) return
     const currentGroupIndex = groups.findIndex((item) => item.groupId === group.groupId)
     const nextGroupIndex = currentGroupIndex + step
     if (nextGroupIndex < 0 || nextGroupIndex >= groups.length) return
 
     const nextGroup = groups[nextGroupIndex]
-    onGroupChange(nextGroup.groupId, step > 0 ? 0 : Math.max(0, nextGroup.items.length - 1))
+    onGroupChange(nextGroup.groupId, 0)
+  }
+
+  async function handleViewRaw() {
+    if (!rawSourcePath) return
+    try {
+      const content = await window.electronAPI.fileReadRaw(rawSourcePath)
+      setRawContent(content)
+    } catch (error) {
+      setRawContent(`读取失败：${error?.message || '未知错误'}`)
+    }
   }
 
   return (
-    <div style={AFTER_STORY_VIEWER_STYLE.modalMask} onClick={onClose}>
-      <div style={AFTER_STORY_VIEWER_STYLE.modalPanel} onClick={(event) => event.stopPropagation()}>
-        <div style={AFTER_STORY_VIEWER_STYLE.modalHeader}>
-          <div>
-            <div style={AFTER_STORY_VIEWER_STYLE.modalTitle}>{group.afterStoryName}</div>
-            <div style={AFTER_STORY_VIEWER_STYLE.modalSubTitle}>
-              {group.overName ? `${group.overName} 对应的角色后日谈。` : '角色后日谈阅读。'}
-              左右切换查看不同条件下的文本差异，越亮的句段越偏向当前条件特有内容。
-            </div>
-          </div>
-          <div style={AFTER_STORY_VIEWER_STYLE.modalActions}>
-            <button type="button" style={actionButtonStyle} onClick={() => moveVariant(-1)}>上一条</button>
-            <span style={AFTER_STORY_VIEWER_STYLE.relatedBadge}>{currentIndex + 1} / {group.items.length}</span>
-            <button type="button" style={actionButtonStyle} onClick={() => moveVariant(1)}>下一条</button>
-            <button type="button" style={actionButtonStyle} onClick={() => setLockOver((value) => !value)}>
-              {lockOver ? '仅本结局' : '跨结局'}
-            </button>
-            <button type="button" style={actionButtonStyle} onClick={onClose}>关闭</button>
-          </div>
-        </div>
-
-        <div style={AFTER_STORY_VIEWER_STYLE.modalBody}>
-          <div style={AFTER_STORY_VIEWER_STYLE.modalContent}>
-            <div style={AFTER_STORY_VIEWER_STYLE.modalImageWrap}>
-              <VariantImage pic={activeImage} style={AFTER_STORY_VIEWER_STYLE} height={216} />
-            </div>
-            <div style={AFTER_STORY_VIEWER_STYLE.modalTextCard}>
-              <div style={AFTER_STORY_VIEWER_STYLE.relatedMetaRow}>
-                {group.overName && <span style={AFTER_STORY_VIEWER_STYLE.relatedBadge}>{group.overName}</span>}
-                <span style={AFTER_STORY_VIEWER_STYLE.relatedBadge}>条件分支 {currentIndex + 1}</span>
-                {activeItem?.note && <span style={AFTER_STORY_VIEWER_STYLE.relatedBadge}>{activeItem.note}</span>}
+    <>
+      <div style={AFTER_STORY_VIEWER_STYLE.modalMask} onClick={onClose}>
+        <div style={AFTER_STORY_VIEWER_STYLE.modalPanel} onClick={(event) => event.stopPropagation()}>
+          <div style={AFTER_STORY_VIEWER_STYLE.modalHeader}>
+            <div>
+              <div style={AFTER_STORY_VIEWER_STYLE.modalTitle}>{group.afterStoryName}</div>
+              <div style={AFTER_STORY_VIEWER_STYLE.modalSubTitle}>
+                {group.overName ? `${group.overName} 对应的角色后日谈。` : '角色后日谈阅读。'}
+                左右切换查看当前结局下不同条件的文本差异；切换结局按钮会直接跳到前后结局。
               </div>
-              <div style={{ marginTop: 14 }}>
-                <VariantText item={activeItem} />
-              </div>
-
-              {activeItem?.conditionLines?.length > 0 && (
-                <div style={AFTER_STORY_VIEWER_STYLE.conditionList}>
-                  {activeItem.conditionLines.map((line, index) => (
-                    <div
-                      key={`${line.type}:${index}:${line.text}`}
-                      style={line.type === 'section' ? AFTER_STORY_VIEWER_STYLE.conditionSection : AFTER_STORY_VIEWER_STYLE.conditionText}
-                    >
-                      {line.text}
-                    </div>
-                  ))}
-                </div>
+            </div>
+            <div style={AFTER_STORY_VIEWER_STYLE.modalActions}>
+              <button type="button" style={actionButtonStyle} onClick={() => moveVariant(-1)}>上一条</button>
+              <span style={AFTER_STORY_VIEWER_STYLE.relatedBadge}>{currentIndex + 1} / {group.items.length}</span>
+              <button type="button" style={actionButtonStyle} onClick={() => moveVariant(1)}>下一条</button>
+              {groups.length > 1 && (
+                <button type="button" style={actionButtonStyle} onClick={() => moveGroup(-1)}>上个结局</button>
               )}
+              {groups.length > 1 && (
+                <button type="button" style={actionButtonStyle} onClick={() => moveGroup(1)}>下个结局</button>
+              )}
+              {rawSourcePath && (
+                <button type="button" style={actionButtonStyle} onClick={handleViewRaw}>查看原文件</button>
+              )}
+              <button type="button" style={actionButtonStyle} onClick={onClose}>关闭</button>
+            </div>
+          </div>
 
-              <div style={AFTER_STORY_VIEWER_STYLE.modalLegend}>
-                <span style={{ ...AFTER_STORY_VIEWER_STYLE.relatedBadge, ...AFTER_STORY_TONE_STYLE.p100 }}>100%</span>
-                <span style={{ ...AFTER_STORY_VIEWER_STYLE.relatedBadge, ...AFTER_STORY_TONE_STYLE.p80 }}>80%</span>
-                <span style={{ ...AFTER_STORY_VIEWER_STYLE.relatedBadge, ...AFTER_STORY_TONE_STYLE.p60 }}>60%</span>
-                <span style={{ ...AFTER_STORY_VIEWER_STYLE.relatedBadge, ...AFTER_STORY_TONE_STYLE.p40 }}>40%</span>
-                <span style={{ ...AFTER_STORY_VIEWER_STYLE.relatedBadge, ...AFTER_STORY_TONE_STYLE.p20 }}>20%</span>
+          <div style={AFTER_STORY_VIEWER_STYLE.modalBody}>
+            <div style={AFTER_STORY_VIEWER_STYLE.modalContent}>
+              <div style={AFTER_STORY_VIEWER_STYLE.modalImageWrap}>
+                <VariantImage pic={activeImage} style={AFTER_STORY_VIEWER_STYLE} height={216} />
+              </div>
+              <div style={AFTER_STORY_VIEWER_STYLE.modalTextCard}>
+                <div style={AFTER_STORY_VIEWER_STYLE.relatedMetaRow}>
+                  {group.overName && <span style={AFTER_STORY_VIEWER_STYLE.relatedBadge}>{group.overName}</span>}
+                  <span style={AFTER_STORY_VIEWER_STYLE.relatedBadge}>条件分支 {currentIndex + 1}</span>
+                  {activeItem?.note && <span style={AFTER_STORY_VIEWER_STYLE.relatedBadge}>{activeItem.note}</span>}
+                </div>
+
+                <div style={{ marginTop: 14 }}>
+                  <VariantText item={activeItem} />
+                </div>
+
+                {activeItem?.conditionLines?.length > 0 && (
+                  <div style={AFTER_STORY_VIEWER_STYLE.conditionList}>
+                    {activeItem.conditionLines.map((line, index) => (
+                      <div
+                        key={`${line.type}:${index}:${line.text}`}
+                        style={line.type === 'section' ? AFTER_STORY_VIEWER_STYLE.conditionSection : AFTER_STORY_VIEWER_STYLE.conditionText}
+                      >
+                        {line.text}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div style={AFTER_STORY_VIEWER_STYLE.modalLegend}>
+                  <span style={{ ...AFTER_STORY_VIEWER_STYLE.relatedBadge, ...AFTER_STORY_TONE_STYLE.p100 }}>100%</span>
+                  <span style={{ ...AFTER_STORY_VIEWER_STYLE.relatedBadge, ...AFTER_STORY_TONE_STYLE.p80 }}>80%</span>
+                  <span style={{ ...AFTER_STORY_VIEWER_STYLE.relatedBadge, ...AFTER_STORY_TONE_STYLE.p60 }}>60%</span>
+                  <span style={{ ...AFTER_STORY_VIEWER_STYLE.relatedBadge, ...AFTER_STORY_TONE_STYLE.p40 }}>40%</span>
+                  <span style={{ ...AFTER_STORY_VIEWER_STYLE.relatedBadge, ...AFTER_STORY_TONE_STYLE.p20 }}>20%</span>
+                </div>
               </div>
             </div>
           </div>
         </div>
       </div>
-    </div>
+
+      {rawContent !== null && (
+        <RawFileView content={rawContent} onClose={() => setRawContent(null)} />
+      )}
+    </>
   )
 }
