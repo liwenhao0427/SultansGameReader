@@ -177,11 +177,29 @@ function buildFallbackSlotCandidate(slotId, slot, cardsMap, cardsById) {
   const condition = slot?.condition || {}
   const fixedSudanCard = condition.type === 'sudan' ? buildFixedSudanCard(condition) : null
   const fixedItemCard = condition.type === 'item' ? buildFixedItemCard(condition) : null
-  const defaultCards = fixedSudanCard
-    ? [fixedSudanCard]
-    : fixedItemCard
-      ? [fixedItemCard]
-      : extractConditionCards(condition, cardsMap, cardsById)
+
+  let defaultCards
+  if (fixedSudanCard) {
+    defaultCards = [fixedSudanCard]
+  } else if (fixedItemCard) {
+    defaultCards = [fixedItemCard]
+  } else {
+    defaultCards = extractConditionCards(condition, cardsMap, cardsById)
+  }
+
+  // 如果还是空，再尝试从 condition 的所有层级（含 any）里找固定 tag
+  if (defaultCards.length === 0) {
+    const allKeys = [
+      ...Object.keys(condition),
+      ...Object.keys(condition.any && typeof condition.any === 'object' ? condition.any : {}),
+    ]
+    for (const tag of Object.keys(FIXED_TAG_CARD_IDS)) {
+      if (allKeys.includes(tag)) {
+        defaultCards = [buildCardSummary(FIXED_TAG_CARD_IDS[tag], cardsMap, cardsById)]
+        break
+      }
+    }
+  }
 
   const label = defaultCards[0]?.name || slot?.text || slotId.toUpperCase()
 
@@ -198,7 +216,9 @@ function buildFallbackSlotCandidate(slotId, slot, cardsMap, cardsById) {
 
 function extractConditionCards(condition, cardsMap, cardsById) {
   const directIs = normalizeArray(condition?.is)
-  const anyIs = normalizeArray(condition?.any?.is)
+  // any 可能是对象或数组，只有对象时才取 any.is
+  const anyObj = condition?.any && !Array.isArray(condition.any) && typeof condition.any === 'object' ? condition.any : null
+  const anyIs = normalizeArray(anyObj?.is)
 
   // 优先用 is 字段
   if (directIs.length > 0) {
@@ -211,12 +231,11 @@ function extractConditionCards(condition, cardsMap, cardsById) {
   // 识别固定 tag（主角、妻子等）→ 直接返回对应卡牌
   const allConditionKeys = [
     ...Object.keys(condition || {}),
-    ...Object.keys(condition?.any || {}),
+    ...(anyObj ? Object.keys(anyObj) : []),
   ]
   for (const tag of Object.keys(FIXED_TAG_CARD_IDS)) {
     if (allConditionKeys.includes(tag)) {
-      const cardId = FIXED_TAG_CARD_IDS[tag]
-      return [buildCardSummary(cardId, cardsMap, cardsById)]
+      return [buildCardSummary(FIXED_TAG_CARD_IDS[tag], cardsMap, cardsById)]
     }
   }
 
