@@ -198,7 +198,7 @@ function buildSlotCandidate(slotId, pop, index, cardsMap, cardsById) {
   }
 }
 
-function buildSettlementSlotHints(slotId, items, cardsMap, cardsById) {
+function buildSettlementSlotHints(slotId, items, cardsMap, cardsById, phaseKey = 'settlement') {
   return normalizeArray(items)
     .filter((item) => item?.condition && typeof item.condition === 'object')
     .map((item, index) => {
@@ -211,7 +211,7 @@ function buildSettlementSlotHints(slotId, items, cardsMap, cardsById) {
       if (Object.keys(scopedCondition).length === 0) return null
 
       return {
-        id: `${slotId}:settlement:${item.guid || index}`,
+        id: `${slotId}:settlement:${phaseKey}:${item.guid || index}`,
         label: item.result_title || `相关结算 ${index + 1}`,
         mode: 'settlement',
         cards: extractConditionCards(scopedCondition, cardsMap, cardsById),
@@ -223,7 +223,7 @@ function buildSettlementSlotHints(slotId, items, cardsMap, cardsById) {
     .filter(Boolean)
 }
 
-function buildGlobalSettlementHints(items, cardsMap, cardsById, slotIds = []) {
+function buildGlobalSettlementHints(items, cardsMap, cardsById, slotIds = [], phaseKey = 'settlement') {
   return normalizeArray(items)
     .filter((item) => item?.condition && typeof item.condition === 'object')
     .filter((item) => !Object.keys(item.condition).some((key) => (
@@ -236,7 +236,7 @@ function buildGlobalSettlementHints(items, cardsMap, cardsById, slotIds = []) {
       ))
     )))
     .map((item, index) => ({
-      id: `global:settlement:${item.guid || index}`,
+      id: `global:settlement:${phaseKey}:${item.guid || index}`,
       label: item.result_title || `额外结算 ${index + 1}`,
       mode: 'settlement',
       cards: extractConditionCards(item.condition || {}, cardsMap, cardsById),
@@ -301,15 +301,15 @@ export function adaptStoryData(type, data, cardsMap, cardsById = {}) {
       const settlementHintsBySlot = {}
       for (const slotId of riteSlotIds) {
         settlementHintsBySlot[slotId] = [
-          ...buildSettlementSlotHints(slotId, data.settlement_prior, cardsMap, cardsById),
-          ...buildSettlementSlotHints(slotId, data.settlement, cardsMap, cardsById),
-          ...buildSettlementSlotHints(slotId, data.settlement_extre, cardsMap, cardsById),
+          ...buildSettlementSlotHints(slotId, data.settlement_prior, cardsMap, cardsById, 'prior'),
+          ...buildSettlementSlotHints(slotId, data.settlement, cardsMap, cardsById, 'main'),
+          ...buildSettlementSlotHints(slotId, data.settlement_extre, cardsMap, cardsById, 'extra'),
         ]
       }
       const globalSettlementHints = [
-        ...buildGlobalSettlementHints(data.settlement_prior, cardsMap, cardsById, riteSlotIds),
-        ...buildGlobalSettlementHints(data.settlement, cardsMap, cardsById, riteSlotIds),
-        ...buildGlobalSettlementHints(data.settlement_extre, cardsMap, cardsById, riteSlotIds),
+        ...buildGlobalSettlementHints(data.settlement_prior, cardsMap, cardsById, riteSlotIds, 'prior'),
+        ...buildGlobalSettlementHints(data.settlement, cardsMap, cardsById, riteSlotIds, 'main'),
+        ...buildGlobalSettlementHints(data.settlement_extre, cardsMap, cardsById, riteSlotIds, 'extra'),
       ]
 
       return {
@@ -437,6 +437,39 @@ export function adaptStoryData(type, data, cardsMap, cardsById = {}) {
         image: pickCardImage(data),
         slots: [],
         segments: [],
+      }
+
+    case 'loot':
+      return {
+        kind: 'loot',
+        title: data.name || `战利品 ${data.id}`,
+        subtitle: data.type__c || '',
+        intro: '',
+        meta: [
+          data.type != null ? `类型：${data.type}` : null,
+          data.repeat != null ? `重复：${data.repeat}` : null,
+        ].filter(Boolean),
+        image: (() => {
+          const firstCardItem = normalizeArray(data.item).find((item) => item?.type === 'card' && item.id != null)
+          return firstCardItem ? pickCardImage(cardsById?.[String(firstCardItem.id)]) : null
+        })(),
+        slots: [],
+        segments: normalizeArray(data.item).map((item, index) => {
+          const linkedCard = item?.type === 'card' ? cardsById?.[String(item.id)] : null
+          return {
+            phase: `掉落项 ${index + 1}`,
+            title: linkedCard?.name || `${item.type || '未知类型'} ${item.id || ''}`.trim(),
+            text: linkedCard?.text || '',
+            conditions: [
+              item?.num != null ? `数量：${item.num}` : null,
+              item?.weight != null ? `权重：${item.weight}` : null,
+            ].filter(Boolean),
+            actions: [],
+            options: [],
+            note: '',
+            image: pickCardImage(linkedCard),
+          }
+        }),
       }
 
     default:

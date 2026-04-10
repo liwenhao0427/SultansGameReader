@@ -1,237 +1,312 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import {
-  ReactFlow,
   Background,
   Controls,
   MiniMap,
-  useReactFlow,
+  ReactFlow,
   ReactFlowProvider,
   applyNodeChanges,
+  useReactFlow,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import dagre from 'dagre'
 
 import { nodeTypes } from './nodes/index.js'
+import { useResolvedImage } from '../services/imageResolver'
 import { extractEdges } from '../services/edgeExtractor.js'
+import { parseConditionObject } from '../services/conditionParser.js'
+import { mountNodeOnCanvas, linkNodesOnCanvas } from '../services/graphNavigation.js'
 import useCanvasStore from '../stores/useCanvasStore.js'
+import useConfigStore from '../stores/useConfigStore.js'
 import usePlayerStore from '../stores/usePlayerStore.js'
 import { evaluateCondition } from '../services/conditionEvaluator.js'
 
-// ── 边颜色映射 ──────────────────────────────────────────────────────────────
 const EDGE_COLORS = {
-  success: '#a6e3a1', // 绿
-  failed: '#f38ba8',  // 红
-  default: '#6c7086', // 灰
+  success: '#a6e3a1',
+  failed: '#f38ba8',
+  default: '#6c7086',
 }
 
-// ── dagre 布局 ──────────────────────────────────────────────────────────────
-/**
- * 对新增节点应用 dagre 自动布局
- * 已有位置的节点保持不动，只对 position 为 {x:0,y:0} 的新节点重新排布
- * @param {Array} nodes - 全部节点
- * @param {Array} edges - 全部边
- * @returns {Array} 更新了 position 的节点数组
- */
-function applyDagreLayout(nodes, edges) {
-  const g = new dagre.graphlib.Graph()
-  g.setDefaultEdgeLabel(() => ({}))
-  g.setGraph({
-    acyclicer: 'greedy',
-    rankdir: 'TB',
-    nodesep: 60,
-    ranksep: 80,
-  })
+function summarize(item, data) {
+  return item.name || item.text || data?.name || data?.dialog_tree_id || data?.description || data?.text || item.id
+}
 
-  // 节点尺寸（与各 NodeComponent 保持一致）
-  const NODE_W = 200
-  const NODE_H = 80
+function buildCanvasEdge(relation) {
+  return {
+    id: `${relation.source}->${relation.target}:${relation.path}`,
+    source: relation.source,
+    target: relation.target,
+    style: { stroke: EDGE_COLORS[relation.branchType] ?? EDGE_COLORS.default },
+    data: {
+      conditionText: relation.conditionText,
+      branchType: relation.branchType,
+      conditionObj: relation.conditionObj,
+      resultTitle: relation.resultTitle,
+      resultText: relation.resultText,
+    },
+  }
+}
 
-  nodes.forEach((n) => {
-    g.setNode(n.id, { width: NODE_W, height: NODE_H })
-  })
-  edges.forEach((e) => {
-    g.setEdge(e.source, e.target)
-  })
+function extractRelationCards(conditionObj, cardsMap, cardsById) {
+  if (!conditionObj || typeof conditionObj !== 'object') return []
 
-  dagre.layout(g)
-
-  return nodes.map((n) => {
-    // 已有手动调整位置的节点（非原点）保持不动
-    if (n.position.x !== 0 || n.position.y !== 0) return n
-    const pos = g.node(n.id)
-    if (!pos) return n
-    return {
-      ...n,
-      position: {
-        x: pos.x - NODE_W / 2,
-        y: pos.y - NODE_H / 2,
-      },
+  const directIds = []
+  const appendCard = (value) => {
+    if (value == null) return
+    const list = Array.isArray(value) ? value : [value]
+    for (const id of list) {
+      const key = String(id)
+      const card = cardsById?.[key] || null
+      directIds.push({
+        id: key,
+        name: card?.name || cardsMap?.get(key) || key,
+        rare: card?.rare || null,
+        image: Array.isArray(card?.resource) ? (card.resource[0] || null) : (card?.resource || null),
+      })
     }
-  })
+  }
+
+  appendCard(conditionObj.is)
+  appendCard(conditionObj['!is'])
+
+  if (conditionObj.any && typeof conditionObj.any === 'object') {
+    appendCard(conditionObj.any.is)
+    appendCard(conditionObj.any['!is'])
+  }
+
+  const uniq = new Map()
+  for (const card of directIds) {
+    if (!uniq.has(card.id)) uniq.set(card.id, card)
+  }
+  return Array.from(uniq.values())
 }
 
-// ── 内部画布组件（需要在 ReactFlowProvider 内部使用 useReactFlow） ──────────
-function CanvasInner() {
-  const { nodes, edges, nodeIdSet, addNode, addEdges, setSelectedNode, setNodes: setCanvasNodes } =
-    useCanvasStore()
-  const { setNodes, screenToFlowPosition } = useReactFlow()
+function RelationCardChip({ card }) {
+  const { url } = useResolvedImage(card?.image)
 
-  // 玩家模拟状态（用于条件高亮）
+  return (
+    <div style={relationCardChipStyle}>
+      <div style={relationCardThumbStyle}>
+        {url ? <img src={url} alt="" style={relationCardThumbImageStyle} /> : <span style={relationCardThumbTextStyle}>卡牌</span>}
+      </div>
+      <div style={relationCardNameStyle}>{card.name}</div>
+    </div>
+  )
+}
+
+function RelationPickerModal({ picker, onToggle, onConfirm, onClose }) {
+  if (!picker) return null
+
+  return (
+    <div style={pickerMaskStyle} onClick={onClose}>
+      <div style={pickerPanelStyle} onClick={(event) => event.stopPropagation()}>
+        <div style={pickerHeaderStyle}>
+          <div>
+            <div style={pickerTitleStyle}>选择要带出的关联节点</div>
+            <div style={pickerSubTitleStyle}>
+              从 `{picker.sourceNodeId}` 主动选择需要展开的后续关系，不再自动带出。
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button type="button" style={pickerActionStyle} onClick={onClose}>取消</button>
+            <button
+              type="button"
+              style={pickerPrimaryStyle}
+              onClick={onConfirm}
+              disabled={picker.selectedOptionIds.length === 0}
+            >
+              确定带出 {picker.selectedOptionIds.length || ''}
+            </button>
+          </div>
+        </div>
+
+        {picker.loading && <div style={pickerHintStyle}>正在读取关联信息…</div>}
+        {!picker.loading && picker.error && <div style={pickerHintStyle}>读取失败：{picker.error}</div>}
+        {!picker.loading && !picker.error && picker.options.length === 0 && (
+          <div style={pickerHintStyle}>当前节点没有可新增到画布的关联项。</div>
+        )}
+
+        {!picker.loading && !picker.error && picker.options.length > 0 && (
+          <div style={pickerListStyle}>
+            {picker.options.map((option) => (
+              <label
+                key={option.optionId}
+                style={{
+                  ...pickerItemStyle,
+                  ...(picker.selectedOptionIds.includes(option.optionId) ? pickerItemActiveStyle : null),
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={picker.selectedOptionIds.includes(option.optionId)}
+                  onChange={() => onToggle(option.optionId)}
+                  style={{ marginTop: 4 }}
+                />
+                <div style={{ minWidth: 0 }}>
+                  <div style={pickerItemTopStyle}>
+                    <span style={pickerTargetTypeStyle}>{option.targetType}</span>
+                    <span style={pickerTargetTitleStyle}>{option.targetLabel}</span>
+                    <span style={pickerTargetIdStyle}>{option.targetId}</span>
+                  </div>
+
+                  {option.conditionText && (
+                    <div title={option.conditionText} style={pickerLineClampStyle}>
+                      条件：{option.conditionText}
+                    </div>
+                  )}
+
+                  {(option.resultTitle || option.resultText) && (
+                    <div
+                      title={[option.resultTitle, option.resultText].filter(Boolean).join('\n')}
+                      style={{ ...pickerLineClampStyle, color: '#f0dfbd' }}
+                    >
+                      结果：{option.resultTitle || option.resultText}
+                    </div>
+                  )}
+
+                  {option.relatedCards.length > 0 && (
+                    <div style={pickerCardRowStyle}>
+                      {option.relatedCards.slice(0, 4).map((card) => (
+                        <RelationCardChip key={card.id} card={card} />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </label>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function CanvasInner() {
+  const { nodes, edges, setSelectedNode, setNodes: setCanvasNodes } = useCanvasStore()
+  const cardsLite = useConfigStore((s) => s.cardsLite)
+  const cardsById = useConfigStore((s) => s.cardsById)
+  const { setNodes, screenToFlowPosition } = useReactFlow()
   const { triggeredEvents, counterValues } = usePlayerStore()
 
-  // 判断玩家状态是否有数据（有数据时才做条件高亮）
   const hasPlayerData = triggeredEvents.size > 0 || counterValues.size > 0
+  const [tooltip, setTooltip] = useState(null)
+  const [pendingSourceId, setPendingSourceId] = useState(null)
+  const [relationPicker, setRelationPicker] = useState(null)
 
-  /**
-   * 根据玩家状态计算边的透明度
-   * - 无条件：正常显示
-   * - 有条件且满足：正常显示
-   * - 有条件但不满足：降低透明度
-   */
+  const nodeMap = useMemo(
+    () => new Map(nodes.map((node) => [node.id, node])),
+    [nodes]
+  )
+
+  const nodeIdSet = useMemo(
+    () => new Set(nodes.map((node) => node.id)),
+    [nodes]
+  )
+
   const getEdgeOpacity = useCallback(
     (edge) => {
-      if (!hasPlayerData || !edge.data?.conditionText) return 1
-      // conditionText 是字符串，无法直接求值；简化实现：有玩家数据时降低未知条件边的透明度
-      // 实际条件对象存储在 edge.data.conditionObj（如有），否则保持正常
-      if (edge.data?.conditionObj) {
-        return evaluateCondition(edge.data.conditionObj, { triggeredEvents, counterValues }) ? 1 : 0.3
-      }
-      // 无原始条件对象时，有 conditionText 且有玩家数据则半透明
-      return 0.3
+      if (!hasPlayerData || !edge.data?.conditionObj) return 1
+      return evaluateCondition(edge.data.conditionObj, { triggeredEvents, counterValues }) ? 1 : 0.3
     },
     [hasPlayerData, triggeredEvents, counterValues]
   )
 
-  // 浮动 tooltip 状态（边点击时显示 conditionText）
-  const [tooltip, setTooltip] = useState(null) // { x, y, text }
+  const openRelationPicker = useCallback(async (sourceNodeId) => {
+    const sourceNode = nodeMap.get(sourceNodeId)
+    if (!sourceNode?.data?.rawData) return
 
-  /**
-   * 添加节点并自动展开一层关联（含循环防护）
-   * @param {string} id - 原始 ID
-   * @param {string} type - 节点类型
-   * @param {object} data - 缓存数据
-   * @param {{ x: number, y: number }} position - 初始位置
-   */
-  const addNodeWithExpand = useCallback(
-    async (id, type, data, position) => {
-      const nodeKey = `${type}:${id}`
+    setRelationPicker({
+      sourceNodeId,
+      loading: true,
+      error: null,
+      options: [],
+      selectedOptionIds: [],
+    })
 
-      // 已存在则跳过（循环防护）
-      if (nodeIdSet.has(nodeKey)) return
+    const colonIndex = sourceNodeId.indexOf(':')
+    const sourceType = sourceNodeId.slice(0, colonIndex)
+    const sourceRawId = sourceNodeId.slice(colonIndex + 1)
 
-      // 添加主节点
-      addNode(id, type, data, position)
+    try {
+      const relations = extractEdges(sourceType, sourceRawId, sourceNode.data.rawData)
+        .filter((relation) => !nodeIdSet.has(relation.target))
 
-      // 提取关联边
-      const relations = extractEdges(type, id, data)
-
-      // 过滤掉 target 已在画布中的关联（防循环）
-      const currentSet = useCanvasStore.getState().nodeIdSet
-      const newRelations = relations.filter((r) => !currentSet.has(r.target))
-
-      // 构建 XYFlow 边（所有关联，包括已存在 target 的边也要加）
-      const buildEdges = (rels) =>
-        rels.map((r) => ({
-          id: `${r.source}->${r.target}:${r.path}`,
-          source: r.source,
-          target: r.target,
-          label: r.conditionText || undefined,
-          style: { stroke: EDGE_COLORS[r.branchType] ?? EDGE_COLORS.default },
-          data: { conditionText: r.conditionText, branchType: r.branchType },
-        }))
-
-      if (newRelations.length <= 10) {
-        // 自动展开一层：加载所有新关联节点
-        const loadedNodes = []
-        for (const rel of newRelations) {
-          const [relType, relId] = rel.target.split(':')
-          try {
-            const relData = await window.electronAPI.configReadCache(relType, relId)
-            if (relData) {
-              // 新节点先放在原点，后续 dagre 统一排布
-              addNode(relId, relType, { label: relId, nodeType: relType, rawData: relData }, { x: 0, y: 0 })
-              loadedNodes.push(rel.target)
-            }
-          } catch {
-            // 缓存不存在时静默跳过
-          }
-        }
-
-        // 添加所有边（含已存在 target 的边）
-        addEdges(buildEdges(relations))
-
-        // 对全部节点应用 dagre 布局（只移动位置为原点的新节点）
-        const latestNodes = useCanvasStore.getState().nodes
-        const latestEdges = useCanvasStore.getState().edges
-        const laid = applyDagreLayout(latestNodes, latestEdges)
-        setNodes(laid)
-      } else {
-        // 关联数 > 10：折叠状态，不自动展开，只添加边到已存在节点
-        const existingRelations = relations.filter((r) =>
-          useCanvasStore.getState().nodeIdSet.has(r.target)
-        )
-        addEdges(buildEdges(existingRelations))
+      const options = []
+      for (let index = 0; index < relations.length; index += 1) {
+        const relation = relations[index]
+        const [targetType, targetId] = relation.target.split(':')
+        const targetData = await window.electronAPI.configReadCache(targetType, targetId)
+        const conditionLines = parseConditionObject(relation.conditionObj, cardsLite)
+        options.push({
+          optionId: `${relation.path}:${targetType}:${targetId}:${index}`,
+          relation,
+          targetType,
+          targetId,
+          targetLabel: summarize({ id: targetId, type: targetType }, targetData || {}),
+          conditionText: conditionLines.join(' / ') || relation.conditionText || '',
+          relatedCards: extractRelationCards(relation.conditionObj, cardsLite, cardsById),
+          resultTitle: relation.resultTitle || '',
+          resultText: relation.resultText || '',
+        })
       }
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [nodeIdSet]
-  )
 
-  // ── 拖放处理 ──────────────────────────────────────────────────────────────
-  const onDragOver = useCallback((e) => {
-    e.preventDefault()
-    e.dataTransfer.dropEffect = 'move'
+      setRelationPicker({
+        sourceNodeId,
+        loading: false,
+        error: null,
+        options,
+        selectedOptionIds: [],
+      })
+    } catch (error) {
+      setRelationPicker({
+        sourceNodeId,
+        loading: false,
+        error: error?.message || '未知错误',
+        options: [],
+        selectedOptionIds: [],
+      })
+    }
+  }, [cardsById, cardsLite, nodeIdSet, nodeMap])
+
+  const onDragOver = useCallback((event) => {
+    event.preventDefault()
+    event.dataTransfer.dropEffect = 'move'
   }, [])
 
-  const onDrop = useCallback(
-    async (e) => {
-      e.preventDefault()
-      const raw = e.dataTransfer.getData('application/json')
-      if (!raw) return
+  const onDrop = useCallback(async (event) => {
+    event.preventDefault()
+    const raw = event.dataTransfer.getData('application/json')
+    if (!raw) return
 
-      let payload
-      try {
-        payload = JSON.parse(raw)
-      } catch {
-        return
-      }
+    let payload
+    try {
+      payload = JSON.parse(raw)
+    } catch {
+      return
+    }
 
-      const { id, type } = payload
-      if (!id || !type) return
+    const { id, type } = payload
+    if (!id || !type) return
 
-      // 用 screenToFlowPosition 将屏幕坐标转为画布坐标（正确处理缩放和平移）
-      const position = screenToFlowPosition({ x: e.clientX, y: e.clientY })
+    const position = screenToFlowPosition({ x: event.clientX, y: event.clientY })
+    await mountNodeOnCanvas({ id, type }, position, { autoSelect: true, expandRelations: false })
+  }, [screenToFlowPosition])
 
-      // 通过 IPC 加载缓存数据
-      try {
-        const data = await window.electronAPI.configReadCache(type, id)
-        if (data) {
-          await addNodeWithExpand(id, type, { label: id, nodeType: type, rawData: data }, position)
-        }
-      } catch {
-        // 静默处理
-      }
-    },
-    [addNodeWithExpand, screenToFlowPosition]
-  )
+  const onNodeClick = useCallback((_event, node) => {
+    setSelectedNode(node.id)
+    setTooltip(null)
+  }, [setSelectedNode])
 
-  // ── 节点点击 ──────────────────────────────────────────────────────────────
-  const onNodeClick = useCallback(
-    (_e, node) => {
-      setSelectedNode(node.id)
-      setTooltip(null) // 关闭边 tooltip
-    },
-    [setSelectedNode]
-  )
+  const onEdgeClick = useCallback((event, edge) => {
+    const parts = [
+      edge.data?.conditionText ? `条件：${edge.data.conditionText}` : null,
+      edge.data?.resultTitle ? `结果：${edge.data.resultTitle}` : null,
+      edge.data?.resultText || null,
+    ].filter(Boolean)
 
-  // ── 边点击：显示 conditionText tooltip ───────────────────────────────────
-  const onEdgeClick = useCallback((e, edge) => {
-    const text = edge.data?.conditionText
-    if (!text) return
-    setTooltip({ x: e.clientX, y: e.clientY, text })
+    if (parts.length === 0) return
+    setTooltip({ x: event.clientX, y: event.clientY, text: parts.join('\n') })
   }, [])
 
-  // ── 点击画布空白处关闭 tooltip ────────────────────────────────────────────
   const onPaneClick = useCallback(() => {
     setTooltip(null)
   }, [])
@@ -240,17 +315,72 @@ function CanvasInner() {
     setCanvasNodes(applyNodeChanges(changes, useCanvasStore.getState().nodes))
   }, [setCanvasNodes])
 
+  const onConnectStart = useCallback((_event, params) => {
+    setPendingSourceId(params?.nodeId || null)
+  }, [])
+
+  const onConnectEnd = useCallback(() => {
+    if (pendingSourceId) {
+      openRelationPicker(pendingSourceId)
+    }
+    setPendingSourceId(null)
+  }, [openRelationPicker, pendingSourceId])
+
+  const toggleRelationOption = useCallback((optionId) => {
+    setRelationPicker((current) => {
+      if (!current) return current
+      const selectedOptionIds = current.selectedOptionIds.includes(optionId)
+        ? current.selectedOptionIds.filter((id) => id !== optionId)
+        : [...current.selectedOptionIds, optionId]
+      return { ...current, selectedOptionIds }
+    })
+  }, [])
+
+  const confirmRelationPicker = useCallback(async () => {
+    if (!relationPicker) return
+
+    const sourceNode = nodeMap.get(relationPicker.sourceNodeId)
+    if (!sourceNode) {
+      setRelationPicker(null)
+      return
+    }
+
+    const selected = relationPicker.options.filter((option) => relationPicker.selectedOptionIds.includes(option.optionId))
+    for (let index = 0; index < selected.length; index += 1) {
+      const option = selected[index]
+      const position = {
+        x: sourceNode.position.x + 240 + (index % 2) * 190,
+        y: sourceNode.position.y + 60 + Math.floor(index / 2) * 150,
+      }
+
+      await mountNodeOnCanvas(
+        { id: option.targetId, type: option.targetType },
+        position,
+        { autoSelect: false, expandRelations: false }
+      )
+
+      linkNodesOnCanvas(
+        relationPicker.sourceNodeId,
+        option.targetType,
+        option.targetId,
+        option.relation.branchType,
+        option.conditionText || option.resultTitle || option.resultText || ''
+      )
+    }
+
+    setNodes(useCanvasStore.getState().nodes)
+    setRelationPicker(null)
+  }, [nodeMap, relationPicker, setNodes])
+
   return (
-    <div
-      style={{ width: '100%', height: '100%', position: 'relative' }}
-    >
+    <div style={{ width: '100%', height: '100%', position: 'relative' }}>
       <ReactFlow
         nodes={nodes}
-        edges={edges.map((e) => ({
-          ...e,
+        edges={edges.map((edge) => ({
+          ...edge,
           style: {
-            ...e.style,
-            opacity: getEdgeOpacity(e),
+            ...edge.style,
+            opacity: getEdgeOpacity(edge),
           },
         }))}
         nodeTypes={nodeTypes}
@@ -260,6 +390,8 @@ function CanvasInner() {
         onNodeClick={onNodeClick}
         onEdgeClick={onEdgeClick}
         onPaneClick={onPaneClick}
+        onConnectStart={onConnectStart}
+        onConnectEnd={onConnectEnd}
         nodesDraggable
         fitView
       >
@@ -272,37 +404,219 @@ function CanvasInner() {
         />
       </ReactFlow>
 
-      {/* 边 conditionText 浮动 tooltip */}
       {tooltip && (
         <div
           style={{
             position: 'fixed',
             left: tooltip.x + 8,
             top: tooltip.y + 8,
-            background: '#313244',
-            color: '#cdd6f4',
-            padding: '6px 10px',
-            borderRadius: 6,
+            background: '#2a2118',
+            color: '#f1e8d5',
+            padding: '8px 10px',
+            borderRadius: 10,
+            border: '1px solid rgba(212, 184, 126, 0.18)',
             fontSize: 12,
-            maxWidth: 300,
-            boxShadow: '0 2px 8px rgba(0,0,0,0.5)',
+            maxWidth: 320,
+            boxShadow: '0 8px 24px rgba(0,0,0,0.32)',
             pointerEvents: 'none',
             zIndex: 9999,
             whiteSpace: 'pre-wrap',
+            lineHeight: 1.6,
           }}
         >
           {tooltip.text}
         </div>
       )}
+
+      <RelationPickerModal
+        picker={relationPicker}
+        onToggle={toggleRelationOption}
+        onConfirm={confirmRelationPicker}
+        onClose={() => setRelationPicker(null)}
+      />
     </div>
   )
 }
 
-// ── 导出：用 ReactFlowProvider 包裹 ─────────────────────────────────────────
 export default function Canvas() {
   return (
     <ReactFlowProvider>
       <CanvasInner />
     </ReactFlowProvider>
   )
+}
+
+const pickerMaskStyle = {
+  position: 'fixed',
+  inset: 0,
+  zIndex: 95,
+  background: 'rgba(6, 5, 4, 0.72)',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  padding: 24,
+}
+
+const pickerPanelStyle = {
+  width: 'min(980px, 92vw)',
+  maxHeight: '82vh',
+  display: 'grid',
+  gridTemplateRows: 'auto minmax(0, 1fr)',
+  borderRadius: 28,
+  border: '1px solid rgba(212, 184, 126, 0.16)',
+  background: 'linear-gradient(180deg, rgba(28, 22, 16, 0.98), rgba(18, 15, 11, 0.98))',
+  boxShadow: '0 30px 70px rgba(0, 0, 0, 0.35)',
+  overflow: 'hidden',
+}
+
+const pickerHeaderStyle = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'flex-start',
+  gap: 16,
+  padding: '20px 22px 16px',
+  borderBottom: '1px solid rgba(212, 184, 126, 0.1)',
+}
+
+const pickerTitleStyle = {
+  fontSize: 24,
+  fontWeight: 800,
+  color: '#f8edd7',
+}
+
+const pickerSubTitleStyle = {
+  marginTop: 8,
+  fontSize: 13,
+  lineHeight: 1.6,
+  color: 'rgba(241, 232, 213, 0.68)',
+}
+
+const pickerActionStyle = {
+  padding: '10px 14px',
+  borderRadius: 999,
+  border: '1px solid rgba(212, 184, 126, 0.18)',
+  background: 'rgba(212, 184, 126, 0.08)',
+  color: '#f1e8d5',
+  cursor: 'pointer',
+}
+
+const pickerPrimaryStyle = {
+  ...pickerActionStyle,
+  background: 'rgba(212, 184, 126, 0.18)',
+}
+
+const pickerHintStyle = {
+  padding: 24,
+  color: 'rgba(241, 232, 213, 0.72)',
+  fontSize: 14,
+}
+
+const pickerListStyle = {
+  minHeight: 0,
+  overflowY: 'auto',
+  padding: 18,
+  display: 'grid',
+  gap: 12,
+}
+
+const pickerItemStyle = {
+  display: 'grid',
+  gridTemplateColumns: '20px minmax(0, 1fr)',
+  gap: 14,
+  padding: 16,
+  borderRadius: 20,
+  border: '1px solid rgba(212, 184, 126, 0.12)',
+  background: 'rgba(212, 184, 126, 0.035)',
+  cursor: 'pointer',
+}
+
+const pickerItemActiveStyle = {
+  border: '1px solid rgba(212, 184, 126, 0.3)',
+  background: 'rgba(212, 184, 126, 0.12)',
+}
+
+const pickerItemTopStyle = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 10,
+  flexWrap: 'wrap',
+}
+
+const pickerTargetTypeStyle = {
+  padding: '2px 8px',
+  borderRadius: 999,
+  background: 'rgba(212, 184, 126, 0.12)',
+  color: '#e3c893',
+  fontSize: 11,
+}
+
+const pickerTargetTitleStyle = {
+  fontSize: 16,
+  fontWeight: 700,
+  color: '#fff0d3',
+}
+
+const pickerTargetIdStyle = {
+  fontSize: 12,
+  color: 'rgba(241, 232, 213, 0.5)',
+  fontFamily: 'Consolas, monospace',
+}
+
+const pickerLineClampStyle = {
+  marginTop: 8,
+  fontSize: 13,
+  lineHeight: 1.65,
+  color: '#d7c3a0',
+  display: '-webkit-box',
+  WebkitBoxOrient: 'vertical',
+  WebkitLineClamp: 2,
+  overflow: 'hidden',
+}
+
+const pickerCardRowStyle = {
+  marginTop: 12,
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: 8,
+}
+
+const relationCardChipStyle = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 8,
+  padding: '6px 8px',
+  borderRadius: 999,
+  border: '1px solid rgba(212, 184, 126, 0.14)',
+  background: 'rgba(212, 184, 126, 0.06)',
+}
+
+const relationCardThumbStyle = {
+  width: 24,
+  height: 24,
+  borderRadius: 999,
+  overflow: 'hidden',
+  background: 'rgba(18, 15, 11, 0.94)',
+  flexShrink: 0,
+}
+
+const relationCardThumbImageStyle = {
+  width: '100%',
+  height: '100%',
+  display: 'block',
+  objectFit: 'cover',
+}
+
+const relationCardThumbTextStyle = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  width: '100%',
+  height: '100%',
+  fontSize: 9,
+  color: 'rgba(241, 232, 213, 0.42)',
+}
+
+const relationCardNameStyle = {
+  fontSize: 12,
+  color: '#f1e8d5',
 }

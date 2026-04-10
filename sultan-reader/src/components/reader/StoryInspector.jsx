@@ -7,6 +7,8 @@ import { getCardRarityFrameAsset } from '../../resourceConfig'
 import { linkNodesOnCanvas, mountNodeOnCanvas } from '../../services/graphNavigation'
 import RawFileView from '../RawFileView'
 
+const FULLSCREEN_TYPES = new Set(['rite', 'event', 'dt', 'over', 'after_story'])
+
 function splitIntro(text) {
   if (!text) return []
 
@@ -137,6 +139,28 @@ function PreviewImage({ pic, maxHeight = 320 }) {
         />
       )}
       {!loading && !url && <div style={imageFallbackStyle}>暂无对应图片</div>}
+    </div>
+  )
+}
+
+function ConditionPreview({ text, color = '#dcc8a3', maxLines = 2 }) {
+  if (!text) return null
+
+  return (
+    <div
+      title={text}
+      style={{
+        ...smallLineStyle,
+        marginTop: 4,
+        color,
+        fontSize: 12,
+        display: '-webkit-box',
+        WebkitBoxOrient: 'vertical',
+        WebkitLineClamp: maxLines,
+        overflow: 'hidden',
+      }}
+    >
+      条件：{text}
     </div>
   )
 }
@@ -298,11 +322,7 @@ function CandidateHandItem({ candidate, active, onSelect }) {
           <div style={{ fontSize: 16, fontWeight: 800, lineHeight: 1.3, color: '#fff2d7' }}>
             {candidate.label}
           </div>
-          {candidate.conditionText && (
-            <div style={{ ...smallLineStyle, marginTop: 6, color: '#e1cfad' }}>
-              条件：{candidate.conditionText}
-            </div>
-          )}
+          <ConditionPreview text={candidate.conditionText} color="#e1cfad" />
         </div>
         {!previewCard && candidate.cards.length <= 1 && (
           <div style={{
@@ -372,11 +392,7 @@ function SettlementHintItem({ hint, active, onToggle }) {
           <div style={{ fontSize: 14, fontWeight: 800, lineHeight: 1.3, color: '#fff0d3' }}>
             {hint.label}
           </div>
-          {hint.conditionText && (
-            <div style={{ ...smallLineStyle, marginTop: 4, color: '#dcc8a3', fontSize: 12 }}>
-              条件：{hint.conditionText}
-            </div>
-          )}
+          <ConditionPreview text={hint.conditionText} />
         </div>
       </div>
     </button>
@@ -516,7 +532,7 @@ export default function StoryInspector({ type, data, onClose }) {
   const currentGateSegment = visibleSegments.find((segment) => segment.options?.length > 0)
   const canRevealLine = revealedLineCount < dialogueLines.length
   const canRevealSegment = !canRevealLine && !currentGateSegment && revealedSegmentCount < availableSegments.length
-  const isFullscreenReader = type === 'rite' || type === 'event'
+  const isFullscreenReader = FULLSCREEN_TYPES.has(type)
   const slotBackgroundMap = templateData?.slots || {}
 
   if (!model) return null
@@ -541,7 +557,7 @@ export default function StoryInspector({ type, data, onClose }) {
         name: action.text,
       },
       { x: 460 + offsetIndex * 60, y: 180 + offsetIndex * 50 },
-      { autoSelect: true, expandRelations: true }
+      { autoSelect: true, expandRelations: false }
     )
 
     if (targetNodeKey && data?.id != null) {
@@ -763,7 +779,9 @@ export default function StoryInspector({ type, data, onClose }) {
             )}
             {selectedSlot?.conditions?.length > 0 && (
               <div style={{ ...smallLineStyle, marginTop: 8 }}>
-                可放入条件：{selectedSlot.conditions.join('，')}
+                <span title={selectedSlot.conditions.join('，')}>
+                  可放入条件：{selectedSlot.conditions.join('，')}
+                </span>
               </div>
             )}
           </div>
@@ -799,7 +817,9 @@ export default function StoryInspector({ type, data, onClose }) {
               </div>
               {selectedSlot?.conditions?.length > 0 && (
                 <div style={{ ...smallLineStyle, marginTop: 12, textAlign: 'center' }}>
-                  条件：{selectedSlot.conditions.join('，')}
+                  <span title={selectedSlot.conditions.join('，')}>
+                    条件：{selectedSlot.conditions.join('，')}
+                  </span>
                 </div>
               )}
             </div>
@@ -1116,10 +1136,6 @@ export default function StoryInspector({ type, data, onClose }) {
     <div style={overlayShellStyle}>
       <div style={overlayCardStyle}>
         <div style={overlayHeaderStyle}>
-          <div>
-            <div style={overlayTitleStyle}>{type === 'rite' ? '仪式阅读模式' : '事件阅读模式'}</div>
-            <div style={overlaySubStyle}>关闭后返回节点图模式。</div>
-          </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             {data?._source_path && (
               <button type="button" onClick={handleViewRaw} style={secondaryButtonStyle}>查看原始文件</button>
@@ -1320,22 +1336,10 @@ const overlayCardStyle = {
 const overlayHeaderStyle = {
   display: 'flex',
   alignItems: 'center',
-  justifyContent: 'space-between',
+  justifyContent: 'flex-end',
   gap: 16,
   padding: '22px 28px 18px',
   borderBottom: '1px solid rgba(212, 184, 126, 0.12)',
-}
-
-const overlayTitleStyle = {
-  fontSize: 28,
-  fontWeight: 900,
-  color: '#f8edd7',
-}
-
-const overlaySubStyle = {
-  marginTop: 6,
-  color: 'rgba(241, 232, 213, 0.68)',
-  fontSize: 13,
 }
 
 const closeButtonStyle = {

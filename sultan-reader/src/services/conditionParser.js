@@ -76,6 +76,18 @@ export function parseCondition(key, value, comment, cardsMap) {
     return `卡位 ${m[1]} 是 ${cardName}`;
   }
 
+  // 当前作用域内是某卡牌（如仪式槽位条件被裁剪后只剩 is）
+  if (key === 'is') {
+    const values = Array.isArray(value) ? value : [value];
+    return `是 ${values.map((item) => resolveCardName(String(item), cardsMap)).join(' / ')}`;
+  }
+
+  // 当前作用域内不是某卡牌
+  if (key === '!is') {
+    const values = Array.isArray(value) ? value : [value];
+    return `不是 ${values.map((item) => resolveCardName(String(item), cardsMap)).join(' / ')}`;
+  }
+
   // 检定属性 >=
   if ((m = key.match(/^r(\d+):(.+)>=$/))) {
     return `检定 ${m[2]} ≥ ${value}`;

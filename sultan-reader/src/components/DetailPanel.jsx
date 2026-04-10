@@ -3,6 +3,8 @@ import useCanvasStore from '../stores/useCanvasStore'
 import RawFileView from './RawFileView'
 import StoryInspector from './reader/StoryInspector'
 
+const FULLSCREEN_TYPES = new Set(['rite', 'event', 'dt', 'over', 'after_story'])
+
 // 面板整体样式
 const panelStyle = {
   position: 'fixed',
@@ -88,7 +90,7 @@ export default function DetailPanel() {
     return null
   }
 
-  if (type === 'rite' || type === 'event') {
+  if (FULLSCREEN_TYPES.has(type)) {
     return !loading && !error && data
       ? <StoryInspector type={type} data={data} onClose={() => setSelectedNode(null)} />
       : null
@@ -104,7 +106,24 @@ export default function DetailPanel() {
       {/* 错误状态 */}
       {error && <div style={errorStyle}>错误：{error}</div>}
       {!loading && !error && data && (
-        <div style={{ flex: 1 }}>
+        <div style={{ flex: 1, display: 'grid', gridTemplateRows: 'auto 1fr', minHeight: 0 }}>
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: 12,
+            marginBottom: 14,
+          }}>
+            <div style={{ color: 'rgba(241, 232, 213, 0.62)', fontSize: 12 }}>
+              {selectedNodeId}
+            </div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              {data?._source_path && (
+                <button type="button" onClick={handleViewRaw} style={actionButtonStyle}>查看原始文件</button>
+              )}
+              <button type="button" onClick={() => setSelectedNode(null)} style={actionButtonStyle}>关闭</button>
+            </div>
+          </div>
           <StoryInspector type={type} data={data} onClose={() => setSelectedNode(null)} />
         </div>
       )}
@@ -114,4 +133,13 @@ export default function DetailPanel() {
       )}
     </div>
   )
+}
+
+const actionButtonStyle = {
+  padding: '8px 12px',
+  borderRadius: 999,
+  border: '1px solid rgba(212, 184, 126, 0.18)',
+  background: 'rgba(212, 184, 126, 0.08)',
+  color: '#f1e8d5',
+  cursor: 'pointer',
 }

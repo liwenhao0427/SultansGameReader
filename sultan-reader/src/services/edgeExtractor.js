@@ -74,6 +74,9 @@ function extractFromObject(source, obj, currentPath, edgeMap) {
             path: fieldPath,
             branchType,
             conditionText,
+            conditionObj: obj.condition || null,
+            resultTitle: obj.result_title || '',
+            resultText: obj.result_text || obj.tips_text || '',
           });
         }
       }
@@ -133,7 +136,16 @@ export function extractEdges(nodeType, nodeId, data) {
         const target = `${targetType}:${id}`;
         const edgeId = `${source}->${target}:${key}`;
         if (!edgeMap.has(edgeId)) {
-          edgeMap.set(edgeId, { source, target, path: key, branchType, conditionText });
+          edgeMap.set(edgeId, {
+            source,
+            target,
+            path: key,
+            branchType,
+            conditionText,
+            conditionObj: data.condition || null,
+            resultTitle: data.result_title || '',
+            resultText: data.result_text || data.text || '',
+          });
         }
       }
     } else if (Array.isArray(value) && key !== 'settlement') {

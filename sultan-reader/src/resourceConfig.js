@@ -20,10 +20,10 @@
  * 这样能和游戏内卡牌外框更接近，也能修正当前背景显示不对的问题。
  */
 export const CARD_RARITY_FRAME_ASSETS = {
-  1: 'card_bg_stone',
-  2: 'card_bg_copper',
-  3: 'card_bg_silver',
-  4: 'card_bg_gold',
+  1: 'card_mt',
+  2: 'copper',
+  3: 'silver',
+  4: 'gold',
 }
 
 /**

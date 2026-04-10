@@ -4,6 +4,7 @@ import useCanvasStore from '../stores/useCanvasStore'
 import Canvas from './Canvas'
 import DetailPanel from './DetailPanel'
 import { mountNodeOnCanvas } from '../services/graphNavigation'
+import { useResolvedImage } from '../services/imageResolver'
 
 const TYPE_TABS = [
   { key: 'rite', label: '仪式' },
@@ -18,13 +19,35 @@ const TYPE_TABS = [
 const PAGE_SIZE = 18
 
 function chunkSummary(entry) {
-  return entry.name || entry.text || entry.id
+  return entry.name || entry.title || entry.text || entry.id
+}
+
+function CatalogPreview({ item, activeType, cardsById }) {
+  let pic = item.image || null
+
+  if (!pic && activeType === 'card') {
+    const card = cardsById?.[String(item.id)]
+    pic = Array.isArray(card?.resource) ? (card.resource[0] || null) : (card?.resource || null)
+  }
+
+  const { url } = useResolvedImage(pic)
+
+  return (
+    <div style={listPreviewStyle}>
+      {url ? (
+        <img src={url} alt="" style={listPreviewImageStyle} />
+      ) : (
+        <div style={listPreviewPlaceholderStyle}>{activeType === 'card' ? '卡牌' : activeType === 'loot' ? '战利品' : '条目'}</div>
+      )}
+    </div>
+  )
 }
 
 export default function MainLayout({ onNavigate }) {
   const isLoaded = useConfigStore((s) => s.isLoaded)
   const initialize = useConfigStore((s) => s.initialize)
   const indexStats = useConfigStore((s) => s.indexStats)
+  const cardsById = useConfigStore((s) => s.cardsById)
   const nodeIdSet = useCanvasStore((s) => s.nodeIdSet)
   const clearCanvas = useCanvasStore((s) => s.clearCanvas)
 
@@ -200,8 +223,18 @@ export default function MainLayout({ onNavigate }) {
                     ...(inCanvas ? mountedItemStyle : null),
                   }}
                 >
-                  <div style={listItemIdStyle}>{item.id}</div>
-                  <div style={listItemTitleStyle}>{chunkSummary(item)}</div>
+                  <div style={listItemInnerStyle}>
+                    {(activeType === 'card' || activeType === 'loot') && (
+                      <CatalogPreview item={item} activeType={activeType} cardsById={cardsById} />
+                    )}
+                    <div style={{ minWidth: 0 }}>
+                      <div style={listItemIdStyle}>{item.id}</div>
+                      <div style={listItemTitleStyle}>{chunkSummary(item)}</div>
+                      {item.title && (
+                        <div style={listItemSubTitleStyle}>{item.title}</div>
+                      )}
+                    </div>
+                  </div>
                 </button>
               )
             })}
@@ -404,6 +437,13 @@ const listItemStyle = {
   cursor: 'pointer',
 }
 
+const listItemInnerStyle = {
+  display: 'grid',
+  gridTemplateColumns: '58px minmax(0, 1fr)',
+  gap: 12,
+  alignItems: 'center',
+}
+
 const mountedItemStyle = {
   background: 'rgba(133, 170, 117, 0.08)',
   border: '1px solid rgba(133, 170, 117, 0.22)',
@@ -419,6 +459,40 @@ const listItemTitleStyle = {
   marginTop: 6,
   fontSize: 13,
   lineHeight: 1.55,
+}
+
+const listItemSubTitleStyle = {
+  marginTop: 4,
+  fontSize: 11,
+  lineHeight: 1.5,
+  color: 'rgba(241, 232, 213, 0.58)',
+}
+
+const listPreviewStyle = {
+  width: 58,
+  height: 82,
+  borderRadius: 12,
+  overflow: 'hidden',
+  border: '1px solid rgba(212, 184, 126, 0.18)',
+  background: 'rgba(18, 15, 11, 0.9)',
+  boxShadow: '0 12px 22px rgba(0, 0, 0, 0.22)',
+}
+
+const listPreviewImageStyle = {
+  width: '100%',
+  height: '100%',
+  display: 'block',
+  objectFit: 'cover',
+}
+
+const listPreviewPlaceholderStyle = {
+  width: '100%',
+  height: '100%',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  color: 'rgba(241, 232, 213, 0.45)',
+  fontSize: 10,
 }
 
 const paginationStyle = {

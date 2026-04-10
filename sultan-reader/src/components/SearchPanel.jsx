@@ -34,7 +34,7 @@ export default function SearchPanel() {
   const [adding, setAdding] = useState(null) // 正在加入的 item key
   const debounceTimer = useRef(null)
 
-  const { nodeIdSet, addNode, addEdges } = useCanvasStore()
+  const { nodeIdSet, addNode } = useCanvasStore()
 
   // 执行搜索
   const doSearch = useCallback(async (q, types) => {
@@ -85,44 +85,12 @@ export default function SearchPanel() {
         rawData: data,
       }, position)
 
-      // 自动展开关联（≤10 个）
-      const { extractEdges } = await import('../services/edgeExtractor.js')
-      const { evaluateCondition } = await import('../services/conditionEvaluator.js')
-      const relations = extractEdges(item.type, item.id, data)
-      const currentSet = useCanvasStore.getState().nodeIdSet
-      const newRelations = relations.filter(r => !currentSet.has(r.target))
-
-      const EDGE_COLORS = { success: '#a6e3a1', failed: '#f38ba8', default: '#6c7086' }
-      const buildEdges = (rels) => rels.map(r => ({
-        id: `${r.source}->${r.target}:${r.path}`,
-        source: r.source,
-        target: r.target,
-        style: { stroke: EDGE_COLORS[r.branchType] ?? EDGE_COLORS.default },
-        data: { conditionText: r.conditionText, branchType: r.branchType },
-      }))
-
-      if (newRelations.length <= 10) {
-        let x = position.x - 200, y = position.y + 150
-        for (const rel of newRelations) {
-          const [relType, relId] = rel.target.split(':')
-          try {
-            const relData = await window.electronAPI.configReadCache(relType, relId)
-            if (relData) {
-              addNode(relId, relType, { label: relId, nodeType: relType, rawData: relData }, { x, y })
-              x += 220
-            }
-          } catch {}
-        }
-        addEdges(buildEdges(relations))
-      } else {
-        addEdges(buildEdges(relations.filter(r => useCanvasStore.getState().nodeIdSet.has(r.target))))
-      }
     } catch (e) {
       console.error('加入节点失败', e)
     } finally {
       setAdding(null)
     }
-  }, [nodeIdSet, addNode, addEdges])
+  }, [nodeIdSet, addNode])
 
   // 拖拽开始（保留拖拽功能）
   const handleDragStart = useCallback((e, id, type) => {

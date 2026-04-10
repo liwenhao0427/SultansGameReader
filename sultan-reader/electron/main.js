@@ -64,6 +64,21 @@ let searchIndex = [];
 /** 主窗口引用 */
 let mainWindow = null;
 
+/** 读取卡牌总表（cache/single/cards.json） */
+function readCardsCatalog() {
+  const cardsPath = path.join(getCacheDir(), 'single', 'cards.json');
+  if (!fs.existsSync(cardsPath)) return {};
+  try {
+    const data = JSON.parse(fs.readFileSync(cardsPath, 'utf-8'));
+    if (Array.isArray(data)) {
+      return Object.fromEntries(data.map((card) => [String(card.id), card]));
+    }
+    return data && typeof data === 'object' ? data : {};
+  } catch {
+    return {};
+  }
+}
+
 // ─── 初始化 electron-store ────────────────────────────────────────────────────
 
 /**
@@ -333,6 +348,11 @@ ipcMain.handle('config:clearCache', async (_event, type) => {
  * 读取 <cacheDir>/<type>/<id>.json，返回解析后的 JSON
  */
 ipcMain.handle('config:readCache', async (_event, type, id) => {
+  if (type === 'card') {
+    const cards = readCardsCatalog();
+    return cards[String(id)] || null;
+  }
+
   const cacheDir = getCacheDir();
   const filePath = path.join(cacheDir, type, `${id}.json`);
   if (!fs.existsSync(filePath)) {
@@ -350,6 +370,18 @@ ipcMain.handle('config:readCache', async (_event, type, id) => {
  * 扫描 <cacheDir>/<type>/ 目录，返回 [{ id, name, text }]
  */
 ipcMain.handle('config:listCache', async (_event, type) => {
+  if (type === 'card') {
+    const cards = readCardsCatalog();
+    return Object.values(cards).map((card) => ({
+      id: String(card.id),
+      name: card.name || null,
+      text: card.text || null,
+      title: card.title || null,
+      rare: card.rare ?? null,
+      image: Array.isArray(card.resource) ? (card.resource[0] || null) : (card.resource || null),
+    }));
+  }
+
   const cacheDir = getCacheDir();
   const typeDir  = path.join(cacheDir, type);
   if (!fs.existsSync(typeDir)) return [];
@@ -361,10 +393,23 @@ ipcMain.handle('config:listCache', async (_event, type) => {
     const id = path.basename(file, '.json');
     try {
       const data = JSON.parse(fs.readFileSync(path.join(typeDir, file), 'utf-8'));
+      let image = null;
+
+      if (type === 'loot') {
+        const cards = readCardsCatalog();
+        const firstCardItem = (Array.isArray(data.item) ? data.item : []).find((item) => item?.type === 'card' && item.id != null);
+        const previewCard = firstCardItem ? cards[String(firstCardItem.id)] : null;
+        image = previewCard
+          ? (Array.isArray(previewCard.resource) ? (previewCard.resource[0] || null) : (previewCard.resource || null))
+          : null;
+      }
+
       result.push({
         id,
         name: data.name || data.dialog_tree_id || null,
         text: data.text || data.description || null,
+        title: data.title || data.sub_name || null,
+        image,
       });
     } catch {
       result.push({ id, name: null, text: null });
@@ -395,6 +440,7 @@ ipcMain.handle('config:buildIndex', async () => {
   });
 
   for (const type of typeDirs) {
+    if (type === 'single') continue;
     const typeDir = path.join(cacheDir, type);
     const files   = fs.readdirSync(typeDir).filter(f => f.endsWith('.json'));
     counts[type]  = 0;
@@ -416,6 +462,18 @@ ipcMain.handle('config:buildIndex', async () => {
         // 跳过损坏的缓存文件
       }
     }
+  }
+
+  const cards = readCardsCatalog();
+  const cardEntries = Object.values(cards).map((card) => ({
+    id: String(card.id),
+    type: 'card',
+    name: String(card.name || ''),
+    text: String(card.text || card.title || ''),
+  }));
+  if (cardEntries.length > 0) {
+    searchIndex.push(...cardEntries);
+    counts.card = cardEntries.length;
   }
 
   return { counts };
