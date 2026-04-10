@@ -20,6 +20,7 @@ import useCanvasStore from '../stores/useCanvasStore.js'
 import useConfigStore from '../stores/useConfigStore.js'
 import usePlayerStore from '../stores/usePlayerStore.js'
 import { evaluateCondition } from '../services/conditionEvaluator.js'
+import { buildFocusViewport } from '../services/canvasViewport.js'
 
 const EDGE_COLORS = {
   success: '#a6e3a1',
@@ -314,10 +315,10 @@ function RelationOptionCard({ option, selected, onToggle }) {
 }
 
 function CanvasInner() {
-  const { nodes, edges, selectedNodeId, setSelectedNode, setNodes: setCanvasNodes } = useCanvasStore()
+  const { nodes, edges, selectedNodeId, selectedOpenMode, setSelectedNode, setNodes: setCanvasNodes } = useCanvasStore()
   const cardsLite = useConfigStore((s) => s.cardsLite)
   const cardsById = useConfigStore((s) => s.cardsById)
-  const { setNodes, screenToFlowPosition, setCenter } = useReactFlow()
+  const { setNodes, screenToFlowPosition, setViewport, getZoom } = useReactFlow()
   const { triggeredEvents, counterValues } = usePlayerStore()
 
   const hasPlayerData = triggeredEvents.size > 0 || counterValues.size > 0
@@ -325,6 +326,7 @@ function CanvasInner() {
   const [pendingSourceId, setPendingSourceId] = useState(null)
   const [relationPicker, setRelationPicker] = useState(null)
   const lastAutoLayoutSignatureRef = useRef('')
+  const canvasShellRef = useRef(null)
 
   const nodeMap = useMemo(
     () => new Map(nodes.map((node) => [node.id, node])),
@@ -563,15 +565,28 @@ function CanvasInner() {
     const width = activeNode.measured?.width || AUTO_LAYOUT_NODE_SIZE[activeNode.type]?.width || AUTO_LAYOUT_NODE_SIZE.default.width
     const height = activeNode.measured?.height || AUTO_LAYOUT_NODE_SIZE[activeNode.type]?.height || AUTO_LAYOUT_NODE_SIZE.default.height
 
-    setCenter(
-      activeNode.position.x + width / 2,
-      activeNode.position.y + height / 2,
-      { duration: 420 }
-    )
-  }, [nodes, selectedNodeId, setCenter])
+    const canvasRect = canvasShellRef.current?.getBoundingClientRect?.()
+    if (!canvasRect) return
+
+    const overlayRect = selectedOpenMode === 'panel'
+      ? document.querySelector('[data-detail-panel="true"]')?.getBoundingClientRect?.() ?? null
+      : null
+
+    const viewport = buildFocusViewport({
+      canvasRect,
+      overlayRect,
+      nodePosition: activeNode.position,
+      nodeSize: { width, height },
+      zoom: getZoom(),
+    })
+
+    if (!viewport) return
+
+    setViewport(viewport, { duration: 420 })
+  }, [getZoom, nodes, selectedNodeId, selectedOpenMode, setViewport])
 
   return (
-    <div style={{ width: '100%', height: '100%', position: 'relative' }}>
+    <div ref={canvasShellRef} style={{ width: '100%', height: '100%', position: 'relative' }}>
       <ReactFlow
         nodes={nodes}
         edges={edges.map((edge) => ({

@@ -104,7 +104,7 @@ export default function DetailPanel() {
   }
 
   return (
-    <div style={panelStyle}>
+    <div data-detail-panel="true" style={panelStyle}>
       {/* 加载状态 */}
       {loading && (
         <div style={{ color: '#a6adc8', fontSize: 12, padding: '8px 0' }}>加载中…</div>
