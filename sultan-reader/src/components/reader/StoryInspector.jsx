@@ -407,59 +407,37 @@ function SettlementHintItem({ hint, active, onToggle }) {
       onClick={onToggle}
       style={{
         width: '100%',
-        padding: 10,
+        padding: '10px 12px',
         borderRadius: 18,
         border: active ? '1px solid rgba(143, 191, 119, 0.42)' : '1px solid rgba(212, 184, 126, 0.14)',
         background: active ? 'rgba(100, 140, 83, 0.12)' : 'rgba(22, 18, 14, 0.94)',
         color: '#f1e8d5',
         cursor: 'pointer',
         textAlign: 'left',
-        display: 'grid',
-        gap: 8,
+        display: 'flex',
+        gap: 10,
+        alignItems: 'flex-start',
       }}
     >
-      <div style={{
-        minHeight: 94,
-        borderRadius: 14,
-        position: 'relative',
-        overflow: 'hidden',
-        background: 'linear-gradient(180deg, rgba(40, 31, 23, 0.98), rgba(21, 16, 12, 0.98))',
-      }}>
-        {previewCard && (
-          <div style={{ position: 'absolute', inset: '8px 10px 10px' }}>
-            <CardPortrait card={previewCard} compact showName={false} />
-          </div>
-        )}
-        <div style={{
-          position: 'absolute',
-          inset: 0,
-          background: 'linear-gradient(180deg, rgba(8, 7, 6, 0.15), rgba(8, 7, 6, 0.74))',
-        }} />
-        <div style={{
-          position: 'absolute',
-          left: 12,
-          right: 12,
-          bottom: 10,
-          zIndex: 2,
-        }}>
-          <div
-            title={hint.label}
-            style={{
-              fontSize: 14,
-              fontWeight: 800,
-              lineHeight: 1.3,
-              color: '#fff0d3',
-              display: '-webkit-box',
-              WebkitBoxOrient: 'vertical',
-              WebkitLineClamp: 2,
-              overflow: 'hidden',
-            }}
-          >
-            {hint.label}
-          </div>
-          <ConditionPreview text={hint.conditionText} />
-          <EffectSummary effects={hint.effects} compact />
+      {previewCard && (
+        <div style={{ flexShrink: 0 }}>
+          <CardPortrait card={previewCard} compact showName={false} />
         </div>
+      )}
+      <div style={{ minWidth: 0, flex: 1 }}>
+        <div
+          title={hint.label}
+          style={{
+            fontSize: 14,
+            fontWeight: 800,
+            lineHeight: 1.4,
+            color: '#fff0d3',
+          }}
+        >
+          {hint.label}
+        </div>
+        <ConditionPreview text={hint.conditionText} />
+        <EffectSummary effects={hint.effects} compact />
       </div>
     </button>
   )
@@ -1230,6 +1208,8 @@ export default function StoryInspector({ type, data, onClose }) {
                     display: 'grid',
                     gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
                     gap: 10,
+                    maxHeight: 320,
+                    overflowY: 'auto',
                   }}>
                     {selectedSlot.settlementHints
                       .filter((hint) => matchesSlotOccupancyCondition(hint.conditionRaw, slotSelectionState))
@@ -1275,6 +1255,8 @@ export default function StoryInspector({ type, data, onClose }) {
                     display: 'grid',
                     gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
                     gap: 10,
+                    maxHeight: 320,
+                    overflowY: 'auto',
                   }}>
                     {visibleGlobalSettlementHints
                       .filter((hint) => {
