@@ -296,6 +296,70 @@ function SlotButton({ slot, active, candidate, tags, onClick, slotBgKey, bubbleT
   )
 }
 
+// 执行弹窗中的槽位展示（和SlotButton样式一致，无点击交互）
+function ExecutionSlot({ slot, previewCard, slotCaption, slotBgKey }) {
+  const { url: slotBgUrl } = useResolvedImage(slotBgKey)
+
+  return (
+    <div style={{
+      width: READER_CHROME.assets.slotFrame.width,
+      minHeight: READER_CHROME.assets.slotFrame.minHeight,
+      borderRadius: 22,
+      overflow: 'hidden',
+      border: '1px solid rgba(219, 207, 181, 0.18)',
+      backgroundImage: slotBgUrl
+        ? `linear-gradient(180deg, rgba(8, 8, 8, 0.18), rgba(8, 8, 8, 0.48)), url("${slotBgUrl}")`
+        : 'linear-gradient(180deg, rgba(180, 165, 139, 0.88), rgba(94, 80, 57, 0.92))',
+      backgroundRepeat: 'no-repeat',
+      backgroundSize: READER_CHROME.assets.slotFrame.backgroundSize,
+      backgroundPosition: READER_CHROME.assets.slotFrame.backgroundPosition,
+      position: 'relative',
+    }}>
+      <div style={{
+        position: 'absolute',
+        top: 8,
+        left: 8,
+        padding: '2px 6px',
+        borderRadius: 999,
+        background: 'rgba(12, 10, 8, 0.6)',
+        color: '#f3e3c1',
+        fontSize: 10,
+        fontWeight: 700,
+        letterSpacing: '0.08em',
+      }}>
+        {slot.title}
+      </div>
+      {previewCard ? (
+        <div style={{ position: 'absolute', inset: '6px 7px 10px' }}>
+          <CardPortrait card={previewCard} compact showName={false} />
+        </div>
+      ) : (
+        <div style={{
+          position: 'absolute',
+          inset: '10px 10px 12px',
+          borderRadius: 18,
+          background: 'linear-gradient(180deg, rgba(40, 33, 24, 0.4), rgba(12, 10, 8, 0.72))',
+        }} />
+      )}
+      <div style={{
+        position: 'absolute',
+        left: 8,
+        right: 8,
+        bottom: 8,
+        color: '#fff4dd',
+        fontWeight: 800,
+        fontSize: 12,
+        lineHeight: 1.25,
+        textShadow: '0 2px 6px rgba(0,0,0,0.68)',
+        whiteSpace: 'pre-wrap',
+        wordBreak: 'break-word',
+      }}>
+        {slotCaption}
+      </div>
+    </div>
+  )
+}
+
 function CandidateHandItem({ candidate, active, onSelect }) {
   const previewCard = candidate.cards?.[0] || null
 
@@ -1485,7 +1549,9 @@ export default function StoryInspector({ type, data, onClose }) {
                   )}
                   {(model.slots || []).map((slot) => {
                     const candidate = slot.candidates?.find((entry) => entry.id === slotSelections[slot.id]) || slot.candidates?.[0] || null
-                    const previewCard = candidate?.cards?.[0] || null
+                    const previewCard = candidate?.cards?.[0] || slot.defaultCards?.[0] || null
+                    const slotCaption = candidate?.label || slot.defaultCards?.[0]?.name || slot.title
+                    const slotBgKey = slotBackgroundMap?.[slot.id]?.slot_bg || templateData?.nomal_slot_bg || READER_CHROME.assets.slotFrame.asset
                     const layout = templateSlotLayout[slot.id] || {}
 
                     return (
@@ -1493,17 +1559,12 @@ export default function StoryInspector({ type, data, onClose }) {
                         key={`execution-${slot.id}`}
                         style={{ position: 'absolute', ...layout }}
                       >
-                        <div style={executionSlotCardStyle}>
-                          <div style={executionSlotLabelStyle}>{slot.title}</div>
-                          {previewCard ? (
-                            <div style={{ display: 'grid', justifyItems: 'center', gap: 8 }}>
-                              <CardPortrait card={previewCard} compact={false} showName={false} />
-                              <div title={previewCard.name} style={executionSlotNameStyle}>{previewCard.name}</div>
-                            </div>
-                          ) : (
-                            <div style={executionEmptySlotStyle}>空置</div>
-                          )}
-                        </div>
+                        <ExecutionSlot
+                          slot={slot}
+                          previewCard={previewCard}
+                          slotCaption={slotCaption}
+                          slotBgKey={slotBgKey}
+                        />
                       </div>
                     )
                   })}
@@ -1530,6 +1591,13 @@ export default function StoryInspector({ type, data, onClose }) {
                   <div style={executionDialogueBoxStyle} ref={executionBodyRef}>
                     {executionSteps.slice(0, executionStepIndex + 1).map((step, index) => (
                       <div key={step.id} style={{ marginBottom: index < executionStepIndex ? 16 : 0 }}>
+                        {step.conditions?.length > 0 && (
+                          <div style={{ marginBottom: 6, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                            {step.conditions.map((cond, ci) => (
+                              <span key={ci} style={executionCondTagStyle}>{cond}</span>
+                            ))}
+                          </div>
+                        )}
                         {step.text ? (
                           <div style={{ fontSize: 17, lineHeight: 1.95, color: '#f7edd8', whiteSpace: 'pre-wrap' }}>
                             {step.text}
@@ -1762,7 +1830,7 @@ const executionDialoguePanelStyle = {
 }
 
 const executionDialogueBoxStyle = {
-  height: 320,
+  minHeight: 0,
   borderRadius: 24,
   background: 'rgba(23, 18, 13, 0.96)',
   border: '1px solid rgba(212, 184, 126, 0.14)',
@@ -2009,4 +2077,15 @@ const executionCloseButtonStyle = {
   cursor: 'pointer',
   fontWeight: 600,
   flexShrink: 0,
+}
+
+// 执行弹窗条件标签
+const executionCondTagStyle = {
+  display: 'inline-block',
+  padding: '3px 8px',
+  borderRadius: 999,
+  background: 'rgba(212, 184, 126, 0.12)',
+  border: '1px solid rgba(212, 184, 126, 0.2)',
+  color: '#dcc8a3',
+  fontSize: 12,
 }
