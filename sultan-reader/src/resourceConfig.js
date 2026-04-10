@@ -55,6 +55,21 @@ export const EVENT_READER_DEFAULTS = {
 }
 
 /**
+ * 卡牌展示比例与裁切规则。
+ *
+ * 原始卡牌底板采用 194 x 422 的纵向长比例。
+ * 展示规则：
+ * 1. 默认尽量完整显示整张卡牌；
+ * 2. 缩略图空间不足时，也优先保留上半部分，不从中间截断。
+ */
+export const CARD_RENDER_CONFIG = {
+  frameWidth: 194,
+  frameHeight: 422,
+  imageObjectFit: 'contain',
+  imageObjectPosition: 'top center',
+}
+
+/**
  * 仪式模板默认配置。
  * 没有 mapping_id 时回退到默认模板，保证背景和槽位布局始终可展示。
  */
@@ -121,4 +136,13 @@ export const FIXED_TAG_CARD_IDS = {
  */
 export function getCardRarityFrameAsset(rare) {
   return CARD_RARITY_FRAME_ASSETS[Number(rare)] || CARD_RARITY_FRAME_ASSETS[1]
+}
+
+/**
+ * 根据卡牌宽度计算标准高度。
+ * 未传宽度时回退到 194 x 422 原始比例。
+ */
+export function getCardFrameHeight(width) {
+  const safeWidth = Number(width) || CARD_RENDER_CONFIG.frameWidth
+  return Math.round((safeWidth * CARD_RENDER_CONFIG.frameHeight) / CARD_RENDER_CONFIG.frameWidth)
 }

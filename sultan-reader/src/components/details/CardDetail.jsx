@@ -1,17 +1,17 @@
 import { useResolvedImage } from '../../services/imageResolver'
-import { getCardRarityFrameAsset } from '../../resourceConfig'
+import { CARD_RENDER_CONFIG, getCardFrameHeight, getCardRarityFrameAsset } from '../../resourceConfig'
 
 const S = {
   shell: { display: 'grid', gap: 18 },
   hero: {
     display: 'grid',
-    gridTemplateColumns: '160px minmax(0, 1fr)',
+    gridTemplateColumns: '120px minmax(0, 1fr)',
     gap: 18,
     alignItems: 'start',
   },
   poster: {
-    width: 160,
-    height: 228,
+    width: 120,
+    height: getCardFrameHeight(120),
     borderRadius: 22,
     overflow: 'hidden',
     border: '1px solid rgba(212, 184, 126, 0.16)',
@@ -19,7 +19,13 @@ const S = {
     boxShadow: '0 18px 36px rgba(0,0,0,0.24)',
     position: 'relative',
   },
-  posterImg: { width: '100%', height: '100%', display: 'block', objectFit: 'cover' },
+  posterImg: {
+    width: '100%',
+    height: '100%',
+    display: 'block',
+    objectFit: CARD_RENDER_CONFIG.imageObjectFit,
+    objectPosition: CARD_RENDER_CONFIG.imageObjectPosition,
+  },
   posterPlaceholder: {
     width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
     color: 'rgba(241, 232, 213, 0.48)', fontSize: 13,

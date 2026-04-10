@@ -1,7 +1,7 @@
 // 基础节点组件，所有自定义节点共用此样式基础
 import { Handle, Position } from '@xyflow/react'
 import { useResolvedImage } from '../../services/imageResolver'
-import { getCardRarityFrameAsset } from '../../resourceConfig'
+import { CARD_RENDER_CONFIG, getCardFrameHeight, getCardRarityFrameAsset } from '../../resourceConfig'
 
 /**
  * @param {string} id - 节点 ID
@@ -30,8 +30,8 @@ export default function BaseNode({ id, label, color, selected, image, rare }) {
       {/* 图片预览（有图时显示） */}
       {imgUrl && (
         <div style={{
-          width: '100%',
-          height: 72,
+          width: 48,
+          height: getCardFrameHeight(48),
           borderRadius: 4,
           overflow: 'hidden',
           marginBottom: 6,
@@ -43,7 +43,13 @@ export default function BaseNode({ id, label, color, selected, image, rare }) {
           <img
             src={imgUrl}
             alt=""
-            style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+            style={{
+              width: '100%',
+              height: '100%',
+              objectFit: CARD_RENDER_CONFIG.imageObjectFit,
+              objectPosition: CARD_RENDER_CONFIG.imageObjectPosition,
+              display: 'block',
+            }}
           />
         </div>
       )}

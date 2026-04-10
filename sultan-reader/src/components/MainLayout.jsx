@@ -532,8 +532,8 @@ const listItemSubTitleStyle = {
 }
 
 const listPreviewStyle = {
-  width: 58,
-  height: 82,
+  width: 40,
+  height: 87,
   borderRadius: 12,
   overflow: 'hidden',
   border: '1px solid rgba(212, 184, 126, 0.18)',
@@ -545,7 +545,8 @@ const listPreviewImageStyle = {
   width: '100%',
   height: '100%',
   display: 'block',
-  objectFit: 'cover',
+  objectFit: 'contain',
+  objectPosition: 'top center',
 }
 
 const listPreviewPlaceholderStyle = {

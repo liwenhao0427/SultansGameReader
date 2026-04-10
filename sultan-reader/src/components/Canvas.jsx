@@ -749,8 +749,8 @@ const pickerCardCheckboxStyle = {
 }
 
 const pickerCardPosterStyle = {
-  width: '100%',
-  height: 144,
+  width: 76,
+  height: 165,
   borderRadius: 16,
   overflow: 'hidden',
   border: '1px solid rgba(212, 184, 126, 0.12)',
@@ -761,7 +761,8 @@ const pickerCardPosterImageStyle = {
   width: '100%',
   height: '100%',
   display: 'block',
-  objectFit: 'cover',
+  objectFit: 'contain',
+  objectPosition: 'top center',
 }
 
 const pickerCardPosterPlaceholderStyle = {
@@ -809,8 +810,8 @@ const relationCardChipStyle = {
 
 const relationCardThumbStyle = {
   width: 24,
-  height: 24,
-  borderRadius: 999,
+  height: 52,
+  borderRadius: 8,
   overflow: 'hidden',
   background: 'rgba(18, 15, 11, 0.94)',
   flexShrink: 0,
@@ -820,7 +821,8 @@ const relationCardThumbImageStyle = {
   width: '100%',
   height: '100%',
   display: 'block',
-  objectFit: 'cover',
+  objectFit: 'contain',
+  objectPosition: 'top center',
 }
 
 const relationCardThumbTextStyle = {

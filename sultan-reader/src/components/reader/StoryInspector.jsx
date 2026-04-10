@@ -3,7 +3,7 @@ import useConfigStore from '../../stores/useConfigStore'
 import { useResolvedImage } from '../../services/imageResolver'
 import { adaptStoryData } from '../../services/storyAdapter'
 import { READER_CHROME } from '../../readerChromeConfig'
-import { getCardRarityFrameAsset, READER_RESOURCE_ASSETS, RITE_TEMPLATE_DEFAULTS } from '../../resourceConfig'
+import { CARD_RENDER_CONFIG, getCardFrameHeight, getCardRarityFrameAsset, READER_RESOURCE_ASSETS, RITE_TEMPLATE_DEFAULTS } from '../../resourceConfig'
 import { linkNodesOnCanvas, mountNodeOnCanvas } from '../../services/graphNavigation'
 import RawFileView from '../RawFileView'
 
@@ -41,9 +41,9 @@ function splitIntro(text) {
 function CardPortrait({ card, compact = false, showName = true }) {
   const { url } = useResolvedImage(card?.image)
   const { url: rareFrameUrl } = useResolvedImage(getCardRarityFrameAsset(card?.rare))
-  const width = compact ? 72 : 94
-  const height = compact ? 108 : 142
-  const artInset = compact ? '4px 6px 18px' : '5px 8px 22px'
+  const width = compact ? 50 : 66
+  const height = getCardFrameHeight(width)
+  const artInset = compact ? '3px 4px 16px' : '4px 5px 20px'
 
   return (
     <div style={{
@@ -72,7 +72,13 @@ function CardPortrait({ card, compact = false, showName = true }) {
           <img
             src={url}
             alt={card?.name || ''}
-            style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+            style={{
+              width: '100%',
+              height: '100%',
+              objectFit: CARD_RENDER_CONFIG.imageObjectFit,
+              objectPosition: CARD_RENDER_CONFIG.imageObjectPosition,
+              display: 'block',
+            }}
           />
         ) : (
           <div style={{
@@ -115,13 +121,13 @@ function CardStack({ cards }) {
   if (!cards?.length) return null
 
   return (
-    <div style={{ position: 'relative', width: 94 + Math.max(0, cards.length - 1) * 18, height: 142 }}>
+    <div style={{ position: 'relative', width: 66 + Math.max(0, cards.length - 1) * 14, height: getCardFrameHeight(66) }}>
       {cards.slice(0, 4).map((card, index) => (
         <div
           key={`${card.id}-${index}`}
           style={{
             position: 'absolute',
-            left: index * 18,
+            left: index * 14,
             top: 0,
             zIndex: index + 1,
           }}

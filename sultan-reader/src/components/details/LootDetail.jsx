@@ -1,6 +1,6 @@
 import useConfigStore from '../../stores/useConfigStore'
 import { useResolvedImage } from '../../services/imageResolver'
-import { getCardRarityFrameAsset } from '../../resourceConfig'
+import { CARD_RENDER_CONFIG, getCardFrameHeight, getCardRarityFrameAsset } from '../../resourceConfig'
 
 const S = {
   shell: { display: 'grid', gap: 18 },
@@ -10,7 +10,7 @@ const S = {
   grid: { display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 12 },
   card: {
     display: 'grid',
-    gridTemplateColumns: '84px minmax(0, 1fr)',
+    gridTemplateColumns: '60px minmax(0, 1fr)',
     gap: 12,
     padding: 12,
     borderRadius: 18,
@@ -18,15 +18,22 @@ const S = {
     background: 'rgba(212, 184, 126, 0.04)',
   },
   poster: {
-    width: 84,
-    height: 118,
+    width: 60,
+    height: getCardFrameHeight(60),
     borderRadius: 14,
     overflow: 'hidden',
     border: '1px solid rgba(212, 184, 126, 0.14)',
     background: 'rgba(18, 15, 11, 0.92)',
     position: 'relative',
   },
-  posterImg: { position: 'absolute', inset: '4px 6px 18px', objectFit: 'cover', width: 'calc(100% - 12px)', height: 'calc(100% - 22px)' },
+  posterImg: {
+    position: 'absolute',
+    inset: '3px 4px 16px',
+    objectFit: CARD_RENDER_CONFIG.imageObjectFit,
+    objectPosition: CARD_RENDER_CONFIG.imageObjectPosition,
+    width: 'calc(100% - 8px)',
+    height: 'calc(100% - 19px)',
+  },
   posterPlaceholder: {
     width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
     color: 'rgba(241, 232, 213, 0.42)', fontSize: 11,
@@ -99,9 +106,7 @@ export default function LootDetail({ data }) {
           <div style={{ ...S.grid, marginTop: 12 }}>
             {enrichedItems.map((item) => (
               <div key={item.key} style={S.card}>
-                <div style={S.poster}>
-                  <LootItemPoster pic={item.pic} rare={item.rare} />
-                </div>
+                <LootItemPoster pic={item.pic} rare={item.rare} />
                 <div style={{ minWidth: 0 }}>
                   <div style={S.name}>{item.name}</div>
                   <div style={S.meta}>{item.type}:{item.id}</div>
