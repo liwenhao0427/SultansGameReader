@@ -40,11 +40,24 @@ function CatalogPreview({ item, activeType, cardsById }) {
   }
 
   const { url } = useResolvedImage(pic)
+  const isCardLike = activeType === 'card' || activeType === 'loot'
 
   return (
-    <div style={listPreviewStyle}>
+    <div style={{
+      ...listPreviewStyle,
+      width: isCardLike ? 40 : 58,
+      height: isCardLike ? 87 : 82,
+    }}>
       {url ? (
-        <img src={url} alt="" style={listPreviewImageStyle} />
+        <img
+          src={url}
+          alt=""
+          style={{
+            ...listPreviewImageStyle,
+            objectFit: isCardLike ? 'contain' : 'cover',
+            objectPosition: isCardLike ? 'top center' : 'center',
+          }}
+        />
       ) : (
         <div style={listPreviewPlaceholderStyle}>
           {activeType === 'card' ? '卡牌' : activeType === 'loot' ? '战利品' : activeType === 'rite' ? '仪式' : '条目'}
@@ -545,8 +558,8 @@ const listPreviewImageStyle = {
   width: '100%',
   height: '100%',
   display: 'block',
-  objectFit: 'contain',
-  objectPosition: 'top center',
+  objectFit: 'cover',
+  objectPosition: 'center',
 }
 
 const listPreviewPlaceholderStyle = {

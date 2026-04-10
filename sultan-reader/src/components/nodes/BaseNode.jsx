@@ -14,6 +14,9 @@ import { CARD_RENDER_CONFIG, getCardFrameHeight, getCardRarityFrameAsset } from 
 export default function BaseNode({ id, label, color, selected, image, rare }) {
   const { url: imgUrl } = useResolvedImage(image || null)
   const { url: rareFrameUrl } = useResolvedImage(rare ? getCardRarityFrameAsset(rare) : null)
+  const isCardLike = rare != null
+  const previewWidth = isCardLike ? 48 : '100%'
+  const previewHeight = isCardLike ? getCardFrameHeight(48) : 72
 
   return (
     <div style={{
@@ -30,8 +33,8 @@ export default function BaseNode({ id, label, color, selected, image, rare }) {
       {/* 图片预览（有图时显示） */}
       {imgUrl && (
         <div style={{
-          width: 48,
-          height: getCardFrameHeight(48),
+          width: previewWidth,
+          height: previewHeight,
           borderRadius: 4,
           overflow: 'hidden',
           marginBottom: 6,
@@ -46,8 +49,8 @@ export default function BaseNode({ id, label, color, selected, image, rare }) {
             style={{
               width: '100%',
               height: '100%',
-              objectFit: CARD_RENDER_CONFIG.imageObjectFit,
-              objectPosition: CARD_RENDER_CONFIG.imageObjectPosition,
+              objectFit: isCardLike ? CARD_RENDER_CONFIG.imageObjectFit : 'cover',
+              objectPosition: isCardLike ? CARD_RENDER_CONFIG.imageObjectPosition : 'center',
               display: 'block',
             }}
           />
