@@ -34,3 +34,36 @@ select {
 button {
   font-family: inherit;
 }
+
+.react-flow__controls {
+  margin: 16px;
+}
+
+.react-flow__controls-button {
+  width: 42px;
+  height: 42px;
+  border: none;
+  border-bottom: 1px solid rgba(212, 184, 126, 0.12);
+  background: linear-gradient(180deg, rgba(64, 49, 34, 0.96), rgba(34, 26, 18, 0.98));
+  color: #e8d1a0;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.react-flow__controls-button:last-child {
+  border-bottom: none;
+}
+
+.react-flow__controls-button:hover {
+  background: linear-gradient(180deg, rgba(92, 70, 46, 0.98), rgba(48, 36, 24, 0.98));
+  color: #fff1cf;
+}
+
+.react-flow__controls-button svg {
+  fill: currentColor;
+}
+
+.react-flow__minimap {
+  border-radius: 18px;
+  overflow: hidden;
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.22);
+}

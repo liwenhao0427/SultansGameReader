@@ -608,9 +608,14 @@ function CanvasInner() {
         onNodeDragStop={onNodeDragStop}
         nodesDraggable
         fitView
+        proOptions={{ hideAttribution: true }}
       >
         <Background color="rgba(172, 141, 88, 0.18)" gap={24} />
-        <Controls />
+        <Controls
+          position="bottom-left"
+          showInteractive={false}
+          style={flowControlsStyle}
+        />
         <MiniMap
           nodeColor="#7f6241"
           maskColor="rgba(15,12,8,0.76)"
@@ -942,4 +947,12 @@ const relationCardThumbTextStyle = {
 const relationCardNameStyle = {
   fontSize: 12,
   color: '#f1e8d5',
+}
+
+const flowControlsStyle = {
+  background: 'rgba(28, 22, 16, 0.94)',
+  border: '1px solid rgba(212, 184, 126, 0.18)',
+  borderRadius: 18,
+  boxShadow: '0 14px 28px rgba(0, 0, 0, 0.24)',
+  overflow: 'hidden',
 }
