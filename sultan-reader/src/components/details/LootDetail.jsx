@@ -1,5 +1,6 @@
 import useConfigStore from '../../stores/useConfigStore'
 import { useResolvedImage } from '../../services/imageResolver'
+import { getCardRarityFrameAsset } from '../../resourceConfig'
 
 const S = {
   shell: { display: 'grid', gap: 18 },
@@ -23,8 +24,9 @@ const S = {
     overflow: 'hidden',
     border: '1px solid rgba(212, 184, 126, 0.14)',
     background: 'rgba(18, 15, 11, 0.92)',
+    position: 'relative',
   },
-  posterImg: { width: '100%', height: '100%', display: 'block', objectFit: 'cover' },
+  posterImg: { position: 'absolute', inset: '4px 6px 18px', objectFit: 'cover', width: 'calc(100% - 12px)', height: 'calc(100% - 22px)' },
   posterPlaceholder: {
     width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
     color: 'rgba(241, 232, 213, 0.42)', fontSize: 11,
@@ -35,11 +37,26 @@ const S = {
   stat: { marginTop: 8, color: '#d8bc84', fontSize: 12, lineHeight: 1.6 },
 }
 
-function LootItemPoster({ pic }) {
+function LootItemPoster({ pic, rare }) {
   const { url, loading } = useResolvedImage(pic)
-  if (loading) return <div style={S.posterPlaceholder}>加载中…</div>
-  if (!url) return <div style={S.posterPlaceholder}>暂无图片</div>
-  return <img src={url} alt="" style={S.posterImg} />
+  const { url: rareFrameUrl } = useResolvedImage(rare ? getCardRarityFrameAsset(rare) : null)
+
+  return (
+    <div style={{
+      ...S.poster,
+      backgroundImage: rareFrameUrl ? `url("${rareFrameUrl}")` : 'none',
+      backgroundSize: '100% 100%',
+      backgroundRepeat: 'no-repeat',
+    }}>
+      {loading ? (
+        <div style={S.posterPlaceholder}>加载中…</div>
+      ) : url ? (
+        <img src={url} alt="" style={S.posterImg} />
+      ) : (
+        <div style={S.posterPlaceholder}>暂无图片</div>
+      )}
+    </div>
+  )
 }
 
 export default function LootDetail({ data }) {
@@ -59,6 +76,7 @@ export default function LootDetail({ data }) {
       name: card?.name || `${item?.type || '未知类型'} ${item?.id || ''}`.trim(),
       text: card?.text || '',
       pic,
+      rare: card?.rare ?? null,
     }
   })
 
@@ -82,7 +100,7 @@ export default function LootDetail({ data }) {
             {enrichedItems.map((item) => (
               <div key={item.key} style={S.card}>
                 <div style={S.poster}>
-                  <LootItemPoster pic={item.pic} />
+                  <LootItemPoster pic={item.pic} rare={item.rare} />
                 </div>
                 <div style={{ minWidth: 0 }}>
                   <div style={S.name}>{item.name}</div>

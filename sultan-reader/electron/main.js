@@ -444,6 +444,18 @@ ipcMain.handle('config:listCache', async (_event, type) => {
         text: data.text || data.description || null,
         title: data.title || data.sub_name || null,
         image,
+        // 仪式：icon 字段
+        icon: type === 'rite' ? (data.icon || null) : undefined,
+        // 后日谈：取第一个 extra 的 pic 作为预览图
+        pic: type === 'after_story' ? (
+          Array.isArray(data.extra) ? (data.extra.find((e) => e?.pic)?.pic || null) : null
+        ) : undefined,
+        // 稀有度（卡牌已在上面单独处理，这里给 loot 的关联卡牌稀有度）
+        rare: type === 'loot' ? (() => {
+          const cards = readCardsCatalog();
+          const firstCardItem = (Array.isArray(data.item) ? data.item : []).find((item) => item?.type === 'card' && item.id != null);
+          return firstCardItem ? (cards[String(firstCardItem.id)]?.rare ?? null) : null;
+        })() : undefined,
       });
     } catch {
       result.push({ id, name: null, text: null });

@@ -1,4 +1,5 @@
 import { useResolvedImage } from '../../services/imageResolver'
+import { getCardRarityFrameAsset } from '../../resourceConfig'
 
 const S = {
   shell: { display: 'grid', gap: 18 },
@@ -16,6 +17,7 @@ const S = {
     border: '1px solid rgba(212, 184, 126, 0.16)',
     background: 'rgba(18, 15, 11, 0.92)',
     boxShadow: '0 18px 36px rgba(0,0,0,0.24)',
+    position: 'relative',
   },
   posterImg: { width: '100%', height: '100%', display: 'block', objectFit: 'cover' },
   posterPlaceholder: {
@@ -38,12 +40,27 @@ const S = {
   },
 }
 
-function CardImage({ resource }) {
+function CardImage({ resource, rare }) {
   const pic = Array.isArray(resource) ? resource[0] : resource
   const { url, loading } = useResolvedImage(pic)
-  if (loading) return <div style={S.posterPlaceholder}>加载中…</div>
-  if (!url) return <div style={S.posterPlaceholder}>暂无图片</div>
-  return <img src={url} alt="" style={S.posterImg} />
+  const { url: rareFrameUrl } = useResolvedImage(rare ? getCardRarityFrameAsset(rare) : null)
+
+  return (
+    <div style={{
+      ...S.poster,
+      backgroundImage: rareFrameUrl ? `url("${rareFrameUrl}")` : 'none',
+      backgroundSize: '100% 100%',
+      backgroundRepeat: 'no-repeat',
+    }}>
+      {loading ? (
+        <div style={S.posterPlaceholder}>加载中…</div>
+      ) : url ? (
+        <img src={url} alt="" style={{ ...S.posterImg, position: 'absolute', inset: '5px 8px 22px' }} />
+      ) : (
+        <div style={S.posterPlaceholder}>暂无图片</div>
+      )}
+    </div>
+  )
 }
 
 export default function CardDetail({ data }) {
@@ -54,9 +71,7 @@ export default function CardDetail({ data }) {
   return (
     <div style={S.shell}>
       <div style={S.hero}>
-        <div style={S.poster}>
-          <CardImage resource={data.resource} />
-        </div>
+        <CardImage resource={data.resource} rare={data.rare} />
         <div>
           <div style={S.title}>{data.name || `卡牌 ${data.id}`}</div>
           {data.title && <div style={S.subtitle}>{data.title}</div>}

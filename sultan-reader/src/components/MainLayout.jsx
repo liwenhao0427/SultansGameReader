@@ -25,6 +25,15 @@ function chunkSummary(entry) {
 function CatalogPreview({ item, activeType, cardsById }) {
   let pic = item.image || null
 
+  if (!pic && activeType === 'rite') {
+    // 仪式用 icon 字段
+    pic = item.icon || null
+  }
+
+  if (!pic && activeType === 'after_story') {
+    pic = item.pic || null
+  }
+
   if (!pic && activeType === 'card') {
     const card = cardsById?.[String(item.id)]
     pic = Array.isArray(card?.resource) ? (card.resource[0] || null) : (card?.resource || null)
@@ -37,7 +46,9 @@ function CatalogPreview({ item, activeType, cardsById }) {
       {url ? (
         <img src={url} alt="" style={listPreviewImageStyle} />
       ) : (
-        <div style={listPreviewPlaceholderStyle}>{activeType === 'card' ? '卡牌' : activeType === 'loot' ? '战利品' : '条目'}</div>
+        <div style={listPreviewPlaceholderStyle}>
+          {activeType === 'card' ? '卡牌' : activeType === 'loot' ? '战利品' : activeType === 'rite' ? '仪式' : '条目'}
+        </div>
       )}
     </div>
   )
@@ -262,9 +273,7 @@ export default function MainLayout({ onNavigate }) {
                   }}
                 >
                   <div style={listItemInnerStyle}>
-                    {(activeType === 'card' || activeType === 'loot') && (
-                      <CatalogPreview item={item} activeType={activeType} cardsById={cardsById} />
-                    )}
+                    <CatalogPreview item={item} activeType={activeType} cardsById={cardsById} />
                     <div style={{ minWidth: 0 }}>
                       <div style={listItemIdStyle}>{item.id}</div>
                       <div style={listItemTitleStyle}>{chunkSummary(item)}</div>

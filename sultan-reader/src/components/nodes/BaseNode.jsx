@@ -1,25 +1,52 @@
 // 基础节点组件，所有自定义节点共用此样式基础
 import { Handle, Position } from '@xyflow/react'
+import { useResolvedImage } from '../../services/imageResolver'
+import { getCardRarityFrameAsset } from '../../resourceConfig'
 
 /**
  * @param {string} id - 节点 ID
  * @param {string} label - 底部显示的名称/摘要文本
  * @param {string} color - 边框颜色
  * @param {boolean} selected - 是否被选中
+ * @param {string|null} image - 图片资源 key（可选）
+ * @param {number|null} rare - 稀有度（卡牌用，可选）
  */
-export default function BaseNode({ id, label, color, selected }) {
+export default function BaseNode({ id, label, color, selected, image, rare }) {
+  const { url: imgUrl } = useResolvedImage(image || null)
+  const { url: rareFrameUrl } = useResolvedImage(rare ? getCardRarityFrameAsset(rare) : null)
+
   return (
     <div style={{
       background: '#1e1e2e',
       border: `${selected ? 3 : 2}px solid ${selected ? lighten(color) : color}`,
       borderRadius: 6,
-      padding: '8px 12px',
+      padding: imgUrl ? '6px 8px' : '8px 12px',
       minWidth: 120,
       maxWidth: 200,
       boxSizing: 'border-box',
     }}>
-      {/* 顶部连接点 */}
       <Handle type="target" position={Position.Top} />
+
+      {/* 图片预览（有图时显示） */}
+      {imgUrl && (
+        <div style={{
+          width: '100%',
+          height: 72,
+          borderRadius: 4,
+          overflow: 'hidden',
+          marginBottom: 6,
+          position: 'relative',
+          background: 'rgba(12, 10, 8, 0.8)',
+          backgroundImage: rareFrameUrl ? `url("${rareFrameUrl}")` : 'none',
+          backgroundSize: '100% 100%',
+        }}>
+          <img
+            src={imgUrl}
+            alt=""
+            style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+          />
+        </div>
+      )}
 
       {/* 节点 ID */}
       <div style={{
@@ -46,7 +73,6 @@ export default function BaseNode({ id, label, color, selected }) {
         {label}
       </div>
 
-      {/* 底部连接点 */}
       <Handle type="source" position={Position.Bottom} />
     </div>
   )
