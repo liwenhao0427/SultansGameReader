@@ -372,14 +372,16 @@ ipcMain.handle('config:readCache', async (_event, type, id) => {
 ipcMain.handle('config:listCache', async (_event, type) => {
   if (type === 'card') {
     const cards = readCardsCatalog();
-    return Object.values(cards).map((card) => ({
+    return Object.values(cards)
+      .filter((card) => card && card.id != null)
+      .map((card) => ({
       id: String(card.id),
       name: card.name || null,
       text: card.text || null,
       title: card.title || null,
       rare: card.rare ?? null,
       image: Array.isArray(card.resource) ? (card.resource[0] || null) : (card.resource || null),
-    }));
+      }));
   }
 
   const cacheDir = getCacheDir();
@@ -465,12 +467,14 @@ ipcMain.handle('config:buildIndex', async () => {
   }
 
   const cards = readCardsCatalog();
-  const cardEntries = Object.values(cards).map((card) => ({
-    id: String(card.id),
-    type: 'card',
-    name: String(card.name || ''),
-    text: String(card.text || card.title || ''),
-  }));
+  const cardEntries = Object.values(cards)
+    .filter((card) => card && card.id != null)
+    .map((card) => ({
+      id: String(card.id),
+      type: 'card',
+      name: String(card.name || ''),
+      text: String(card.text || card.title || ''),
+    }));
   if (cardEntries.length > 0) {
     searchIndex.push(...cardEntries);
     counts.card = cardEntries.length;

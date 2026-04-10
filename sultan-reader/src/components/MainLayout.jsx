@@ -53,6 +53,7 @@ export default function MainLayout({ onNavigate }) {
 
   const [activeType, setActiveType] = useState('rite')
   const [items, setItems] = useState([])
+  const [filterText, setFilterText] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
   const [loadingItems, setLoadingItems] = useState(false)
   const [bootstrapped, setBootstrapped] = useState(false)
@@ -91,6 +92,10 @@ export default function MainLayout({ onNavigate }) {
       cancelled = true
     }
   }, [activeType, isLoaded])
+
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [filterText])
 
   useEffect(() => {
     if (!isLoaded || bootstrapped || nodeIdSet.size > 0) return
@@ -134,11 +139,30 @@ export default function MainLayout({ onNavigate }) {
     }
   }, [bootstrapped, isLoaded, nodeIdSet.size])
 
-  const totalPages = Math.max(1, Math.ceil(items.length / PAGE_SIZE))
+  const filteredItems = useMemo(() => {
+    const keyword = filterText.trim().toLowerCase()
+    if (!keyword) return items
+
+    return items.filter((item) => {
+      const haystack = [
+        item.id,
+        item.name,
+        item.title,
+        item.text,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+
+      return haystack.includes(keyword)
+    })
+  }, [filterText, items])
+
+  const totalPages = Math.max(1, Math.ceil(filteredItems.length / PAGE_SIZE))
   const visibleItems = useMemo(() => {
     const start = (currentPage - 1) * PAGE_SIZE
-    return items.slice(start, start + PAGE_SIZE)
-  }, [currentPage, items])
+    return filteredItems.slice(start, start + PAGE_SIZE)
+  }, [currentPage, filteredItems])
 
   if (!isLoaded) {
     return (
@@ -206,9 +230,23 @@ export default function MainLayout({ onNavigate }) {
             ))}
           </div>
 
+          <div style={filterBarStyle}>
+            <input
+              type="text"
+              value={filterText}
+              onChange={(event) => setFilterText(event.target.value)}
+              placeholder="筛选 id / 名称 / 简介…"
+              style={filterInputStyle}
+            />
+          </div>
+
           <div style={listWrapStyle}>
             {loadingItems && <div style={listHintStyle}>正在读取 {TYPE_TABS.find((tab) => tab.key === activeType)?.label}…</div>}
-            {!loadingItems && visibleItems.length === 0 && <div style={listHintStyle}>该类型下暂无可读条目。</div>}
+            {!loadingItems && visibleItems.length === 0 && (
+              <div style={listHintStyle}>
+                {filterText.trim() ? '没有匹配当前筛选条件的条目。' : '该类型下暂无可读条目。'}
+              </div>
+            )}
 
             {!loadingItems && visibleItems.map((item, index) => {
               const nodeKey = `${activeType}:${item.id}`
@@ -395,6 +433,22 @@ const tabRowStyle = {
   display: 'flex',
   flexWrap: 'wrap',
   gap: 8,
+}
+
+const filterBarStyle = {
+  padding: '0 14px 10px',
+}
+
+const filterInputStyle = {
+  width: '100%',
+  boxSizing: 'border-box',
+  padding: '10px 12px',
+  borderRadius: 14,
+  border: '1px solid rgba(212, 184, 126, 0.14)',
+  background: 'rgba(212, 184, 126, 0.05)',
+  color: '#f1e8d5',
+  outline: 'none',
+  fontSize: 13,
 }
 
 const tabStyle = {
