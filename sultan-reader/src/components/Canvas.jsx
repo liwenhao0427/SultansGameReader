@@ -1,4 +1,5 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import dagre from 'dagre'
 import {
   Background,
   Controls,
@@ -24,6 +25,51 @@ const EDGE_COLORS = {
   success: '#a6e3a1',
   failed: '#f38ba8',
   default: '#6c7086',
+}
+
+const AUTO_LAYOUT_NODE_SIZE = {
+  rite: { width: 170, height: 116 },
+  event: { width: 150, height: 88 },
+  loot: { width: 156, height: 96 },
+  default: { width: 150, height: 90 },
+}
+
+function layoutNodesWithDagre(nodes, edges) {
+  const graph = new dagre.graphlib.Graph()
+  graph.setDefaultEdgeLabel(() => ({}))
+  graph.setGraph({
+    rankdir: 'LR',
+    nodesep: 72,
+    ranksep: 120,
+    marginx: 40,
+    marginy: 40,
+  })
+
+  nodes.forEach((node) => {
+    const size = AUTO_LAYOUT_NODE_SIZE[node.type] || AUTO_LAYOUT_NODE_SIZE.default
+    graph.setNode(node.id, {
+      width: node.measured?.width || size.width,
+      height: node.measured?.height || size.height,
+    })
+  })
+
+  edges.forEach((edge) => {
+    graph.setEdge(edge.source, edge.target)
+  })
+
+  dagre.layout(graph)
+
+  return nodes.map((node) => {
+    const positioned = graph.node(node.id)
+    if (!positioned) return node
+    return {
+      ...node,
+      position: {
+        x: Math.round(positioned.x - positioned.width / 2),
+        y: Math.round(positioned.y - positioned.height / 2),
+      },
+    }
+  })
 }
 
 function summarize(item, data) {
@@ -278,6 +324,7 @@ function CanvasInner() {
   const [tooltip, setTooltip] = useState(null)
   const [pendingSourceId, setPendingSourceId] = useState(null)
   const [relationPicker, setRelationPicker] = useState(null)
+  const lastAutoLayoutSignatureRef = useRef('')
 
   const nodeMap = useMemo(
     () => new Map(nodes.map((node) => [node.id, node])),
@@ -425,6 +472,14 @@ function CanvasInner() {
     setCanvasNodes(applyNodeChanges(changes, useCanvasStore.getState().nodes))
   }, [setCanvasNodes])
 
+  const runAutoLayout = useCallback(() => {
+    const currentNodes = useCanvasStore.getState().nodes
+    const currentEdges = useCanvasStore.getState().edges
+    if (currentNodes.length === 0) return
+    const laidOutNodes = layoutNodesWithDagre(currentNodes, currentEdges)
+    setCanvasNodes(laidOutNodes)
+  }, [setCanvasNodes])
+
   const onConnectStart = useCallback((_event, params) => {
     setPendingSourceId(params?.nodeId || null)
   }, [])
@@ -480,7 +535,25 @@ function CanvasInner() {
 
     setNodes(useCanvasStore.getState().nodes)
     setRelationPicker(null)
-  }, [nodeMap, relationPicker, setNodes])
+    runAutoLayout()
+  }, [nodeMap, relationPicker, runAutoLayout, setNodes])
+
+  const onNodeDragStop = useCallback(() => {
+    runAutoLayout()
+  }, [runAutoLayout])
+
+  useEffect(() => {
+    const signature = JSON.stringify({
+      nodeIds: nodes.map((node) => node.id),
+      edgeIds: edges.map((edge) => edge.id),
+    })
+
+    if (signature === lastAutoLayoutSignatureRef.current) return
+    lastAutoLayoutSignatureRef.current = signature
+
+    if (nodes.length <= 1) return
+    runAutoLayout()
+  }, [edges, nodes, runAutoLayout])
 
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative' }}>
@@ -502,6 +575,7 @@ function CanvasInner() {
         onPaneClick={onPaneClick}
         onConnectStart={onConnectStart}
         onConnectEnd={onConnectEnd}
+        onNodeDragStop={onNodeDragStop}
         nodesDraggable
         fitView
       >

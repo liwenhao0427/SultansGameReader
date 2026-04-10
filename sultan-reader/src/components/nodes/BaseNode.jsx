@@ -3,6 +3,26 @@ import { Handle, Position } from '@xyflow/react'
 import { useResolvedImage } from '../../services/imageResolver'
 import { CARD_RENDER_CONFIG, getCardFrameHeight, getCardRarityFrameAsset } from '../../resourceConfig'
 
+const NODE_TYPE_LABELS = {
+  rite: '仪式',
+  event: '事件',
+  loot: '战利品',
+  card: '卡牌',
+  after_story: '后日谈',
+  over: '结局',
+  dt: '对话树',
+  upgrade: '升级',
+}
+
+function formatDisplayId(id) {
+  if (typeof id !== 'string') return String(id || '')
+  const colonIndex = id.indexOf(':')
+  if (colonIndex === -1) return id
+  const type = id.slice(0, colonIndex)
+  const rawId = id.slice(colonIndex + 1)
+  return `${NODE_TYPE_LABELS[type] || type}:${rawId}`
+}
+
 /**
  * @param {string} id - 节点 ID
  * @param {string} label - 底部显示的名称/摘要文本
@@ -67,7 +87,7 @@ export default function BaseNode({ id, label, color, selected, image, rare }) {
         textOverflow: 'ellipsis',
         whiteSpace: 'nowrap',
       }}>
-        {id}
+        {formatDisplayId(id)}
       </div>
 
       {/* 名称/摘要，最多 2 行 */}
