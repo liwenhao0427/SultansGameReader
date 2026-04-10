@@ -101,6 +101,38 @@ function buildCardsLiteMap(cardsData) {
   return cardsLite;
 }
 
+/** 读取 cache/single 下的聚合缓存文件 */
+function readSingleAggregateFile(fileName) {
+  const filePath = path.join(getCacheDir(), 'single', fileName);
+  if (!fs.existsSync(filePath)) return null;
+  try {
+    const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+    return data && typeof data === 'object' ? data : null;
+  } catch {
+    return null;
+  }
+}
+
+/** 判断聚合缓存对象中的 key 是否是实际条目 ID */
+function isAggregateEntryKey(key, value) {
+  if (value == null || typeof value !== 'object' || Array.isArray(value)) return false;
+  if (key.startsWith('_') || key.endsWith('__ca')) return false;
+  return true;
+}
+
+/** over.json 是单文件聚合缓存，这里统一展开为 [{ id, ...data }] */
+function readOverEntries() {
+  const data = readSingleAggregateFile('over.json');
+  if (!data) return [];
+
+  return Object.entries(data)
+    .filter(([key, value]) => isAggregateEntryKey(key, value))
+    .map(([id, value]) => ({
+      id: String(id),
+      ...value,
+    }));
+}
+
 // ─── 初始化 electron-store ────────────────────────────────────────────────────
 
 /**
@@ -367,6 +399,13 @@ ipcMain.handle('config:readCache', async (_event, type, id) => {
     return cards[String(id)] || null;
   }
 
+  if (type === 'over') {
+    const entries = readSingleAggregateFile('over.json');
+    if (!entries) return null;
+    const record = entries[String(id)];
+    return record && typeof record === 'object' ? record : null;
+  }
+
   // rite_template_mappings 是 config 根目录下的单文件，不在 cache 子目录中
   if (type === 'rite_template_mappings') {
     const gamePath = settings ? settings.get('gamePath') : null;
@@ -414,6 +453,17 @@ ipcMain.handle('config:listCache', async (_event, type) => {
       rare: card.rare ?? null,
       image: Array.isArray(card.resource) ? (card.resource[0] || null) : (card.resource || null),
       }));
+  }
+
+  if (type === 'over') {
+    return readOverEntries().map((entry) => ({
+      id: entry.id,
+      name: entry.name || null,
+      text: entry.text || null,
+      title: entry.title || entry.sub_name || null,
+      icon: entry.icon || null,
+      image: entry.bg || null,
+    }));
   }
 
   const cacheDir = getCacheDir();
@@ -522,6 +572,17 @@ ipcMain.handle('config:buildIndex', async () => {
   if (cardEntries.length > 0) {
     searchIndex.push(...cardEntries);
     counts.card = cardEntries.length;
+  }
+
+  const overEntries = readOverEntries().map((entry) => ({
+    id: entry.id,
+    type: 'over',
+    name: String(entry.name || ''),
+    text: String(entry.text || ''),
+  }));
+  if (overEntries.length > 0) {
+    searchIndex.push(...overEntries);
+    counts.over = overEntries.length;
   }
 
   return { counts };

@@ -73,6 +73,24 @@ function searchInMemory(index, query, types) {
   return results;
 }
 
+/**
+ * 单文件聚合缓存（如 over.json）的条目筛选逻辑
+ */
+function isAggregateEntryKey(key, value) {
+  if (value == null || typeof value !== 'object' || Array.isArray(value)) return false;
+  if (key.startsWith('_') || key.endsWith('__ca')) return false;
+  return true;
+}
+
+function expandOverEntries(data) {
+  return Object.entries(data)
+    .filter(([key, value]) => isAggregateEntryKey(key, value))
+    .map(([id, value]) => ({
+      id: String(id),
+      ...value,
+    }));
+}
+
 // ── 测试：config:setGameDir 路径验证 ─────────────────────────────────────────
 
 describe('validateGameDir (config:setGameDir)', () => {
@@ -198,5 +216,42 @@ describe('searchInMemory (config:search)', () => {
 
   it('空查询返回空数组', () => {
     expect(searchInMemory(index, '', null)).toEqual([]);
+  });
+});
+
+describe('expandOverEntries (single/over.json)', () => {
+  it('会忽略元信息和章节标题，只展开实际结局条目', () => {
+    const data = {
+      '0': { name: '结局 A', text: '文本 A' },
+      '15': { name: '结局 B', text: '文本 B' },
+      '100__ca': '章节标题',
+      _source_path: 'config/over.json',
+    };
+
+    const entries = expandOverEntries(data);
+    expect(entries).toHaveLength(2);
+    expect(entries.map((item) => item.id)).toEqual(['0', '15']);
+  });
+
+  it('展开后的结局条目保留原始字段，供列表和详情读取使用', () => {
+    const data = {
+      '502': {
+        name: '大胜结局',
+        sub_name: '副标题',
+        text: '正文',
+        bg: 'over_cg/over_cg_101',
+        icon: 'over_icon/over_icon_1',
+      },
+    };
+
+    const [entry] = expandOverEntries(data);
+    expect(entry).toMatchObject({
+      id: '502',
+      name: '大胜结局',
+      sub_name: '副标题',
+      text: '正文',
+      bg: 'over_cg/over_cg_101',
+      icon: 'over_icon/over_icon_1',
+    });
   });
 });
