@@ -91,20 +91,25 @@ function extractChoiceOptions(chooseValue) {
   return []
 }
 
-function extractChooseEntries(chooseValue) {
-  if (!chooseValue) return []
+function extractPopBubbleText(result = {}, slotId = '') {
+  if (!result || typeof result !== 'object') return ''
 
-  if (Array.isArray(chooseValue)) {
-    return chooseValue.flatMap((entry) => extractChooseEntries(entry))
-  }
+  const popupEntries = Object.entries(result)
+    .filter(([key, value]) => (
+      !key.endsWith('__c') &&
+      !key.endsWith('__ca') &&
+      !key.endsWith('__ci') &&
+      typeof value === 'string' &&
+      key.startsWith('pop.')
+    ))
 
-  if (typeof chooseValue === 'object') {
-    return Object.entries(chooseValue)
-      .filter(([key]) => !key.endsWith('__c') && !key.endsWith('__ca') && !key.endsWith('__ci'))
-      .map(([id, text]) => ({ id, text: String(text) }))
-  }
+  if (popupEntries.length === 0) return ''
 
-  return []
+  const scoped = slotId
+    ? popupEntries.find(([key]) => key.endsWith(`.${slotId}`))
+    : null
+
+  return (scoped || popupEntries[0])?.[1] || ''
 }
 
 function resolveCardResource(card) {
@@ -138,7 +143,6 @@ function summarizeLabel(name, fallbackPrefix = '') {
 function buildSlotCandidate(slotId, pop, index, cardsMap, cardsById) {
   const condition = pop?.condition || {}
   const anyCondition = condition.any && typeof condition.any === 'object' ? condition.any : null
-  const chooseEntries = extractChooseEntries(pop?.action?.choose)
   const directIs = normalizeArray(condition.is)
   const anyIs = normalizeArray(anyCondition?.is)
 
@@ -192,8 +196,7 @@ function buildSlotCandidate(slotId, pop, index, cardsMap, cardsById) {
     label,
     mode,
     cards,
-    choiceTexts: chooseEntries,
-    primaryText: chooseEntries[0]?.text || '',
+    bubbleText: extractPopBubbleText(pop?.result, slotId),
     conditionText: parseConditionObject(condition, cardsMap).join(' / '),
   }
 }

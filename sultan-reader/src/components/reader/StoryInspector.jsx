@@ -165,7 +165,7 @@ function ConditionPreview({ text, color = '#dcc8a3', maxLines = 2 }) {
   )
 }
 
-function SlotButton({ slot, active, candidate, tags, onClick, slotBgKey }) {
+function SlotButton({ slot, active, candidate, tags, onClick, slotBgKey, bubbleText }) {
   const { url: slotBgUrl } = useResolvedImage(slotBgKey)
   const previewCard = candidate?.cards?.[0] || slot.defaultCards?.[0] || null
   const slotCaption = candidate?.label || slot.defaultCards?.[0]?.name || slot.title
@@ -188,6 +188,11 @@ function SlotButton({ slot, active, candidate, tags, onClick, slotBgKey }) {
           position: 'relative',
         }}
       >
+        {bubbleText && (
+          <div style={slotBubbleStyle}>
+            {bubbleText}
+          </div>
+        )}
         <div style={{
           width: READER_CHROME.assets.slotFrame.width,
           minHeight: READER_CHROME.assets.slotFrame.minHeight,
@@ -414,16 +419,18 @@ export default function StoryInspector({ type, data, onClose }) {
   const [revealedLineCount, setRevealedLineCount] = useState(1)
   const [revealedSegmentCount, setRevealedSegmentCount] = useState(0)
   const [autoAdvance, setAutoAdvance] = useState(false)
+  const [slotBubbleTexts, setSlotBubbleTexts] = useState({})
   const readerBodyRef = useRef(null)
+  const bubbleTimersRef = useRef({})
 
   function buildDialogueLines(slotId, selections, settlementState, globalSelections = globalSettlementSelections) {
     const slot = model?.slots?.find((entry) => entry.id === slotId) || null
-    const candidate = slot?.candidates?.find((entry) => entry.id === selections?.[slotId]) || slot?.candidates?.[0] || null
+    void slot
+    void selections
     void settlementState
     void globalSelections
 
     return splitIntro(model?.intro)
-      .concat((candidate?.choiceTexts || []).map((entry) => entry.text))
   }
 
   useEffect(() => {
@@ -437,11 +444,12 @@ export default function StoryInspector({ type, data, onClose }) {
     )
     const firstSlotId = model.slots?.[0]?.id || null
     const firstCandidate = model.slots?.[0]?.candidates?.[0] || null
-    const initialLines = splitIntro(model.intro).concat((firstCandidate?.choiceTexts || []).map((entry) => entry.text))
+    const initialLines = splitIntro(model.intro)
 
     setSlotSelections(defaults)
     setSettlementSelections(hintDefaults)
     setGlobalSettlementSelections([])
+    setSlotBubbleTexts({})
     setActiveSlotId(firstSlotId)
     setRevealedLineCount(initialLines.length > 0 ? 1 : 0)
     setRevealedSegmentCount(0)
@@ -490,10 +498,8 @@ export default function StoryInspector({ type, data, onClose }) {
   }, [selectedSlot, settlementSelections])
 
   const dialogueLines = useMemo(() => {
-    const introLines = splitIntro(model?.intro)
-    const candidateLines = (selectedCandidate?.choiceTexts || []).map((entry) => entry.text)
-    return [...introLines, ...candidateLines].filter(Boolean)
-  }, [model?.intro, selectedCandidate])
+    return splitIntro(model?.intro).filter(Boolean)
+  }, [model?.intro])
 
   const selectedHintIds = useMemo(
     () => new Set(Object.values(settlementSelections).flat()),
@@ -609,6 +615,22 @@ export default function StoryInspector({ type, data, onClose }) {
     }
 
     setSlotSelections(nextSelections)
+    const nextCandidate = selectedSlot.candidates?.find((candidate) => candidate.id === candidateId) || null
+    if (nextCandidate?.bubbleText) {
+      const bubbleText = nextCandidate.bubbleText
+      setSlotBubbleTexts((current) => ({ ...current, [selectedSlot.id]: bubbleText }))
+      if (bubbleTimersRef.current[selectedSlot.id]) {
+        window.clearTimeout(bubbleTimersRef.current[selectedSlot.id])
+      }
+      bubbleTimersRef.current[selectedSlot.id] = window.setTimeout(() => {
+        setSlotBubbleTexts((current) => {
+          const next = { ...current }
+          delete next[selectedSlot.id]
+          return next
+        })
+        delete bubbleTimersRef.current[selectedSlot.id]
+      }, 2200)
+    }
     const nextLines = buildDialogueLines(selectedSlot.id, nextSelections, settlementSelections, globalSettlementSelections)
     setRevealedLineCount(nextLines.length > 0 ? 1 : 0)
     setRevealedSegmentCount(0)
@@ -650,14 +672,21 @@ export default function StoryInspector({ type, data, onClose }) {
     setSlotSelections(defaults)
     setSettlementSelections(hintDefaults)
     setGlobalSettlementSelections([])
+    setSlotBubbleTexts({})
     setActiveSlotId(model.slots?.[0]?.id || null)
 
     const firstCandidate = model.slots?.[0]?.candidates?.[0] || null
-    const nextLines = splitIntro(model.intro).concat((firstCandidate?.choiceTexts || []).map((entry) => entry.text))
+    void firstCandidate
+    const nextLines = splitIntro(model.intro)
     setRevealedLineCount(nextLines.length > 0 ? 1 : 0)
     setRevealedSegmentCount(0)
     setAutoAdvance(false)
   }
+
+  useEffect(() => () => {
+    Object.values(bubbleTimersRef.current).forEach((timerId) => window.clearTimeout(timerId))
+    bubbleTimersRef.current = {}
+  }, [])
 
   useEffect(() => {
     if (!readerBodyRef.current) return
@@ -794,6 +823,7 @@ export default function StoryInspector({ type, data, onClose }) {
                     slotBgKey={slotBackgroundMap?.[slot.id]?.slot_bg || templateData?.nomal_slot_bg || READER_CHROME.assets.slotFrame.asset}
                     active={activeSlotId === slot.id}
                     candidate={currentCandidate}
+                    bubbleText={slotBubbleTexts[slot.id]}
                     tags={activeTags}
                     onClick={() => handleSelectSlot(slot.id)}
                   />
@@ -1219,6 +1249,19 @@ const slotTagButtonStyle = {
   fontSize: 10,
   lineHeight: 1.3,
   cursor: 'pointer',
+}
+
+const slotBubbleStyle = {
+  maxWidth: 180,
+  padding: '8px 10px',
+  borderRadius: 14,
+  background: 'rgba(246, 237, 214, 0.96)',
+  color: '#4a3018',
+  fontSize: 12,
+  lineHeight: 1.55,
+  boxShadow: '0 12px 26px rgba(0, 0, 0, 0.24)',
+  border: '1px solid rgba(188, 154, 98, 0.28)',
+  marginBottom: 4,
 }
 
 const metaChipCompactStyle = {
