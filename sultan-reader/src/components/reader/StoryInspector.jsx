@@ -1787,17 +1787,21 @@ const executionOverlayStyle = {
 
 const executionModalStyle = {
   width: 'min(1380px, 100%)',
-  maxHeight: 'calc(100vh - 56px)',
+  height: 'calc(100vh - 56px)',
   borderRadius: 28,
   overflow: 'hidden',
   border: '1px solid rgba(212, 184, 126, 0.18)',
   background: 'linear-gradient(180deg, rgba(39, 28, 18, 0.98), rgba(18, 13, 10, 0.98))',
   boxShadow: '0 36px 82px rgba(0, 0, 0, 0.34)',
+  display: 'grid',
+  gridTemplateRows: '1fr',
 }
 
 const executionStageStyle = {
   display: 'grid',
-  gap: 0,
+  gridTemplateRows: 'auto 1fr',
+  minHeight: 0,
+  overflow: 'hidden',
 }
 
 const executionToolbarStyle = {
@@ -1814,12 +1818,12 @@ const executionBodyStyle = {
   gridTemplateColumns: 'minmax(520px, 1.2fr) minmax(340px, 0.86fr)',
   gap: 18,
   padding: 18,
-  minHeight: 680,
+  minHeight: 0,
+  overflow: 'hidden',
 }
 
 const executionCanvasStyle = {
   position: 'relative',
-  minHeight: 640,
   borderRadius: 24,
   overflow: 'hidden',
   backgroundRepeat: 'no-repeat',
