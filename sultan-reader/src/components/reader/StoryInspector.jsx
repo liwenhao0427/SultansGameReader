@@ -698,6 +698,22 @@ export default function StoryInspector({ type, data, onClose }) {
     (model?.globalSettlementHints || []).filter((hint) => matchesSlotOccupancyCondition(hint.conditionRaw, slotSelectionState))
   ), [model?.globalSettlementHints, slotSelectionState])
 
+  // 结算条件/全局条件选中后，用其卡牌覆盖对应卡槽显示
+  // 优先级：结算条件卡牌 > 候选卡牌 > 默认卡牌
+  const slotOverrideCards = useMemo(() => {
+    const overrides = {}
+    for (const slot of (model?.slots || [])) {
+      const hintId = settlementSelections[slot.id]
+      if (!hintId) continue
+      const hint = (slot.settlementHints || []).find((h) => h.id === hintId)
+      if (hint?.cards?.length > 0) {
+        overrides[slot.id] = hint.cards[0]
+      }
+    }
+    // 全局条件也可能带卡牌，但无法对应到具体槽位，暂不处理
+    return overrides
+  }, [model?.slots, settlementSelections])
+
   const selectedSettlementHints = useMemo(() => {
     if (!selectedSlot) return []
     const selectedId = settlementSelections[selectedSlot.id]
@@ -1136,6 +1152,11 @@ export default function StoryInspector({ type, data, onClose }) {
             }}>
               {model.slots.map((slot) => {
                 const currentCandidate = slot.candidates?.find((candidate) => candidate.id === slotSelections[slot.id]) || slot.candidates?.[0] || null
+                // 结算条件有卡牌时，构造一个覆盖候选用于显示
+                const overrideCard = slotOverrideCards[slot.id] || null
+                const displayCandidate = overrideCard
+                  ? { ...currentCandidate, cards: [overrideCard], label: overrideCard.name || currentCandidate?.label }
+                  : currentCandidate
                 const activeTags = (slot.settlementHints || [])
                   .filter((hint) => settlementSelections[slot.id] === hint.id)
                   .map((hint) => ({
@@ -1154,7 +1175,7 @@ export default function StoryInspector({ type, data, onClose }) {
                     slot={slot}
                     slotBgKey={slotBackgroundMap?.[slot.id]?.slot_bg || templateData?.nomal_slot_bg || READER_CHROME.assets.slotFrame.asset}
                     active={activeSlotId === slot.id}
-                    candidate={currentCandidate}
+                    candidate={displayCandidate}
                     bubbleText={slotBubbleTexts[slot.id]}
                     tags={activeTags}
                     onClick={() => handleSelectSlot(slot.id)}
@@ -1529,8 +1550,49 @@ export default function StoryInspector({ type, data, onClose }) {
         <div style={executionOverlayStyle}>
           <div style={executionModalStyle}>
             <div style={executionStageStyle}>
-              {/* 顶部标题条：仅保留背景，去掉文字内容 */}
-              <div style={executionToolbarStyle} />
+              {/* 顶部标题条：背景图预览 + 实际使用区域标框 */}
+              <div style={executionToolbarStyle}>
+                {templateBgUrl && (() => {
+                  // title_pos.x 是游戏原始坐标，游戏画布宽约 1920
+                  // 实际使用区域是 x=0 到 title_pos.x 的左侧部分
+                  const titleX = templateData?.title_pos?.x
+                  const usedWidthPct = titleX ? Math.min(100, (titleX / 1920) * 100) : 100
+                  return (
+                    <div style={{ position: 'relative', height: 56, width: 240, borderRadius: 8, overflow: 'hidden', flexShrink: 0 }}>
+                      <img
+                        src={templateBgUrl}
+                        alt="背景预览"
+                        style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                      />
+                      {/* 实际使用区域标框（左侧到 title_pos.x） */}
+                      <div style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        width: `${usedWidthPct}%`,
+                        height: '100%',
+                        border: '2px solid rgba(212, 184, 126, 0.9)',
+                        boxSizing: 'border-box',
+                        pointerEvents: 'none',
+                      }} />
+                      {titleX && (
+                        <div style={{
+                          position: 'absolute',
+                          bottom: 2,
+                          left: 4,
+                          fontSize: 9,
+                          color: '#f3e3c1',
+                          background: 'rgba(0,0,0,0.5)',
+                          padding: '1px 4px',
+                          borderRadius: 3,
+                        }}>
+                          使用区域 x&lt;{titleX}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })()}
+              </div>
 
               <div style={executionBodyStyle}>
                 <div style={{
@@ -1556,8 +1618,9 @@ export default function StoryInspector({ type, data, onClose }) {
                   )}
                   {(model.slots || []).map((slot) => {
                     const candidate = slot.candidates?.find((entry) => entry.id === slotSelections[slot.id]) || slot.candidates?.[0] || null
-                    const previewCard = candidate?.cards?.[0] || slot.defaultCards?.[0] || null
-                    const slotCaption = candidate?.label || slot.defaultCards?.[0]?.name || slot.title
+                    const overrideCard = slotOverrideCards[slot.id] || null
+                    const previewCard = overrideCard || candidate?.cards?.[0] || slot.defaultCards?.[0] || null
+                    const slotCaption = overrideCard?.name || candidate?.label || slot.defaultCards?.[0]?.name || slot.title
                     const slotBgKey = slotBackgroundMap?.[slot.id]?.slot_bg || templateData?.nomal_slot_bg || READER_CHROME.assets.slotFrame.asset
                     const layout = templateSlotLayout[slot.id] || {}
 
