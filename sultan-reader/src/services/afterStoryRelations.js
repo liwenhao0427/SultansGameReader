@@ -1,6 +1,9 @@
 const COMMENT_FIELDS = ['__ca', 'key__c']
 
 let relationsPromise = null
+const ENDING_NAME_ALIASES = {
+  无尽长夜: '无尽夜',
+}
 
 function cleanDecorativeText(text) {
   return String(text || '')
@@ -9,7 +12,7 @@ function cleanDecorativeText(text) {
 }
 
 export function normalizeEndingName(text) {
-  return cleanDecorativeText(text)
+  const normalized = cleanDecorativeText(text)
     .replace(/^消卡结局/, '')
     .replace(/^结局/, '')
     .replace(/的总结后日谈$/, '')
@@ -17,6 +20,8 @@ export function normalizeEndingName(text) {
     .replace(/（[^）]*）|\([^)]*\)/g, '')
     .replace(/[「」『』〔〕【】《》、，。！？：；\s]/g, '')
     .trim()
+
+  return ENDING_NAME_ALIASES[normalized] || normalized
 }
 
 export function extractEndingHintsFromComment(text) {
@@ -92,6 +97,30 @@ function sortExtras(extras) {
     .sort((a, b) => ((a.sort ?? 999) - (b.sort ?? 999)) || (a.__order - b.__order))
 }
 
+export function extractSectionCommentsByKey(rawText) {
+  if (typeof rawText !== 'string' || !rawText.trim()) return {}
+
+  const lines = rawText.split(/\r?\n/)
+  const commentsByKey = {}
+  let pendingComment = null
+
+  for (const line of lines) {
+    const commentMatch = line.match(/\/\/\s*(-+\s*结局.+?)\s*$/)
+    if (commentMatch) {
+      pendingComment = commentMatch[1].trim()
+      continue
+    }
+
+    const keyMatch = line.match(/"key"\s*:\s*"([^"]+)"/)
+    if (keyMatch && pendingComment) {
+      commentsByKey[keyMatch[1]] = pendingComment
+      pendingComment = null
+    }
+  }
+
+  return commentsByKey
+}
+
 export function buildAfterStoryRelations(afterStoryRecords, overEntries) {
   const overIndex = buildOverIndex(overEntries)
   const overToAfterStoryMap = new Map()
@@ -105,6 +134,7 @@ export function buildAfterStoryRelations(afterStoryRecords, overEntries) {
     for (const item of extras) {
       const comments = COMMENT_FIELDS
         .map((field) => item[field])
+        .concat(item.__source_section_comment ? [item.__source_section_comment] : [])
         .filter((value) => typeof value === 'string' && value.trim())
 
       const explicitOverIds = resolveOverIdsFromComments(comments, overIndex)
@@ -193,7 +223,26 @@ export async function getAfterStoryRelations() {
       const afterStoryRecords = await Promise.all(
         (afterStoryEntries || []).map(async (entry) => {
           const data = await window.electronAPI.configReadCache('after_story', entry.id)
-          return data ? { ...data, id: String(entry.id) } : null
+          if (!data) return null
+
+          let sourceCommentsByKey = {}
+          if (data._source_path) {
+            try {
+              const rawText = await window.electronAPI.fileReadRaw(data._source_path)
+              sourceCommentsByKey = extractSectionCommentsByKey(rawText)
+            } catch {
+              sourceCommentsByKey = {}
+            }
+          }
+
+          const extra = Array.isArray(data.extra)
+            ? data.extra.map((item) => ({
+              ...item,
+              __source_section_comment: sourceCommentsByKey[item.key] || null,
+            }))
+            : []
+
+          return { ...data, extra, id: String(entry.id) }
         })
       )
 

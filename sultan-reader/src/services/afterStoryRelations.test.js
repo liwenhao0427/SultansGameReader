@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildAfterStoryRelations,
+  extractSectionCommentsByKey,
   extractEndingHintsFromComment,
   normalizeEndingName,
 } from './afterStoryRelations.js'
@@ -20,6 +21,7 @@ describe('afterStoryRelations', () => {
   it('会清理补充标记与修饰前缀', () => {
     expect(normalizeEndingName('消卡结局金色荒芜')).toBe('金色荒芜')
     expect(normalizeEndingName('结局终点的笑声(补充1)')).toBe('终点的笑声')
+    expect(normalizeEndingName('结局无尽长夜')).toBe('无尽夜')
   })
 
   it('会把章节标题后的后续条目继承到同一个结局上，并保留条件对象', () => {
@@ -42,5 +44,23 @@ describe('afterStoryRelations', () => {
     expect(relations.overToAfterStories['206'][0].items.map((item) => item.key)).toEqual(['a1', 'a2'])
     expect(relations.overToAfterStories['206'][0].items[0].condition).toEqual({ 'have.妻子': 1 })
     expect(relations.overToAfterStories['207'][0].items.map((item) => item.key)).toEqual(['a3'])
+  })
+
+  it('能从源文件原文里找回首条前面遗漏的章节注释', () => {
+    const comments = extractSectionCommentsByKey(`
+//---------------------------结局长夜将尽------------------------------------------------
+        {
+            "key": "2000005_extra_1",
+            "result_text": "第一段"
+        },
+//---------------------------结局无尽长夜------------------------------------------------
+        {
+            "key": "2000005_extra_2",
+            "result_text": "第二段"
+        }
+`)
+
+    expect(comments['2000005_extra_1']).toContain('结局长夜将尽')
+    expect(comments['2000005_extra_2']).toContain('结局无尽长夜')
   })
 })
