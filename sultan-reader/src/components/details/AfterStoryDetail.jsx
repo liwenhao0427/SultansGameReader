@@ -1,133 +1,182 @@
-import { useState, useEffect } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useResolvedImage } from '../../services/imageResolver'
-import { parseConditionObject } from '../../services/conditionParser'
-
-// 每页显示的 extra 条目数
-const PAGE_SIZE = 10
+import { getAfterStoryRelations } from '../../services/afterStoryRelations'
+import useConfigStore from '../../stores/useConfigStore'
+import { AfterStoryVariantModal, buildAfterStoryVariantGroup } from './AfterStoryVariantViewer'
 
 const S = {
-  title: { color: '#89b4fa', fontSize: 15, fontWeight: 'bold', marginBottom: 6 },
-  img: { maxWidth: '100%', borderRadius: 4, marginBottom: 10 },
-  imgPlaceholder: { width: 80, height: 80, background: '#313244', borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#585b70', fontSize: 11, marginBottom: 10 },
-  chapterTitle: { color: '#89b4fa', fontSize: 12, fontWeight: 'bold', margin: '10px 0 4px', borderLeft: '3px solid #89b4fa', paddingLeft: 6 },
-  entryBox: { background: '#181825', borderRadius: 4, padding: '8px 10px', marginBottom: 8 },
-  condTag: { color: '#f9e2af', fontSize: 11, display: 'block', lineHeight: '1.6' },
-  resultText: { color: '#cdd6f4', fontSize: 12, lineHeight: '1.6', whiteSpace: 'pre-wrap', marginTop: 6 },
-  comment: { color: '#a6adc8', fontSize: 11 },
+  titleRow: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginBottom: 10,
+  },
+  title: { color: '#89b4fa', fontSize: 18, fontWeight: 'bold' },
+  imageWrap: {
+    width: 160,
+    borderRadius: 18,
+    overflow: 'hidden',
+    border: '1px solid rgba(212, 184, 126, 0.12)',
+    background: 'rgba(22, 18, 13, 0.88)',
+    marginBottom: 14,
+  },
+  image: { width: '100%', display: 'block', objectFit: 'contain', objectPosition: 'top center' },
+  imagePlaceholder: {
+    height: 220,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    color: 'rgba(241, 232, 213, 0.42)',
+    fontSize: 12,
+  },
+  desc: { color: 'rgba(241, 232, 213, 0.68)', fontSize: 13, lineHeight: 1.75, marginBottom: 14 },
+  groupList: { display: 'grid', gap: 10 },
+  groupButton: {
+    width: '100%',
+    padding: '12px 14px',
+    borderRadius: 16,
+    border: '1px solid rgba(212, 184, 126, 0.12)',
+    background: 'rgba(24, 24, 37, 0.62)',
+    color: '#f1e8d5',
+    textAlign: 'left',
+    cursor: 'pointer',
+  },
+  groupName: { fontSize: 14, fontWeight: 700, color: '#f3e7cb' },
+  groupMeta: { marginTop: 6, fontSize: 12, color: 'rgba(241, 232, 213, 0.58)' },
+  actionButton: {
+    padding: '8px 14px',
+    borderRadius: 999,
+    border: '1px solid rgba(212, 184, 126, 0.18)',
+    background: 'rgba(212, 184, 126, 0.08)',
+    color: '#f1e8d5',
+    cursor: 'pointer',
+    whiteSpace: 'nowrap',
+  },
 }
 
-/** 角色立绘 */
-function CharImage({ pic }) {
+function HeaderImage({ pic }) {
   const { url, loading } = useResolvedImage(pic)
   if (!pic) return null
-  if (loading) return <div style={S.imgPlaceholder}>加载中…</div>
-  if (!url) return <div style={S.imgPlaceholder}>无图片</div>
-  return <img src={url} alt="" style={S.img} />
-}
 
-/** 单个 extra 条目 */
-function ExtraItem({ item }) {
-  const conditions = parseConditionObject(item.condition)
   return (
-    <div style={S.entryBox}>
-      {/* 条目注释 */}
-      {item.key__c && <div style={S.comment}>{item.key__c}</div>}
-
-      {/* 条件 */}
-      {conditions.length > 0 && (
-        <div style={{ marginBottom: 4 }}>
-          {conditions.map((c, i) => <span key={i} style={S.condTag}>{c}</span>)}
-        </div>
-      )}
-
-      {/* 条目立绘 */}
-      {item.pic && <CharImage pic={item.pic} />}
-
-      {/* 结果文本 */}
-      {item.result_text && <div style={S.resultText}>{item.result_text}</div>}
+    <div style={S.imageWrap}>
+      {loading && <div style={S.imagePlaceholder}>加载中…</div>}
+      {!loading && !url && <div style={S.imagePlaceholder}>暂无配图</div>}
+      {!loading && url && <img src={url} alt="" style={S.image} />}
     </div>
   )
 }
 
-/**
- * AfterStoryDetail — 后日谈详情组件
- * @param {{ data: object }} props
- */
 export default function AfterStoryDetail({ data }) {
-  // 当前页码（从 0 开始）
-  const [page, setPage] = useState(0)
+  const [activeState, setActiveState] = useState({ groupId: null, index: 0 })
+  const cardsById = useConfigStore((state) => state.cardsById)
+  const [relations, setRelations] = useState({ afterStoryToOvers: {} })
 
-  // data 变化时重置页码
-  useEffect(() => { setPage(0) }, [data])
+  useEffect(() => {
+    let cancelled = false
+    getAfterStoryRelations().then((result) => {
+      if (!cancelled) setRelations(result)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const linkedOvers = relations.afterStoryToOvers?.[String(data?.id)] || []
+
+  const viewerGroups = useMemo(
+    () => linkedOvers.length > 0
+      ? linkedOvers.map((over) => buildAfterStoryVariantGroup({
+        groupId: `${over.overId}:${data?.id}`,
+        overId: over.overId,
+        overName: over.overName,
+        afterStoryId: String(data?.id),
+        afterStoryName: data?.name || String(data?.id),
+        afterStoryImage: Array.isArray(data?.extra) ? (data.extra.find((item) => item?.pic)?.pic || null) : null,
+        items: (Array.isArray(data?.extra) ? data.extra : [])
+          .filter((item) => item?.result_text || item?.pic)
+          .filter((item) => {
+            const relationGroup = (relations.overToAfterStories?.[over.overId] || [])
+              .find((group) => group.afterStoryId === String(data?.id))
+            if (!relationGroup) return true
+            const allowed = new Set(relationGroup.items.map((entry) => entry.key))
+            return allowed.has(item.key)
+          })
+          .map((item, index) => ({
+            key: item.key || `${data?.id}:${index}`,
+            text: item.result_text || '',
+            pic: item.pic || null,
+            note: item.key__c || '',
+            condition: item.condition || null,
+          })),
+      }, cardsById))
+      : [buildAfterStoryVariantGroup({
+        groupId: `all:${data?.id}`,
+        overId: '',
+        overName: '',
+        afterStoryId: String(data?.id),
+        afterStoryName: data?.name || String(data?.id),
+        afterStoryImage: Array.isArray(data?.extra) ? (data.extra.find((item) => item?.pic)?.pic || null) : null,
+        items: (Array.isArray(data?.extra) ? data.extra : [])
+          .filter((item) => item?.result_text || item?.pic)
+          .map((item, index) => ({
+            key: item.key || `${data?.id}:${index}`,
+            text: item.result_text || '',
+            pic: item.pic || null,
+            note: item.key__c || '',
+            condition: item.condition || null,
+          })),
+      }, cardsById)],
+    [cardsById, data, linkedOvers, relations.overToAfterStories]
+  )
+
+  const defaultImage = Array.isArray(data?.extra) ? (data.extra.find((item) => item?.pic)?.pic || null) : null
+  const activeGroup = viewerGroups.find((group) => group.groupId === activeState.groupId) || null
 
   if (!data) return null
 
-  const extras = Array.isArray(data.extra) ? data.extra : []
-
-  // 是否需要分页（条目数超过 PAGE_SIZE 才显示分页控件）
-  const needPaging = extras.length > PAGE_SIZE
-  const totalPages = needPaging ? Math.ceil(extras.length / PAGE_SIZE) : 1
-
-  // 当前页的 extra 切片
-  const pageExtras = needPaging
-    ? extras.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
-    : extras
-
-  // 构建章节分组：遇到有 __ca 的条目时开启新章节
-  const buildChapters = (items) => {
-    const chapters = []
-    let currentChapter = { title: null, items: [] }
-    for (const item of items) {
-      if (item.__ca) {
-        if (currentChapter.items.length > 0 || currentChapter.title) {
-          chapters.push({ ...currentChapter })
-        }
-        currentChapter = { title: item.__ca, items: [item] }
-      } else {
-        currentChapter.items.push(item)
-      }
-    }
-    if (currentChapter.items.length > 0 || currentChapter.title) {
-      chapters.push(currentChapter)
-    }
-    return chapters
-  }
-
-  const chapters = buildChapters(pageExtras)
-
-  // 切换页面时滚动到顶部
-  const handlePageChange = (newPage) => {
-    setPage(newPage)
-    window.scrollTo(0, 0)
-  }
-
   return (
     <div>
-      {/* 角色名称 */}
-      <div style={S.title}>{data.name || `后日谈 ${data.id}`}</div>
+      <div style={S.titleRow}>
+        <div style={S.title}>{data.name || `后日谈 ${data.id}`}</div>
+        <button
+          type="button"
+          style={S.actionButton}
+          onClick={() => setActiveState({ groupId: viewerGroups[0]?.groupId || null, index: 0 })}
+        >
+          分支阅读
+        </button>
+      </div>
 
-      {/* 角色立绘（顶层 pic 字段） */}
-      {data.pic && <CharImage pic={data.pic} />}
+      <HeaderImage pic={defaultImage} />
 
-      {/* 章节列表 */}
-      {chapters.map((ch, ci) => (
-        <div key={ci}>
-          {ch.title && <div style={S.chapterTitle}>{ch.title}</div>}
-          {ch.items.map((item, ii) => <ExtraItem key={ii} item={item} />)}
-        </div>
-      ))}
+      <div style={S.desc}>
+        当前后日谈支持弹窗分支阅读。
+        {linkedOvers.length > 0 ? ' 你可以按结局区分查看，也可以在弹窗里切到跨结局连续翻看。' : ' 当前未匹配到明确结局时，将按全部文本连续阅读。'}
+      </div>
 
-      {/* 无章节时直接显示所有条目 */}
-      {chapters.length === 0 && pageExtras.map((item, i) => <ExtraItem key={i} item={item} />)}
+      <div style={S.groupList}>
+        {viewerGroups.map((group) => (
+          <button
+            key={group.groupId}
+            type="button"
+            style={S.groupButton}
+            onClick={() => setActiveState({ groupId: group.groupId, index: 0 })}
+          >
+            <div style={S.groupName}>{group.overName || '不区分结局'}</div>
+            <div style={S.groupMeta}>共 {group.items.length} 条分支，点击进入弹窗阅读</div>
+          </button>
+        ))}
+      </div>
 
-      {/* 分页控件（条目数 > PAGE_SIZE 时显示） */}
-      {needPaging && (
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 12, justifyContent: 'center' }}>
-          <button disabled={page === 0} onClick={() => handlePageChange(page - 1)}>上一页</button>
-          <span>{page + 1} / {totalPages}</span>
-          <button disabled={page === totalPages - 1} onClick={() => handlePageChange(page + 1)}>下一页</button>
-        </div>
-      )}
+      <AfterStoryVariantModal
+        groups={viewerGroups}
+        activeGroupId={activeGroup?.groupId || null}
+        activeIndex={activeState.index}
+        onGroupChange={(groupId, index) => setActiveState({ groupId, index })}
+        onClose={() => setActiveState({ groupId: null, index: 0 })}
+      />
     </div>
   )
 }

@@ -18,10 +18,14 @@ export function splitAfterStoryText(text) {
 }
 
 function getSegmentTone(count, total) {
-  if (!count || total <= 1) return 'unique'
-  if (count >= total) return 'common'
-  if (count === 1) return 'unique'
-  return 'shared'
+  if (!count || total <= 1) return 'p20'
+
+  const ratio = count / total
+  if (ratio >= 1) return 'p100'
+  if (ratio >= 0.8) return 'p80'
+  if (ratio >= 0.6) return 'p60'
+  if (ratio >= 0.4) return 'p40'
+  return 'p20'
 }
 
 export function buildAfterStoryVariantAnalysis(items) {
@@ -49,7 +53,7 @@ export function buildAfterStoryVariantAnalysis(items) {
       ...segment,
       tone: segment.normalized
         ? getSegmentTone(segmentCounts.get(segment.normalized), prepared.length)
-        : 'common',
+        : 'p100',
     })),
   }))
 }

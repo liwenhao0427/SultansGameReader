@@ -22,13 +22,13 @@ describe('afterStoryRelations', () => {
     expect(normalizeEndingName('结局终点的笑声(补充1)')).toBe('终点的笑声')
   })
 
-  it('会把章节标题后的后续条目继承到同一个结局上', () => {
+  it('会把章节标题后的后续条目继承到同一个结局上，并保留条件对象', () => {
     const relations = buildAfterStoryRelations(
       [{
         id: '2000005',
         name: '巴拉特',
         extra: [
-          { key: 'a1', __ca: '---------------------------结局新日之书------------------------------------------------', result_text: '第一段' },
+          { key: 'a1', __ca: '---------------------------结局新日之书------------------------------------------------', result_text: '第一段', condition: { 'have.妻子': 1 } },
           { key: 'a2', result_text: '第二段' },
           { key: 'a3', __ca: '---------------------------结局新日之坠------------------------------------------------', result_text: '第三段' },
         ],
@@ -40,6 +40,7 @@ describe('afterStoryRelations', () => {
     )
 
     expect(relations.overToAfterStories['206'][0].items.map((item) => item.key)).toEqual(['a1', 'a2'])
+    expect(relations.overToAfterStories['206'][0].items[0].condition).toEqual({ 'have.妻子': 1 })
     expect(relations.overToAfterStories['207'][0].items.map((item) => item.key)).toEqual(['a3'])
   })
 })

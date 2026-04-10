@@ -31,17 +31,13 @@ export function extractEndingHintsFromComment(text) {
   const endingIndex = cleaned.indexOf('结局')
   if (endingIndex !== -1) {
     const normalized = normalizeEndingName(cleaned.slice(endingIndex + 2))
-    if (normalized) {
-      names.push(normalized)
-    }
+    if (normalized) names.push(normalized)
   }
 
   const afterStoryMatch = cleaned.match(/^(.+?)(?:的?(?:总结)?后日谈)$/)
   if (afterStoryMatch) {
     const normalized = normalizeEndingName(afterStoryMatch[1])
-    if (normalized) {
-      names.push(normalized)
-    }
+    if (normalized) names.push(normalized)
   }
 
   return {
@@ -77,15 +73,12 @@ function resolveOverIdsFromComments(comments, overIndex) {
     const { ids, names } = extractEndingHintsFromComment(text)
 
     ids.forEach((id) => {
-      if (overIndex.byId.has(id)) {
-        matchedIds.add(id)
-      }
+      if (overIndex.byId.has(id)) matchedIds.add(id)
     })
 
     names.forEach((name) => {
       const idsByName = overIndex.idsByName.get(name)
       if (!idsByName) return
-
       idsByName.forEach((id) => matchedIds.add(id))
     })
   }
@@ -146,6 +139,7 @@ export function buildAfterStoryRelations(afterStoryRecords, overEntries) {
             text: item.result_text || '',
             pic: item.pic || null,
             note: comments[0] || '',
+            condition: item.condition || null,
           })
         }
 
