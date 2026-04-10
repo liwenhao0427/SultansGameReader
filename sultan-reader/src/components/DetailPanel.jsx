@@ -4,6 +4,10 @@ import RawFileView from './RawFileView'
 import StoryInspector from './reader/StoryInspector'
 import CardDetail from './details/CardDetail'
 import LootDetail from './details/LootDetail'
+import EventDetail from './details/EventDetail'
+import RiteDetail from './details/RiteDetail'
+import AfterStoryDetail from './details/AfterStoryDetail'
+import DTDetail from './details/DTDetail'
 
 const FULLSCREEN_TYPES = new Set(['rite', 'event', 'dt', 'over', 'after_story'])
 
@@ -39,6 +43,7 @@ const errorStyle = {
  */
 export default function DetailPanel() {
   const selectedNodeId = useCanvasStore(s => s.selectedNodeId)
+  const selectedOpenMode = useCanvasStore(s => s.selectedOpenMode)
   const setSelectedNode = useCanvasStore(s => s.setSelectedNode)
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -92,7 +97,7 @@ export default function DetailPanel() {
     return null
   }
 
-  if (FULLSCREEN_TYPES.has(type)) {
+  if (FULLSCREEN_TYPES.has(type) && selectedOpenMode === 'fullscreen') {
     return !loading && !error && data
       ? <StoryInspector type={type} data={data} onClose={() => setSelectedNode(null)} />
       : null
@@ -140,6 +145,10 @@ export default function DetailPanel() {
 function renderDetail(type, data) {
   if (type === 'card') return <CardDetail data={data} />
   if (type === 'loot') return <LootDetail data={data} />
+  if (type === 'event') return <EventDetail data={data} />
+  if (type === 'rite') return <RiteDetail data={data} />
+  if (type === 'after_story') return <AfterStoryDetail data={data} />
+  if (type === 'dt') return <DTDetail data={data} />
   return <StoryInspector type={type} data={data} onClose={() => {}} />
 }
 
