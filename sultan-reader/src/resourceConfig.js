@@ -89,6 +89,25 @@ export const FIXED_ITEM_SLOT_ASSETS = {
 }
 
 /**
+ * 固定 tag → 卡牌 id 映射。
+ *
+ * 某些条件里直接用 tag 名（如 "主角": 1、"妻子": 1）指代固定卡牌，
+ * 这里维护 tag → cards.json 中对应卡牌 id 的映射，
+ * 供 storyAdapter 在解析条件时直接展示对应卡牌图片。
+ *
+ * 回退规则：tag 不在此表中时，走普通条件文本展示。
+ */
+export const FIXED_TAG_CARD_IDS = {
+  // 主角：阿尔图（2000001）
+  主角: '2000001',
+  // 妻子：梅姬（2000006）
+  妻子: '2000006',
+}
+export function getCardRarityFrameAsset(rare) {
+  return CARD_RARITY_FRAME_ASSETS[Number(rare)] || CARD_RARITY_FRAME_ASSETS[1]
+}
+
+/**
  * 根据稀有度读取卡牌底板资源。
  * 未知稀有度时回退到最低档，保证界面始终有卡牌背景可显示。
  */

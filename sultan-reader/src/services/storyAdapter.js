@@ -1,5 +1,5 @@
 import { parseConditionObject } from './conditionParser'
-import { FIXED_ITEM_SLOT_ASSETS, FIXED_SUDAN_SLOT_ASSETS } from '../resourceConfig'
+import { FIXED_ITEM_SLOT_ASSETS, FIXED_SUDAN_SLOT_ASSETS, FIXED_TAG_CARD_IDS } from '../resourceConfig'
 
 function normalizeArray(value) {
   if (!value) return []
@@ -199,7 +199,28 @@ function buildFallbackSlotCandidate(slotId, slot, cardsMap, cardsById) {
 function extractConditionCards(condition, cardsMap, cardsById) {
   const directIs = normalizeArray(condition?.is)
   const anyIs = normalizeArray(condition?.any?.is)
-  return (directIs.length > 0 ? directIs : anyIs).map((id) => buildCardSummary(id, cardsMap, cardsById))
+
+  // 优先用 is 字段
+  if (directIs.length > 0) {
+    return directIs.map((id) => buildCardSummary(id, cardsMap, cardsById))
+  }
+  if (anyIs.length > 0) {
+    return anyIs.map((id) => buildCardSummary(id, cardsMap, cardsById))
+  }
+
+  // 识别固定 tag（主角、妻子等）→ 直接返回对应卡牌
+  const allConditionKeys = [
+    ...Object.keys(condition || {}),
+    ...Object.keys(condition?.any || {}),
+  ]
+  for (const tag of Object.keys(FIXED_TAG_CARD_IDS)) {
+    if (allConditionKeys.includes(tag)) {
+      const cardId = FIXED_TAG_CARD_IDS[tag]
+      return [buildCardSummary(cardId, cardsMap, cardsById)]
+    }
+  }
+
+  return []
 }
 
 function summarizeLabel(name, fallbackPrefix = '') {
@@ -226,37 +247,46 @@ function buildSlotCandidate(slotId, pop, index, cardsMap, cardsById) {
     label = anyCondition?.is__c || condition.any__c || cards.map((card) => card.name).join(' / ')
     mode = 'stack'
   } else {
-    const positiveLabels = []
-    const negativeLabels = []
-    const negativeIs = normalizeArray(condition['!is'])
+    // 检查固定 tag（主角、妻子等）→ 直接用对应卡牌展示
+    const allKeys = [...Object.keys(condition), ...Object.keys(anyCondition || {})]
+    const fixedTagKey = allKeys.find((key) => FIXED_TAG_CARD_IDS[key])
+    if (fixedTagKey) {
+      const cardId = FIXED_TAG_CARD_IDS[fixedTagKey]
+      cards = [buildCardSummary(cardId, cardsMap, cardsById)]
+      label = cards[0].name
+      mode = 'card'
+    } else {
+      const positiveLabels = []
+      const negativeLabels = []
+      const negativeIs = normalizeArray(condition['!is'])
 
-    if (negativeIs.length > 0) {
-      negativeLabels.push(summarizeLabel(condition['!is__c'] || '指定卡牌', '非'))
-    }
+      if (negativeIs.length > 0) {
+        negativeLabels.push(summarizeLabel(condition['!is__c'] || '指定卡牌', '非'))
+      }
 
-    for (const [key, value] of Object.entries(condition)) {
-      if (key.endsWith('__c') || key.endsWith('__ca') || key.endsWith('__ci')) continue
-      if (key === 'any' || key === 'all' || key === 'is' || key === '!is') continue
-      if (typeof value !== 'number') continue
+      for (const [key, value] of Object.entries(condition)) {
+        if (key.endsWith('__c') || key.endsWith('__ca') || key.endsWith('__ci')) continue
+        if (key === 'any' || key === 'all' || key === 'is' || key === '!is') continue
+        if (typeof value !== 'number') continue
 
-      const comment = condition[`${key}__c`] || null
-      const name = comment || key.replace(/^!/, '')
+        const comment = condition[`${key}__c`] || null
+        const name = comment || key.replace(/^!/, '')
 
-      if (key.startsWith('!')) {
-        negativeLabels.push(summarizeLabel(name, '非'))
-      } else {
-        positiveLabels.push(name)
+        if (key.startsWith('!')) {
+          negativeLabels.push(summarizeLabel(name, '非'))
+        } else {
+          positiveLabels.push(name)
+        }
+      }
+
+      if (positiveLabels.length > 0) {
+        label = positiveLabels.join(' / ')
+        mode = 'tag'
+      } else if (negativeLabels.length > 0) {
+        label = negativeLabels.join(' / ')
+        mode = 'fallback'
       }
     }
-
-    if (positiveLabels.length > 0) {
-      label = positiveLabels.join(' / ')
-      mode = 'tag'
-    } else if (negativeLabels.length > 0) {
-      label = negativeLabels.join(' / ')
-      mode = 'fallback'
-    }
-  }
 
   return {
     id: `${slotId}:candidate:${index}`,
