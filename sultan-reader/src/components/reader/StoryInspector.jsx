@@ -1551,81 +1551,74 @@ export default function StoryInspector({ type, data, onClose }) {
         <div style={executionOverlayStyle}>
           <div style={executionModalStyle}>
             <div style={executionStageStyle}>
-              {/* 顶部标题条：背景预览按钮 */}
-              <div style={executionToolbarStyle}>
-                {templateBgUrl && (
-                  <button
-                    type="button"
-                    style={secondaryButtonStyle}
-                    onClick={() => setBgPreviewOpen((v) => !v)}
-                  >
-                    {bgPreviewOpen ? '关闭预览' : '预览背景'}
-                  </button>
-                )}
-              </div>
-
-              {/* 背景图全图预览（点击按钮后展开） */}
-              {bgPreviewOpen && templateBgUrl && (() => {
-                // title_pos.x 是游戏原始坐标系（画布宽约 1748）
-                // 我们的右侧面板覆盖了原背景的文本框区域（x > title_pos.x）
-                // 所以背景图只需显示左侧 title_pos.x 的部分
-                const titleX = templateData?.title_pos?.x
-                const canvasW = 1748
-                const usedPct = titleX ? Math.min(100, (titleX / canvasW) * 100) : 100
-                return (
-                  <div style={{ padding: '0 18px 12px', position: 'relative' }}>
-                    <div style={{ position: 'relative', borderRadius: 12, overflow: 'hidden', border: '1px solid rgba(212,184,126,0.2)' }}>
-                      <img
-                        src={templateBgUrl}
-                        alt="背景全图"
-                        style={{ width: '100%', display: 'block', maxHeight: 180, objectFit: 'cover', objectPosition: 'left top' }}
-                      />
-                      {/* 标出实际使用区域（左侧到 title_pos.x） */}
-                      {titleX && (
-                        <div style={{
-                          position: 'absolute',
-                          top: 0, left: 0,
-                          width: `${usedPct}%`,
-                          height: '100%',
-                          border: '2px solid rgba(212, 184, 126, 0.85)',
-                          boxSizing: 'border-box',
-                          pointerEvents: 'none',
-                        }}>
-                          <span style={{
-                            position: 'absolute',
-                            bottom: 4, left: 6,
-                            fontSize: 10,
-                            color: '#f3e3c1',
-                            background: 'rgba(0,0,0,0.55)',
-                            padding: '1px 5px',
-                            borderRadius: 3,
-                          }}>
-                            实际使用区域（x &lt; {titleX}）
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )
-              })()}
+              {/* 顶部标题条：仅保留背景色 */}
+              <div style={executionToolbarStyle} />
 
               <div style={executionBodyStyle}>
                 <div style={{
                   ...executionCanvasStyle,
+                  position: 'relative',
                   backgroundImage: templateBgUrl
                     ? `url("${templateBgUrl}")`
                     : 'linear-gradient(180deg, rgba(244, 236, 220, 0.98), rgba(221, 206, 180, 0.96))',
-                  // 只显示背景图左侧到 title_pos.x 的部分：
-                  // 将图片宽度放大到 canvas宽/usedPct，使左侧部分填满容器
+                  // 裁剪：只显示背景图左侧 title_pos.x * 0.75 的部分
+                  // 额外截取 3/4 防止显示原背景文本框区域
                   backgroundSize: (() => {
                     const titleX = templateData?.title_pos?.x
                     if (!titleX || !templateBgUrl) return 'cover'
-                    const scale = 1748 / titleX  // 放大倍数，使 title_pos.x 处恰好到容器右边
+                    const cropX = titleX * 0.75
+                    const scale = 1748 / cropX
                     return `${scale * 100}% auto`
                   })(),
                   backgroundPosition: 'left center',
                   backgroundRepeat: 'no-repeat',
                 }}>
+                  {/* 背景图预览浮层（绝对定位，不影响布局高度） */}
+                  {bgPreviewOpen && templateBgUrl && (() => {
+                    const titleX = templateData?.title_pos?.x
+                    const canvasW = 1748
+                    const usedPct = titleX ? Math.min(100, (titleX * 0.75 / canvasW) * 100) : 100
+                    return (
+                      <div style={{
+                        position: 'absolute',
+                        top: 8, left: 8, right: 8,
+                        zIndex: 10,
+                        borderRadius: 10,
+                        overflow: 'hidden',
+                        border: '1px solid rgba(212,184,126,0.3)',
+                        boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+                      }}>
+                        <img
+                          src={templateBgUrl}
+                          alt="背景全图"
+                          style={{ width: '100%', display: 'block', maxHeight: 160, objectFit: 'cover', objectPosition: 'left top' }}
+                        />
+                        {titleX && (
+                          <div style={{
+                            position: 'absolute',
+                            top: 0, left: 0,
+                            width: `${usedPct}%`,
+                            height: '100%',
+                            border: '2px solid rgba(212, 184, 126, 0.9)',
+                            boxSizing: 'border-box',
+                            pointerEvents: 'none',
+                          }}>
+                            <span style={{
+                              position: 'absolute',
+                              bottom: 4, left: 6,
+                              fontSize: 10,
+                              color: '#f3e3c1',
+                              background: 'rgba(0,0,0,0.6)',
+                              padding: '1px 5px',
+                              borderRadius: 3,
+                            }}>
+                              实际使用区域（x &lt; {Math.round(titleX * 0.75)}）
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })()}
                   {templateFgUrl && (
                     <img
                       src={templateFgUrl}
@@ -1672,14 +1665,24 @@ export default function StoryInspector({ type, data, onClose }) {
                       <div style={sectionTitleStyle}>仪式正文</div>
                       <div style={{ marginTop: 4, fontSize: 16, fontWeight: 700, color: '#f8ebd1' }}>{model.title}</div>
                     </div>
-                    {/* 关闭按钮：深色背景上用亮色区分 */}
-                    <button
-                      type="button"
-                      onClick={() => { setExecutionOpen(false); setExecutionAutoAdvance(false) }}
-                      style={executionCloseButtonStyle}
-                    >
-                      关闭
-                    </button>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
+                      {templateBgUrl && (
+                        <button
+                          type="button"
+                          style={secondaryButtonStyle}
+                          onClick={() => setBgPreviewOpen((v) => !v)}
+                        >
+                          {bgPreviewOpen ? '关闭预览' : '预览背景'}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => { setExecutionOpen(false); setExecutionAutoAdvance(false) }}
+                        style={executionCloseButtonStyle}
+                      >
+                        关闭
+                      </button>
+                    </div>
                   </div>
 
                   {/* 正文区：固定高度，可滚动，追加显示 */}
@@ -1887,7 +1890,7 @@ const executionModalStyle = {
 
 const executionStageStyle = {
   display: 'grid',
-  gridTemplateRows: 'auto auto 1fr',
+  gridTemplateRows: 'auto 1fr',
   minHeight: 0,
   overflow: 'hidden',
 }
