@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import useCanvasStore from '../stores/useCanvasStore.js'
+import { mountNodeOnCanvas } from '../services/graphNavigation.js'
 
 // 类型过滤选项
 const ALL_TYPES = ['event', 'rite', 'loot', 'after_story', 'over', 'card', 'upgrade', 'dt']
@@ -34,7 +35,7 @@ export default function SearchPanel() {
   const [adding, setAdding] = useState(null) // 正在加入的 item key
   const debounceTimer = useRef(null)
 
-  const { nodeIdSet, addNode } = useCanvasStore()
+  const { nodeIdSet } = useCanvasStore()
 
   // 执行搜索
   const doSearch = useCallback(async (q, types) => {
@@ -72,25 +73,15 @@ export default function SearchPanel() {
 
     setAdding(nodeKey)
     try {
-      const data = await window.electronAPI.configReadCache(item.type, item.id)
-      if (!data) return
-
-      // 随机偏移，避免多个节点堆叠
       const offset = () => (Math.random() - 0.5) * 300
       const position = { x: 400 + offset(), y: 300 + offset() }
-
-      addNode(item.id, item.type, {
-        label: item.id,
-        nodeType: item.type,
-        rawData: data,
-      }, position)
-
+      await mountNodeOnCanvas({ id: item.id, type: item.type, name: item.name || item.text || item.id }, position, { autoSelect: true, expandRelations: false })
     } catch (e) {
       console.error('加入节点失败', e)
     } finally {
       setAdding(null)
     }
-  }, [nodeIdSet, addNode])
+  }, [nodeIdSet])
 
   // 拖拽开始（保留拖拽功能）
   const handleDragStart = useCallback((e, id, type) => {

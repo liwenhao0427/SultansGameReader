@@ -110,7 +110,7 @@ export const FIXED_SUDAN_SLOT_ASSETS = {
 export const FIXED_ITEM_SLOT_ASSETS = {
   金币: {
     name: '金币',
-    image: 'gold',
+    image: '2000029',
   },
 }
 

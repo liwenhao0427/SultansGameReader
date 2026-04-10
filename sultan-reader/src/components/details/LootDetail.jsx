@@ -1,6 +1,9 @@
+import { useEffect, useMemo, useState } from 'react'
 import useConfigStore from '../../stores/useConfigStore'
 import { useResolvedImage } from '../../services/imageResolver'
 import { CARD_RENDER_CONFIG, getCardFrameHeight, getCardRarityFrameAsset } from '../../resourceConfig'
+import useCanvasStore from '../../stores/useCanvasStore'
+import { linkNodesOnCanvas, mountNodeOnCanvas } from '../../services/graphNavigation'
 
 const S = {
   shell: { display: 'grid', gap: 18 },
@@ -68,10 +71,12 @@ function LootItemPoster({ pic, rare }) {
 
 export default function LootDetail({ data }) {
   const cardsById = useConfigStore((s) => s.cardsById)
+  const selectedNodeId = useCanvasStore((s) => s.selectedNodeId)
+  const [riteNames, setRiteNames] = useState({})
   if (!data) return null
 
   const items = Array.isArray(data.item) ? data.item : []
-  const enrichedItems = items.map((item, index) => {
+  const enrichedItems = useMemo(() => items.map((item, index) => {
     const card = item?.type === 'card' ? cardsById?.[String(item.id)] : null
     const pic = Array.isArray(card?.resource) ? (card.resource[0] || null) : (card?.resource || null)
     return {
@@ -80,12 +85,56 @@ export default function LootDetail({ data }) {
       type: item?.type,
       num: item?.num,
       weight: item?.weight,
-      name: card?.name || `${item?.type || '未知类型'} ${item?.id || ''}`.trim(),
+      name: card?.name || riteNames[String(item?.id)] || `${item?.type || '未知类型'} ${item?.id || ''}`.trim(),
       text: card?.text || '',
       pic,
       rare: card?.rare ?? null,
     }
-  })
+  }), [cardsById, items, riteNames])
+
+  const riteItems = useMemo(
+    () => enrichedItems.filter((item) => item.type === 'rite' && item.id != null),
+    [enrichedItems]
+  )
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadRiteNames() {
+      const next = {}
+      for (const item of items) {
+        if (item?.type !== 'rite' || item.id == null) continue
+        try {
+          const rite = await window.electronAPI.configReadCache('rite', String(item.id))
+          if (rite?.name) {
+            next[String(item.id)] = rite.name
+          }
+        } catch {}
+      }
+
+      if (!cancelled) {
+        setRiteNames(next)
+      }
+    }
+
+    void loadRiteNames()
+    return () => { cancelled = true }
+  }, [items])
+
+  useEffect(() => {
+    if (!selectedNodeId || riteItems.length === 0) return
+
+    riteItems.forEach((item, index) => {
+      void mountNodeOnCanvas(
+        { id: String(item.id), type: 'rite', name: item.name },
+        { x: 460 + index * 60, y: 180 + index * 50 },
+        { autoSelect: false, expandRelations: false }
+      ).then((targetNodeKey) => {
+        if (!targetNodeKey) return
+        linkNodesOnCanvas(selectedNodeId, 'rite', String(item.id), 'default', item.name || `rite:${item.id}`)
+      })
+    })
+  }, [riteItems, selectedNodeId])
 
   return (
     <div style={S.shell}>
@@ -110,6 +159,9 @@ export default function LootDetail({ data }) {
                 <div style={{ minWidth: 0 }}>
                   <div style={S.name}>{item.name}</div>
                   <div style={S.meta}>{item.type}:{item.id}</div>
+                  {item.type === 'rite' && (
+                    <div style={S.stat}>关联仪式：{item.name}</div>
+                  )}
                   <div style={S.stat}>数量：{item.num ?? '-'} / 权重：{item.weight ?? '-'}</div>
                   {item.text && <div title={item.text} style={S.text}>{item.text}</div>}
                 </div>

@@ -1,6 +1,7 @@
 import useCanvasStore from '../stores/useCanvasStore'
 
 const EDGE_COLORS = { success: '#8fbf77', failed: '#c35b5b', default: '#927453' }
+const CANVAS_NODE_TYPES = new Set(['rite', 'event', 'loot'])
 
 function summarize(item, data) {
   return item.name || item.text || data?.name || data?.text || item.id
@@ -14,6 +15,13 @@ export async function mountNodeOnCanvas(item, position, options = {}) {
 
   const store = useCanvasStore.getState()
   const nodeKey = `${item.type}:${item.id}`
+
+  if (!CANVAS_NODE_TYPES.has(item.type)) {
+    if (autoSelect) {
+      store.setSelectedNode(nodeKey, 'panel')
+    }
+    return nodeKey
+  }
 
   if (store.nodeIdSet.has(nodeKey)) {
     if (autoSelect) store.setSelectedNode(nodeKey)
