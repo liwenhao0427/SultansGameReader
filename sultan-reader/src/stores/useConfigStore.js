@@ -29,10 +29,17 @@ const useConfigStore = create((set) => ({
     // 获取 id→name 精简卡牌映射
     const cardsObj = await window.electronAPI.configGetCardsLite();
     const cardsFull = await window.electronAPI.configReadCache('single', 'cards');
+    const fallbackCardsLite = Object.fromEntries(
+      Object.values(cardsFull || {})
+        .filter((card) => card && card.id != null && card.name != null)
+        .map((card) => [String(card.id), card.name])
+    );
 
     set({
       indexStats: stats,
-      cardsLite: new Map(Object.entries(cardsObj)),
+      cardsLite: new Map(Object.entries(
+        cardsObj && Object.keys(cardsObj).length > 0 ? cardsObj : fallbackCardsLite
+      )),
       cardsById: cardsFull || {},
       isLoaded: true,
     });

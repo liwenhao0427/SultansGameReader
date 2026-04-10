@@ -79,6 +79,28 @@ function readCardsCatalog() {
   }
 }
 
+/** 从 cards.json 提取 id → name 精简映射，兼容数组和对象结构 */
+function buildCardsLiteMap(cardsData) {
+  if (!cardsData) return {};
+
+  const cardsLite = {};
+  const cardList = Array.isArray(cardsData)
+    ? cardsData
+    : Array.isArray(cardsData.card)
+      ? cardsData.card
+      : Array.isArray(cardsData.cards)
+        ? cardsData.cards
+        : Object.values(cardsData);
+
+  for (const card of cardList) {
+    if (card && card.id != null && card.name != null) {
+      cardsLite[String(card.id)] = card.name;
+    }
+  }
+
+  return cardsLite;
+}
+
 // ─── 初始化 electron-store ────────────────────────────────────────────────────
 
 /**
@@ -294,15 +316,7 @@ ipcMain.handle('config:rebuildCache', async (event) => {
     const cardsPath = path.join(singleDir, 'cards.json');
     if (fs.existsSync(cardsPath)) {
       const cardsData = JSON.parse(fs.readFileSync(cardsPath, 'utf-8'));
-      const cardsLite = {};
-      // cards.json 结构：{ card: [...] } 或直接是数组
-      const cardList = Array.isArray(cardsData) ? cardsData
-        : (cardsData.card || cardsData.cards || []);
-      for (const card of cardList) {
-        if (card && card.id != null && card.name != null) {
-          cardsLite[String(card.id)] = card.name;
-        }
-      }
+      const cardsLite = buildCardsLiteMap(cardsData);
       fs.writeFileSync(
         path.join(singleDir, 'cards_lite.json'),
         JSON.stringify(cardsLite, null, 2),
@@ -519,11 +533,17 @@ ipcMain.handle('config:search', async (_event, query, types) => {
  */
 ipcMain.handle('config:getCardsLite', async () => {
   const filePath = path.join(getCacheDir(), 'single', 'cards_lite.json');
-  if (!fs.existsSync(filePath)) return {};
+  if (!fs.existsSync(filePath)) {
+    return buildCardsLiteMap(readCardsCatalog());
+  }
   try {
-    return JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+    const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+    if (data && Object.keys(data).length > 0) {
+      return data;
+    }
+    return buildCardsLiteMap(readCardsCatalog());
   } catch {
-    return {};
+    return buildCardsLiteMap(readCardsCatalog());
   }
 });
 
