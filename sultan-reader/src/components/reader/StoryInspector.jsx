@@ -507,9 +507,17 @@ function SettlementHintItem({ hint, active, onToggle }) {
   )
 }
 
+/**
+ * 默认选中规则：选最后一个无条件（conditionText 为空）的项，否则不选（返回 null）
+ * 这样避免强制选中有条件限制的结算分支
+ */
 function pickDefaultHintId(hints = []) {
   if (!Array.isArray(hints) || hints.length === 0) return null
-  return hints[hints.length - 1]?.id || null
+  // 从后往前找第一个无条件的项
+  for (let i = hints.length - 1; i >= 0; i--) {
+    if (!hints[i].conditionText) return hints[i].id
+  }
+  return null
 }
 
 function buildDefaultSettlementSelections(slots = []) {
@@ -706,10 +714,10 @@ export default function StoryInspector({ type, data, onClose }) {
       for (const slot of model.slots) {
         const visibleHints = visibleSettlementHintsBySlot[slot.id] || []
         const currentId = next[slot.id] || null
-        const valid = visibleHints.some((hint) => hint.id === currentId)
-        const fallbackId = pickDefaultHintId(visibleHints)
-        if (!valid && currentId !== fallbackId) {
-          next[slot.id] = fallbackId
+        // 当前选中项不在可见列表时，置为 null（不强制 fallback）
+        const valid = currentId === null || visibleHints.some((hint) => hint.id === currentId)
+        if (!valid) {
+          next[slot.id] = null
           changed = true
         }
       }
@@ -719,12 +727,11 @@ export default function StoryInspector({ type, data, onClose }) {
   }, [model?.slots, visibleSettlementHintsBySlot])
 
   useEffect(() => {
+    // 当前选中项不在可见列表时，置为 null（不强制 fallback）
+    if (globalSettlementSelection === null) return
     const valid = visibleGlobalSettlementHints.some((hint) => hint.id === globalSettlementSelection)
     if (!valid) {
-      const fallbackId = pickDefaultHintId(visibleGlobalSettlementHints)
-      if (fallbackId !== globalSettlementSelection) {
-        setGlobalSettlementSelection(fallbackId)
-      }
+      setGlobalSettlementSelection(null)
     }
   }, [globalSettlementSelection, visibleGlobalSettlementHints])
 
@@ -932,9 +939,11 @@ export default function StoryInspector({ type, data, onClose }) {
     if (!selectedSlot) return
 
     const slotId = selectedSlot.id
+    // 再次点击已选中的项则取消选中
+    const nextId = settlementSelections[slotId] === hintId ? null : hintId
     const nextSettlementSelections = {
       ...settlementSelections,
-      [slotId]: hintId,
+      [slotId]: nextId,
     }
 
     setSettlementSelections(nextSettlementSelections)
@@ -942,8 +951,10 @@ export default function StoryInspector({ type, data, onClose }) {
   }
 
   function handleSelectGlobalSettlementHint(hintId) {
-    setGlobalSettlementSelection(hintId)
-    resetFlow(activeSlotId, slotSelections, settlementSelections, hintId)
+    // 再次点击已选中的项则取消选中
+    const nextId = globalSettlementSelection === hintId ? null : hintId
+    setGlobalSettlementSelection(nextId)
+    resetFlow(activeSlotId, slotSelections, settlementSelections, nextId)
   }
 
   function handleOpenExecution() {
@@ -1131,14 +1142,10 @@ export default function StoryInspector({ type, data, onClose }) {
                     id: hint.id,
                     label: hint.label,
                     onRemove: () => {
-                      setSettlementSelections((current) => {
-                        const next = {
-                          ...current,
-                          [slot.id]: pickDefaultHintId(slot.settlementHints || []),
-                        }
-                        resetFlow(activeSlotId, slotSelections, next, globalSettlementSelection)
-                        return next
-                      })
+                      // x 按钮：直接取消选中（置 null）
+                      const next = { ...settlementSelections, [slot.id]: null }
+                      setSettlementSelections(next)
+                      resetFlow(activeSlotId, slotSelections, next, globalSettlementSelection)
                     },
                   }))
                 return (
