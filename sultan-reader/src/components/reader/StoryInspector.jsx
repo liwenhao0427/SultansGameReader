@@ -306,6 +306,7 @@ function CandidateHandItem({ candidate, active, onSelect }) {
       style={{
         width: '100%',
         minWidth: 0,
+        height: 184,
         padding: 12,
         borderRadius: 20,
         border: active
@@ -318,11 +319,11 @@ function CandidateHandItem({ candidate, active, onSelect }) {
           : '0 14px 28px rgba(0,0,0,0.22)',
         cursor: 'pointer',
         textAlign: 'left',
-        display: 'block',
+        boxSizing: 'border-box',
       }}
     >
       <div style={{
-        height: 160,
+        height: '100%',
         borderRadius: 18,
         overflow: 'hidden',
         position: 'relative',
