@@ -1,156 +1,306 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useResolvedImage } from '../../services/imageResolver'
 import { parseConditionObject } from '../../services/conditionParser'
+import { getCardRarityFrameAsset } from '../../resourceConfig'
+import useConfigStore from '../../stores/useConfigStore'
 
-// 每页显示的 settlement 条目数
-const PAGE_SIZE = 20
+// 主角固定卡牌 id
+const PROTAGONIST_CARD_ID = '2000001'
 
-// 样式常量
-const S = {
-  wrap: { padding: 0 },
-  title: { color: '#89b4fa', fontSize: 15, fontWeight: 'bold', marginBottom: 4 },
-  comment: { color: '#a6adc8', fontSize: 11, marginBottom: 8 },
-  section: { marginBottom: 12 },
-  sectionTitle: { color: '#89b4fa', fontSize: 12, fontWeight: 'bold', marginBottom: 4 },
-  condTag: { color: '#f9e2af', fontSize: 11, display: 'block', lineHeight: '1.6' },
-  settlementBox: { background: '#181825', borderRadius: 4, padding: '8px 10px', marginBottom: 8 },
-  label: { color: '#a6adc8', fontSize: 11, marginRight: 4 },
-  text: { color: '#cdd6f4', fontSize: 13, lineHeight: '1.6', whiteSpace: 'pre-wrap' },
-  tag: { display: 'inline-block', background: '#313244', color: '#cba6f7', fontSize: 11, borderRadius: 3, padding: '1px 6px', marginRight: 4, marginBottom: 4 },
-  idList: { color: '#a6adc8', fontSize: 11 },
-  img: { maxWidth: '100%', borderRadius: 4, marginTop: 6 },
-  imgPlaceholder: { width: 80, height: 80, background: '#313244', borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#585b70', fontSize: 11, marginTop: 6 },
+/** 背景板：note_bg_new 镜像拼合 */
+function NoteBg({ children }) {
+  const { url } = useResolvedImage('note_bg_new')
+  if (!url) return <div style={noteFallbackStyle}>{children}</div>
+  return (
+    <div style={noteShellStyle}>
+      <div style={{ ...noteHalfStyle, backgroundImage: `url("${url}")` }} />
+      <div style={{ ...noteHalfStyle, backgroundImage: `url("${url}")`, transform: 'scaleX(-1)' }} />
+      <div style={noteContentStyle}>{children}</div>
+    </div>
+  )
 }
 
-/** 图片组件，带占位 */
-function ResolvedImage({ pic }) {
-  const { url, loading } = useResolvedImage(pic)
-  if (!pic) return null
-  if (loading) return <div style={S.imgPlaceholder}>加载中…</div>
-  if (!url) return <div style={S.imgPlaceholder}>无图片</div>
-  return <img src={url} alt="" style={S.img} />
+/** 卡牌立绘（带稀有度背景框） */
+function CardPortrait({ pic, rare, size = 80 }) {
+  const { url } = useResolvedImage(pic || null)
+  const { url: frameUrl } = useResolvedImage(rare ? getCardRarityFrameAsset(rare) : null)
+  return (
+    <div style={{
+      width: size,
+      height: Math.round(size * 1.42),
+      borderRadius: 12,
+      overflow: 'hidden',
+      flexShrink: 0,
+      position: 'relative',
+      backgroundImage: frameUrl ? `url("${frameUrl}")` : 'none',
+      backgroundSize: '100% 100%',
+      background: frameUrl ? undefined : 'rgba(18,15,11,0.8)',
+    }}>
+      {url && (
+        <img src={url} alt="" style={{
+          position: 'absolute',
+          inset: `${Math.round(size * 0.05)}px ${Math.round(size * 0.07)}px ${Math.round(size * 0.18)}px`,
+          objectFit: 'cover',
+          width: `calc(100% - ${Math.round(size * 0.14)}px)`,
+          height: `calc(100% - ${Math.round(size * 0.23)}px)`,
+        }} />
+      )}
+    </div>
+  )
 }
 
-/** 渲染 action 中的关联 ID */
-function ActionIds({ action, branch }) {
+/** 主角立绘（右下角固定） */
+function ProtagonistPortrait() {
+  const cardsById = useConfigStore((s) => s.cardsById)
+  const card = cardsById?.[PROTAGONIST_CARD_ID]
+  const pic = Array.isArray(card?.resource) ? card.resource[0] : card?.resource
+  const { url } = useResolvedImage(pic || null)
+  if (!url) return null
+  return (
+    <img src={url} alt="" style={{
+      position: 'absolute',
+      right: -10,
+      bottom: -10,
+      height: '85%',
+      objectFit: 'contain',
+      pointerEvents: 'none',
+      opacity: 0.92,
+      filter: 'drop-shadow(0 4px 12px rgba(0,0,0,0.6))',
+    }} />
+  )
+}
+
+/** 解析 action 中的交互内容 */
+function parseInteraction(action) {
   if (!action) return null
-  const branchData = action[branch]
-  if (!branchData) return null
-  const ids = []
-  for (const [k, v] of Object.entries(branchData)) {
-    if (k.endsWith('__c') || k.endsWith('__ca')) continue
-    const vals = Array.isArray(v) ? v : [v]
-    ids.push(...vals.map(id => `${k}:${id}`))
+  if (action.option) {
+    const opt = action.option
+    const cases = {}
+    for (const [k, v] of Object.entries(action)) {
+      if (k.startsWith('case:')) cases[k.slice(5)] = v
+    }
+    return { type: 'option', text: opt.text, icon: opt.icon, items: opt.items || [], cases }
   }
-  if (!ids.length) return null
-  return (
-    <div style={S.idList}>
-      <span style={S.label}>{branch === 'success' ? '✓' : '✗'}</span>
-      {ids.join('  ')}
-    </div>
-  )
+  if (action.prompt) {
+    return { type: 'prompt', text: action.prompt.text, icon: action.prompt.icon }
+  }
+  if (action.confirm) {
+    const c = action.confirm
+    return { type: 'confirm', text: c.text, icon: Array.isArray(c.icon) ? c.icon.find(Boolean) : c.icon }
+  }
+  return null
 }
 
-/** 单个 settlement 条目 */
-function SettlementItem({ item }) {
+function summarizeActionResults(action = {}) {
+  const rows = []
+
+  for (const [key, value] of Object.entries(action)) {
+    if (key.endsWith('__c') || key.endsWith('__ca') || key.endsWith('__ci')) continue
+    if (key === 'prompt' || key === 'option' || key === 'confirm' || key.startsWith('case:')) continue
+    if (key === 'success' || key === 'failed') {
+      for (const [branchKey, branchValue] of Object.entries(value || {})) {
+        if (branchKey.endsWith('__c') || branchKey.endsWith('__ca') || branchKey.endsWith('__ci')) continue
+        const items = Array.isArray(branchValue) ? branchValue : [branchValue]
+        items.filter(Boolean).forEach((item) => {
+          rows.push(`${key} -> ${branchKey}: ${item}`)
+        })
+      }
+      continue
+    }
+
+    if (value == null || typeof value === 'object') continue
+    rows.push(`${key}: ${value}`)
+  }
+
+  return rows
+}
+
+/** 单个 settlement 的视觉小说展示 */
+function SettlementCard({ item, cardsById }) {
   const action = item.action || {}
-  // 交互类型检测
-  const interactType = action.confirm ? 'confirm' : action.option ? 'option' : action.slide ? 'slide' : action.prompt ? 'prompt' : null
-  // 图片：slide.pics 或 icon
-  const pics = action.slide?.pics || (action.confirm?.icon ? [].concat(action.confirm.icon) : [])
-  const conditions = parseConditionObject(item.condition)
+  const interaction = parseInteraction(action)
+  const [selectedOption, setSelectedOption] = useState(null)
 
-  return (
-    <div style={S.settlementBox}>
-      {/* 注释标题 */}
-      {item.__ca && <div style={{ color: '#89b4fa', fontSize: 11, marginBottom: 2 }}>{item.__ca}</div>}
-      {item.__c && <div style={S.comment}>{item.__c}</div>}
-
-      {/* 交互类型标签 */}
-      {interactType && <span style={S.tag}>{interactType}</span>}
-
-      {/* 触发条件 */}
-      {conditions.length > 0 && (
-        <div style={{ marginBottom: 4 }}>
-          {conditions.map((c, i) => <span key={i} style={S.condTag}>{c}</span>)}
-        </div>
-      )}
-
-      {/* 结果文本 */}
-      {(item.result_text || item.tips_text) && (
-        <div style={{ ...S.text, fontSize: 12, marginBottom: 4 }}>
-          {item.result_text || item.tips_text}
-        </div>
-      )}
-
-      {/* success/failed 关联 */}
-      <ActionIds action={action} branch="success" />
-      <ActionIds action={action} branch="failed" />
-
-      {/* 图片 */}
-      {pics.filter(Boolean).map((p, i) => <ResolvedImage key={i} pic={p} />)}
-    </div>
-  )
-}
-
-/**
- * EventDetail — 事件详情组件
- * @param {{ data: object }} props
- */
-export default function EventDetail({ data }) {
-  // 当前页码（从 0 开始）
-  const [page, setPage] = useState(0)
-
-  // data 变化时重置页码
-  useEffect(() => { setPage(0) }, [data])
-
-  if (!data) return null
-  const conditions = parseConditionObject(data.condition)
-  const settlements = Array.isArray(data.settlement) ? data.settlement : []
-
-  // 是否需要分页（条目数超过 PAGE_SIZE 才显示分页控件）
-  const needPaging = settlements.length > PAGE_SIZE
-  const totalPages = needPaging ? Math.ceil(settlements.length / PAGE_SIZE) : 1
-  const pageSettlements = needPaging
-    ? settlements.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
-    : settlements
-
-  // 切换页面时滚动到顶部
-  const handlePageChange = (newPage) => {
-    setPage(newPage)
-    window.scrollTo(0, 0)
+  let displayText = item.tips_text || item.result_text || ''
+  let displayIcon = null
+  if (interaction) {
+    displayText = interaction.text || displayText
+    displayIcon = interaction.icon || null
   }
 
+  let casePrompt = null
+  if (selectedOption && interaction?.cases?.[selectedOption]) {
+    casePrompt = interaction.cases[selectedOption].prompt || null
+  }
+  const resultLines = summarizeActionResults(
+    selectedOption && interaction?.cases?.[selectedOption]
+      ? interaction.cases[selectedOption]
+      : action
+  )
+
+  const iconCardId = displayIcon ? displayIcon.replace('cards/', '') : null
+  const iconCard = iconCardId ? cardsById?.[iconCardId] : null
+  const iconPic = iconCard
+    ? (Array.isArray(iconCard.resource) ? iconCard.resource[0] : iconCard.resource)
+    : displayIcon
+
+  const caseIconCardId = casePrompt?.icon ? casePrompt.icon.replace('cards/', '') : null
+  const caseIconCard = caseIconCardId ? cardsById?.[caseIconCardId] : null
+  const caseIconPic = caseIconCard
+    ? (Array.isArray(caseIconCard.resource) ? caseIconCard.resource[0] : caseIconCard.resource)
+    : casePrompt?.icon
+
+  if (!displayText && !displayIcon && !interaction) return null
+
   return (
-    <div style={S.wrap}>
-      {/* 标题 */}
-      <div style={S.title}>{data.text || `事件 ${data.id}`}</div>
-      {data.text__c && <div style={S.comment}>{data.text__c}</div>}
-
-      {/* 触发条件 */}
-      {conditions.length > 0 && (
-        <div style={S.section}>
-          <div style={S.sectionTitle}>触发条件</div>
-          {conditions.map((c, i) => <span key={i} style={S.condTag}>{c}</span>)}
-        </div>
-      )}
-
-      {/* settlement 列表 */}
-      {settlements.length > 0 && (
-        <div style={S.section}>
-          <div style={S.sectionTitle}>结算条目（{settlements.length}）</div>
-          {pageSettlements.map((s, i) => <SettlementItem key={i} item={s} />)}
-
-          {/* 分页控件（条目数 > PAGE_SIZE 时显示） */}
-          {needPaging && (
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 12, justifyContent: 'center' }}>
-              <button disabled={page === 0} onClick={() => handlePageChange(page - 1)}>上一页</button>
-              <span>{page + 1} / {totalPages}</span>
-              <button disabled={page === totalPages - 1} onClick={() => handlePageChange(page + 1)}>下一页</button>
+    <NoteBg>
+      <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', minHeight: 100 }}>
+        {iconPic && <CardPortrait pic={iconPic} rare={iconCard?.rare} size={72} />}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {displayText && <div style={noteTextStyle}>{displayText}</div>}
+          {interaction?.type === 'option' && interaction.items?.length > 0 && (
+            <div style={{ marginTop: 16 }}>
+              {interaction.items.map((opt) => (
+                <button
+                  key={opt.tag}
+                  type="button"
+                  onClick={() => setSelectedOption(selectedOption === opt.tag ? null : opt.tag)}
+                  style={{
+                    display: 'block',
+                    width: '100%',
+                    padding: '10px 20px',
+                    marginBottom: 8,
+                    borderRadius: 6,
+                    border: selectedOption === opt.tag
+                      ? '1px solid rgba(212,184,126,0.6)'
+                      : '1px solid rgba(212,184,126,0.2)',
+                    background: selectedOption === opt.tag
+                      ? 'rgba(212,184,126,0.18)'
+                      : 'rgba(212,184,126,0.06)',
+                    color: '#f1e8d5',
+                    fontSize: 15,
+                    cursor: 'pointer',
+                    textAlign: 'center',
+                  }}
+                >
+                  {opt.text}
+                </button>
+              ))}
+            </div>
+          )}
+          {casePrompt && (
+            <div style={{ marginTop: 12, padding: '10px 14px', borderRadius: 8, background: 'rgba(212,184,126,0.08)', border: '1px solid rgba(212,184,126,0.16)' }}>
+              {caseIconPic && <div style={{ marginBottom: 8 }}><CardPortrait pic={caseIconPic} rare={caseIconCard?.rare} size={56} /></div>}
+              <div style={{ ...noteTextStyle, fontSize: 14 }}>{casePrompt.text}</div>
+            </div>
+          )}
+          {resultLines.length > 0 && (
+            <div style={{ marginTop: 14, display: 'grid', gap: 8 }}>
+              <div style={resultTitleStyle}>触发结果</div>
+              {resultLines.map((line) => (
+                <div key={line} style={resultLineStyle}>{line}</div>
+              ))}
             </div>
           )}
         </div>
+      </div>
+      <ProtagonistPortrait />
+    </NoteBg>
+  )
+}
+
+export default function EventDetail({ data }) {
+  const cardsById = useConfigStore((s) => s.cardsById)
+  if (!data) return null
+
+  const conditions = parseConditionObject(data.condition)
+  const settlements = Array.isArray(data.settlement) ? data.settlement : []
+  const meaningful = settlements.filter((s) => {
+    const a = s.action || {}
+    return s.tips_text || s.result_text || a.prompt || a.option || a.confirm
+  })
+
+  return (
+    <div style={{ display: 'grid', gap: 14 }}>
+      <div style={{ color: '#fff0d3', fontSize: 20, fontWeight: 700 }}>
+        {data.text || `事件 ${data.id}`}
+      </div>
+      {conditions.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          {conditions.map((c, i) => (
+            <span key={i} style={condTagStyle}>{c}</span>
+          ))}
+        </div>
       )}
+      {meaningful.length === 0 && (
+        <div style={{ color: 'rgba(241,232,213,0.5)', fontSize: 13 }}>
+          此事件仅作为触发器，无正文内容。
+        </div>
+      )}
+      {meaningful.map((item, i) => (
+        <SettlementCard key={i} item={item} cardsById={cardsById} />
+      ))}
     </div>
   )
+}
+
+const noteShellStyle = {
+  position: 'relative',
+  display: 'flex',
+  borderRadius: 8,
+  overflow: 'hidden',
+  minHeight: 140,
+}
+
+const noteHalfStyle = {
+  flex: 1,
+  backgroundSize: 'cover',
+  backgroundPosition: 'center',
+  backgroundRepeat: 'no-repeat',
+}
+
+const noteFallbackStyle = {
+  position: 'relative',
+  borderRadius: 8,
+  background: 'rgba(18,14,10,0.96)',
+  border: '1px solid rgba(212,184,126,0.18)',
+  padding: '18px 20px',
+  minHeight: 140,
+}
+
+const noteContentStyle = {
+  position: 'absolute',
+  inset: 0,
+  padding: '18px 20px 18px 18px',
+  background: 'rgba(8,6,4,0.72)',
+  overflow: 'hidden',
+}
+
+const noteTextStyle = {
+  color: '#f1e8d5',
+  fontSize: 15,
+  lineHeight: 1.9,
+  whiteSpace: 'pre-wrap',
+}
+
+const condTagStyle = {
+  padding: '3px 8px',
+  borderRadius: 999,
+  background: 'rgba(212,184,126,0.1)',
+  border: '1px solid rgba(212,184,126,0.18)',
+  color: '#dcc8a3',
+  fontSize: 12,
+}
+
+const resultTitleStyle = {
+  color: '#e7c88d',
+  fontSize: 12,
+  letterSpacing: '0.18em',
+  textTransform: 'uppercase',
+}
+
+const resultLineStyle = {
+  color: '#d9c4a0',
+  fontSize: 12,
+  lineHeight: 1.7,
 }

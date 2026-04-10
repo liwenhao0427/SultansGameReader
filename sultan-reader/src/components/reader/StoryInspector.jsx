@@ -201,6 +201,30 @@ function EventChoiceCard({ option, active, onSelect }) {
   )
 }
 
+function EventSideFigure({ card }) {
+  const { url, loading } = useResolvedImage(card?.image)
+
+  if (!card) return null
+
+  return (
+    <div style={eventFigureWrapStyle}>
+      {loading && <div style={eventFigureFallbackStyle}>载入中…</div>}
+      {!loading && url && (
+        <img
+          src={url}
+          alt={card.name || ''}
+          style={eventFigureImageStyle}
+        />
+      )}
+      {!loading && !url && (
+        <div style={eventFigureFallbackStyle}>
+          {card.name || '角色'}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function ConditionPreview({ text, color = '#dcc8a3', maxLines = 2 }) {
   if (!text) return null
 
@@ -652,6 +676,7 @@ export default function StoryInspector({ type, data, onClose }) {
   const executionBodyRef = useRef(null)
   const readerBodyRef = useRef(null)
   const bubbleTimersRef = useRef({})
+  const autoMountedEventIdRef = useRef(null)
   const { url: templateBgUrl } = useResolvedImage(templateData?.bg || READER_RESOURCE_ASSETS.defaultRiteBackground)
   const { url: templateFgUrl } = useResolvedImage(templateData?.fg || null)
 
@@ -685,6 +710,7 @@ export default function StoryInspector({ type, data, onClose }) {
     setExecutionOpen(false)
     setExecutionStepIndex(0)
     setEventChoicePath([])
+    autoMountedEventIdRef.current = null
   }, [type, data?.id, data?._source_path])
 
   useEffect(() => {
@@ -847,6 +873,22 @@ export default function StoryInspector({ type, data, onClose }) {
     return candidates[0] || null
   }, [currentEventNode?.relatedCards, model?.eventFlow?.relatedCards, model?.fallbackCharacterCard, type])
 
+  const eventNarrativeBlocks = useMemo(() => {
+    if (type !== 'event') return []
+
+    return eventNodeHistory.flatMap((node) => {
+      const promptBlocks = (node.promptEntries || [])
+        .map((entry) => normalizeTextContent(entry.text))
+        .filter(Boolean)
+      const optionBlock = normalizeTextContent(node.option?.text)
+      return optionBlock ? [...promptBlocks, optionBlock] : promptBlocks
+    })
+  }, [eventNodeHistory, type])
+
+  const hasEventNarrative = eventNarrativeBlocks.length > 0
+  const eventResultActions = currentEventNode?.actions || []
+  const eventResultEffects = currentEventNode?.effects || []
+
   const selectedHintIds = useMemo(() => {
     return new Set(Object.values(settlementSelections).filter(Boolean))
   }, [settlementSelections])
@@ -957,8 +999,9 @@ export default function StoryInspector({ type, data, onClose }) {
     }
   }
 
-  async function handleOpenAction(action, offsetIndex = 0) {
+  async function handleOpenAction(action, offsetIndex = 0, options = {}) {
     if (!action?.targetType || !action?.targetId) return
+    const { autoSelect = true } = options
 
     const targetNodeKey = await mountNodeOnCanvas(
       {
@@ -967,7 +1010,7 @@ export default function StoryInspector({ type, data, onClose }) {
         name: action.text,
       },
       { x: 460 + offsetIndex * 60, y: 180 + offsetIndex * 50 },
-      { autoSelect: true, expandRelations: false }
+      { autoSelect, expandRelations: false }
     )
 
     if (targetNodeKey && data?.id != null) {
@@ -1142,6 +1185,17 @@ export default function StoryInspector({ type, data, onClose }) {
   }, [eventChoicePath, type])
 
   useEffect(() => {
+    if (type !== 'event' || hasEventNarrative) return
+
+    const firstRiteAction = (model?.eventFlow?.actions || []).find((action) => action.targetType === 'rite')
+    if (!firstRiteAction || !data?.id) return
+    if (autoMountedEventIdRef.current === data.id) return
+
+    autoMountedEventIdRef.current = data.id
+    void handleOpenAction(firstRiteAction, 0, { autoSelect: false })
+  }, [data?.id, hasEventNarrative, model?.eventFlow?.actions, type])
+
+  useEffect(() => {
     if (!autoAdvance) return
 
     if (!canRevealLine && !canRevealSegment) {
@@ -1225,40 +1279,31 @@ export default function StoryInspector({ type, data, onClose }) {
 
   const eventContent = type === 'event' ? (
     <div style={eventReaderShellStyle}>
-      <EventBackdrop>
-        <div style={eventReaderGridStyle}>
-          <div style={eventReaderTextStageStyle} ref={readerBodyRef}>
-            {headerBlock}
+      {hasEventNarrative ? (
+        <EventBackdrop>
+          <div style={eventReaderGridStyle}>
+            <div style={eventBoardStageStyle}>
+              <div style={eventBoardContentStyle} ref={readerBodyRef}>
+                {eventNarrativeBlocks.map((text, index) => (
+                  <div key={`${index}:${text.slice(0, 24)}`} style={eventParagraphStyle}>
+                    {text}
+                  </div>
+                ))}
 
-            {eventNodeHistory.map((node, depth) => {
-              const selectedChoice = eventChoicePath[depth] || null
-              const promptLines = node.promptEntries || []
-              const optionText = normalizeTextContent(node.option?.text)
-              const activeChoices = node.choices || []
+                {eventResultEffects.length > 0 && (
+                  <div style={eventResultBlockStyle}>
+                    <div style={sectionTitleStyle}>触发结果</div>
+                    <EffectSummary effects={eventResultEffects} />
+                  </div>
+                )}
 
-              return (
-                <div key={node.id} style={eventStoryBlockStyle}>
-                  {promptLines.map((entry) => (
-                    <div key={entry.id} style={eventParagraphStyle}>
-                      {normalizeTextContent(entry.text)}
-                    </div>
-                  ))}
-
-                  {optionText && (
-                    <div style={eventParagraphStyle}>
-                      {optionText}
-                    </div>
-                  )}
-
-                  {node.effects?.length > 0 && (
-                    <EffectSummary effects={node.effects} />
-                  )}
-
-                  {node.actions?.length > 0 && (
+                {eventResultActions.length > 0 && (
+                  <div style={eventResultBlockStyle}>
+                    <div style={sectionTitleStyle}>后续触发</div>
                     <div style={eventActionRowStyle}>
-                      {node.actions.map((action, actionIndex) => (
+                      {eventResultActions.map((action, actionIndex) => (
                         <button
-                          key={`${node.id}:${action.key}:${action.value}:${actionIndex}`}
+                          key={`${action.key}:${action.value}:${actionIndex}`}
                           type="button"
                           style={actionButtonStyle}
                           onClick={() => handleOpenAction(action, actionIndex)}
@@ -1267,44 +1312,86 @@ export default function StoryInspector({ type, data, onClose }) {
                         </button>
                       ))}
                     </div>
-                  )}
+                  </div>
+                )}
+              </div>
 
-                  {activeChoices.length > 0 && (
-                    <div style={eventChoicesWrapStyle}>
-                      {activeChoices.map((choice) => (
-                        <EventChoiceCard
-                          key={choice.id}
-                          option={choice}
-                          active={selectedChoice === choice.tag}
-                          onSelect={() => handleSelectEventChoice(choice.tag, depth)}
-                        />
-                      ))}
-                    </div>
-                  )}
+              {eventNodeHistory.map((node, depth) => {
+                const selectedChoice = eventChoicePath[depth] || null
+                const activeChoices = node.choices || []
+                if (activeChoices.length === 0) return null
+
+                return (
+                  <div key={`${node.id}:choices`} style={eventChoicesWrapStyle}>
+                    {activeChoices.map((choice) => (
+                      <EventChoiceCard
+                        key={choice.id}
+                        option={choice}
+                        active={selectedChoice === choice.tag}
+                        onSelect={() => handleSelectEventChoice(choice.tag, depth)}
+                      />
+                    ))}
+                  </div>
+                )
+              })}
+            </div>
+
+            <div style={eventReaderVisualStageStyle}>
+              {model.image ? (
+                <PreviewImage pic={model.image} maxHeight={260} />
+              ) : (
+                <div style={eventVisualSpacerStyle} />
+              )}
+
+              <div style={eventPortraitDockStyle}>
+                <EventSideFigure card={eventVisualCard} />
+              </div>
+            </div>
+          </div>
+        </EventBackdrop>
+      ) : (
+        <div style={eventTriggerShellStyle}>
+          <div style={eventTriggerDetailStyle}>
+            <div style={sectionTitleStyle}>事件详情</div>
+            <div style={{ ...smallLineStyle, marginTop: 10 }}>
+              这个事件没有可直接阅读的正文，当前作为流程触发器处理。
+            </div>
+            {model.meta.length > 0 && (
+              <div style={{ marginTop: 14, display: 'grid', gap: 8 }}>
+                {model.meta.map((item) => (
+                  <div key={item} style={eventTriggerMetaStyle}>{item}</div>
+                ))}
+              </div>
+            )}
+            {eventResultEffects.length > 0 && (
+              <div style={{ marginTop: 18 }}>
+                <div style={sectionTitleStyle}>触发结果</div>
+                <EffectSummary effects={eventResultEffects} />
+              </div>
+            )}
+            {eventResultActions.length > 0 && (
+              <div style={{ marginTop: 18 }}>
+                <div style={sectionTitleStyle}>后续触发</div>
+                <div style={{ ...smallLineStyle, marginTop: 8 }}>
+                  已自动将相关后续节点带到画布。
                 </div>
-              )
-            })}
-
-            {eventNodeHistory.length === 0 && (
-              <div style={eventParagraphStyle}>
-                这个事件没有可直接阅读的正文，当前仅展示事件底板。
+                <div style={{ ...eventActionRowStyle, marginTop: 12 }}>
+                  {eventResultActions.map((action, actionIndex) => (
+                    <button
+                      key={`${action.key}:${action.value}:${actionIndex}`}
+                      type="button"
+                      style={actionButtonStyle}
+                      onClick={() => handleOpenAction(action, actionIndex)}
+                    >
+                      打开{action.targetType === 'rite' ? '仪式' : action.targetType === 'event' ? '事件' : '结局'} {action.targetId}
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
           </div>
-
-          <div style={eventReaderVisualStageStyle}>
-            {model.image ? (
-              <PreviewImage pic={model.image} maxHeight={360} />
-            ) : (
-              <div style={eventVisualSpacerStyle} />
-            )}
-
-            <div style={eventPortraitDockStyle}>
-              <CardPortrait card={eventVisualCard} compact={false} />
-            </div>
-          </div>
         </div>
-      </EventBackdrop>
+      )}
     </div>
   ) : null
 
@@ -1989,16 +2076,25 @@ const eventBackdropCenterStyle = {
 
 const eventReaderGridStyle = {
   display: 'grid',
-  gridTemplateColumns: 'minmax(0, 1.2fr) 248px',
+  gridTemplateColumns: 'minmax(0, 1fr) 320px',
   gap: 24,
   height: '100%',
   minHeight: 0,
 }
 
-const eventReaderTextStageStyle = {
+const eventBoardStageStyle = {
+  minHeight: 0,
+  display: 'grid',
+  alignContent: 'start',
+  gridTemplateRows: 'minmax(0, 1fr) auto',
+  gap: 18,
+  padding: '48px 0 28px 56px',
+}
+
+const eventBoardContentStyle = {
   minHeight: 0,
   overflowY: 'auto',
-  paddingRight: 8,
+  padding: '42px 56px 28px 28px',
   display: 'grid',
   alignContent: 'start',
   gap: 18,
@@ -2008,7 +2104,7 @@ const eventReaderVisualStageStyle = {
   minHeight: 0,
   display: 'grid',
   gridTemplateRows: 'minmax(0, 1fr) auto',
-  gap: 16,
+  gap: 10,
   alignItems: 'end',
 }
 
@@ -2020,21 +2116,40 @@ const eventPortraitDockStyle = {
   display: 'flex',
   justifyContent: 'flex-end',
   alignItems: 'flex-end',
-  paddingBottom: 6,
+  minHeight: 420,
+  paddingRight: 12,
 }
 
-const eventStoryBlockStyle = {
-  display: 'grid',
-  gap: 14,
+const eventFigureWrapStyle = {
+  width: '100%',
+  height: '100%',
+  minHeight: 420,
+  display: 'flex',
+  alignItems: 'flex-end',
+  justifyContent: 'flex-end',
+  overflow: 'hidden',
+}
+
+const eventFigureImageStyle = {
+  maxWidth: '120%',
+  maxHeight: '96%',
+  objectFit: 'contain',
+  objectPosition: 'right bottom',
+  filter: 'drop-shadow(0 24px 34px rgba(0, 0, 0, 0.34))',
+}
+
+const eventFigureFallbackStyle = {
+  color: '#cdb28a',
+  fontSize: 16,
 }
 
 const eventParagraphStyle = {
-  padding: '18px 24px',
-  borderRadius: 18,
-  background: 'linear-gradient(180deg, rgba(7, 7, 6, 0.76), rgba(11, 10, 8, 0.9))',
+  padding: '0',
+  borderRadius: 0,
+  background: 'transparent',
   color: '#f4ead6',
   fontSize: 17,
-  lineHeight: 1.9,
+  lineHeight: 2,
   whiteSpace: 'pre-wrap',
   textShadow: '0 1px 6px rgba(0, 0, 0, 0.24)',
 }
@@ -2042,7 +2157,7 @@ const eventParagraphStyle = {
 const eventChoicesWrapStyle = {
   display: 'grid',
   gap: 10,
-  marginTop: 2,
+  paddingRight: 56,
 }
 
 const eventChoiceButtonStyle = {
@@ -2069,6 +2184,38 @@ const eventActionRowStyle = {
   display: 'flex',
   flexWrap: 'wrap',
   gap: 10,
+}
+
+const eventResultBlockStyle = {
+  display: 'grid',
+  gap: 10,
+  marginTop: 10,
+}
+
+const eventTriggerShellStyle = {
+  height: '100%',
+  display: 'flex',
+  justifyContent: 'flex-end',
+  alignItems: 'stretch',
+}
+
+const eventTriggerDetailStyle = {
+  width: 'min(460px, 100%)',
+  borderRadius: 28,
+  border: '1px solid rgba(212, 184, 126, 0.14)',
+  background: 'rgba(21, 16, 12, 0.94)',
+  boxShadow: '0 24px 56px rgba(0, 0, 0, 0.28)',
+  padding: '26px 24px',
+  overflowY: 'auto',
+}
+
+const eventTriggerMetaStyle = {
+  padding: '10px 12px',
+  borderRadius: 14,
+  background: 'rgba(41, 31, 20, 0.82)',
+  color: '#e5d2ae',
+  fontSize: 13,
+  lineHeight: 1.7,
 }
 
 const storyHeaderShellStyle = {
