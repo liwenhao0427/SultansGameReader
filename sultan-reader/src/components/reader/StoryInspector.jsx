@@ -589,6 +589,7 @@ export default function StoryInspector({ type, data, onClose }) {
   const [executionOpen, setExecutionOpen] = useState(false)
   const [executionStepIndex, setExecutionStepIndex] = useState(0)
   const [executionAutoAdvance, setExecutionAutoAdvance] = useState(false)
+  const [bgPreviewOpen, setBgPreviewOpen] = useState(false)
   const executionBodyRef = useRef(null)
   const readerBodyRef = useRef(null)
   const bubbleTimersRef = useRef({})
@@ -1550,56 +1551,80 @@ export default function StoryInspector({ type, data, onClose }) {
         <div style={executionOverlayStyle}>
           <div style={executionModalStyle}>
             <div style={executionStageStyle}>
-              {/* 顶部标题条：背景图预览 + 实际使用区域标框 */}
+              {/* 顶部标题条：背景预览按钮 */}
               <div style={executionToolbarStyle}>
-                {templateBgUrl && (() => {
-                  // title_pos.x 是游戏原始坐标，游戏画布宽约 1920
-                  // 实际使用区域是 x=0 到 title_pos.x 的左侧部分
-                  const titleX = templateData?.title_pos?.x
-                  const usedWidthPct = titleX ? Math.min(100, (titleX / 1920) * 100) : 100
-                  return (
-                    <div style={{ position: 'relative', height: 56, width: 240, borderRadius: 8, overflow: 'hidden', flexShrink: 0 }}>
+                {templateBgUrl && (
+                  <button
+                    type="button"
+                    style={secondaryButtonStyle}
+                    onClick={() => setBgPreviewOpen((v) => !v)}
+                  >
+                    {bgPreviewOpen ? '关闭预览' : '预览背景'}
+                  </button>
+                )}
+              </div>
+
+              {/* 背景图全图预览（点击按钮后展开） */}
+              {bgPreviewOpen && templateBgUrl && (() => {
+                // title_pos.x 是游戏原始坐标系（画布宽约 1748）
+                // 我们的右侧面板覆盖了原背景的文本框区域（x > title_pos.x）
+                // 所以背景图只需显示左侧 title_pos.x 的部分
+                const titleX = templateData?.title_pos?.x
+                const canvasW = 1748
+                const usedPct = titleX ? Math.min(100, (titleX / canvasW) * 100) : 100
+                return (
+                  <div style={{ padding: '0 18px 12px', position: 'relative' }}>
+                    <div style={{ position: 'relative', borderRadius: 12, overflow: 'hidden', border: '1px solid rgba(212,184,126,0.2)' }}>
                       <img
                         src={templateBgUrl}
-                        alt="背景预览"
-                        style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                        alt="背景全图"
+                        style={{ width: '100%', display: 'block', maxHeight: 180, objectFit: 'cover', objectPosition: 'left top' }}
                       />
-                      {/* 实际使用区域标框（左侧到 title_pos.x） */}
-                      <div style={{
-                        position: 'absolute',
-                        top: 0,
-                        left: 0,
-                        width: `${usedWidthPct}%`,
-                        height: '100%',
-                        border: '2px solid rgba(212, 184, 126, 0.9)',
-                        boxSizing: 'border-box',
-                        pointerEvents: 'none',
-                      }} />
+                      {/* 标出实际使用区域（左侧到 title_pos.x） */}
                       {titleX && (
                         <div style={{
                           position: 'absolute',
-                          bottom: 2,
-                          left: 4,
-                          fontSize: 9,
-                          color: '#f3e3c1',
-                          background: 'rgba(0,0,0,0.5)',
-                          padding: '1px 4px',
-                          borderRadius: 3,
+                          top: 0, left: 0,
+                          width: `${usedPct}%`,
+                          height: '100%',
+                          border: '2px solid rgba(212, 184, 126, 0.85)',
+                          boxSizing: 'border-box',
+                          pointerEvents: 'none',
                         }}>
-                          使用区域 x&lt;{titleX}
+                          <span style={{
+                            position: 'absolute',
+                            bottom: 4, left: 6,
+                            fontSize: 10,
+                            color: '#f3e3c1',
+                            background: 'rgba(0,0,0,0.55)',
+                            padding: '1px 5px',
+                            borderRadius: 3,
+                          }}>
+                            实际使用区域（x &lt; {titleX}）
+                          </span>
                         </div>
                       )}
                     </div>
-                  )
-                })()}
-              </div>
+                  </div>
+                )
+              })()}
 
               <div style={executionBodyStyle}>
                 <div style={{
                   ...executionCanvasStyle,
                   backgroundImage: templateBgUrl
-                    ? `linear-gradient(180deg, rgba(255,255,255,0.12), rgba(255,255,255,0.04)), url("${templateBgUrl}")`
+                    ? `url("${templateBgUrl}")`
                     : 'linear-gradient(180deg, rgba(244, 236, 220, 0.98), rgba(221, 206, 180, 0.96))',
+                  // 只显示背景图左侧到 title_pos.x 的部分：
+                  // 将图片宽度放大到 canvas宽/usedPct，使左侧部分填满容器
+                  backgroundSize: (() => {
+                    const titleX = templateData?.title_pos?.x
+                    if (!titleX || !templateBgUrl) return 'cover'
+                    const scale = 1748 / titleX  // 放大倍数，使 title_pos.x 处恰好到容器右边
+                    return `${scale * 100}% auto`
+                  })(),
+                  backgroundPosition: 'left center',
+                  backgroundRepeat: 'no-repeat',
                 }}>
                   {templateFgUrl && (
                     <img
@@ -1862,7 +1887,7 @@ const executionModalStyle = {
 
 const executionStageStyle = {
   display: 'grid',
-  gridTemplateRows: 'auto 1fr',
+  gridTemplateRows: 'auto auto 1fr',
   minHeight: 0,
   overflow: 'hidden',
 }
