@@ -1,4 +1,4 @@
-'use strict';
+﻿'use strict';
 
 /**
  * Electron 主进程入口
@@ -365,6 +365,23 @@ ipcMain.handle('config:readCache', async (_event, type, id) => {
   if (type === 'card') {
     const cards = readCardsCatalog();
     return cards[String(id)] || null;
+  }
+
+  // rite_template_mappings 是 config 根目录下的单文件，不在 cache 子目录中
+  if (type === 'rite_template_mappings') {
+    const gamePath = settings ? settings.get('gamePath') : null;
+    if (!gamePath) return null;
+    const configDir = resolveConfigDir(gamePath);
+    const mappingsPath = path.join(configDir, 'rite_template_mappings.json');
+    if (!fs.existsSync(mappingsPath)) return null;
+    try {
+      const { parseGameConfig } = require('./parser/gameConfigParser');
+      const raw = fs.readFileSync(mappingsPath, 'utf-8');
+      const { data } = parseGameConfig(raw);
+      return data || null;
+    } catch (e) {
+      return { _parse_error: e.message };
+    }
   }
 
   const cacheDir = getCacheDir();

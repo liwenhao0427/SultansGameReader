@@ -318,9 +318,7 @@ function CandidateHandItem({ candidate, active, onSelect }) {
           : '0 14px 28px rgba(0,0,0,0.22)',
         cursor: 'pointer',
         textAlign: 'left',
-        display: 'grid',
-        gap: 10,
-        gridTemplateRows: '160px',
+        display: 'block',
       }}
     >
       <div style={{
@@ -539,6 +537,8 @@ export default function StoryInspector({ type, data, onClose }) {
   const [slotBubbleTexts, setSlotBubbleTexts] = useState({})
   const [executionOpen, setExecutionOpen] = useState(false)
   const [executionStepIndex, setExecutionStepIndex] = useState(0)
+  const [executionAutoAdvance, setExecutionAutoAdvance] = useState(false)
+  const executionBodyRef = useRef(null)
   const readerBodyRef = useRef(null)
   const bubbleTimersRef = useRef({})
   const { url: templateBgUrl } = useResolvedImage(templateData?.bg || READER_RESOURCE_ASSETS.defaultRiteBackground)
@@ -580,32 +580,40 @@ export default function StoryInspector({ type, data, onClose }) {
 
     if (type !== 'rite') {
       setTemplateData(null)
-      return () => {
-        cancelled = true
+      return () => { cancelled = true }
+    }
+
+    // 正确的 mapping 流程：
+    // 1. 用仪式的 mapping_id 查 rite_template_mappings，得到 template_id
+    // 2. 再用 template_id 读对应的 rite_template 文件
+    async function loadTemplate() {
+      const mappingId = model?.mappingId
+      let templateId = RITE_TEMPLATE_DEFAULTS.id
+
+      if (mappingId) {
+        try {
+          const mappings = await window.electronAPI.configReadCache('rite_template_mappings', 'rite_template_mappings')
+          const entry = mappings?.[String(mappingId)]
+          if (entry?.template_id) {
+            templateId = String(entry.template_id)
+          }
+        } catch {
+          // 读取失败时回退到默认
+        }
+      }
+
+      let result = await window.electronAPI.configReadCache('rite_template', templateId).catch(() => null)
+      if (!result) {
+        result = await window.electronAPI.configReadCache('rite_template', RITE_TEMPLATE_DEFAULTS.id).catch(() => null)
+      }
+      if (!cancelled) {
+        setTemplateData(result || { bg: RITE_TEMPLATE_DEFAULTS.background, slots: {} })
       }
     }
 
-    const templateId = String(model?.mappingId || RITE_TEMPLATE_DEFAULTS.id)
+    loadTemplate()
 
-    window.electronAPI.configReadCache('rite_template', templateId)
-      .then(async (result) => {
-        if (result || templateId === RITE_TEMPLATE_DEFAULTS.id) return result
-        return window.electronAPI.configReadCache('rite_template', RITE_TEMPLATE_DEFAULTS.id)
-      })
-      .then((result) => {
-        if (!cancelled) {
-          setTemplateData(result || { bg: RITE_TEMPLATE_DEFAULTS.background, slots: {} })
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setTemplateData({ bg: RITE_TEMPLATE_DEFAULTS.background, slots: {} })
-        }
-      })
-
-    return () => {
-      cancelled = true
-    }
+    return () => { cancelled = true }
   }, [type, model?.mappingId])
 
   const selectedSlot = useMemo(
@@ -897,12 +905,16 @@ export default function StoryInspector({ type, data, onClose }) {
 
   function handleOpenExecution() {
     setExecutionStepIndex(0)
+    setExecutionAutoAdvance(false)
     setExecutionOpen(true)
   }
 
   function handleAdvanceExecution() {
     setExecutionStepIndex((current) => {
-      if (current >= executionSteps.length - 1) return current
+      if (current >= executionSteps.length - 1) {
+        setExecutionAutoAdvance(false)
+        return current
+      }
       return current + 1
     })
   }
@@ -924,6 +936,7 @@ export default function StoryInspector({ type, data, onClose }) {
     setAutoAdvance(false)
     setExecutionOpen(false)
     setExecutionStepIndex(0)
+    setExecutionAutoAdvance(false)
   }
 
   useEffect(() => () => {
@@ -957,6 +970,30 @@ export default function StoryInspector({ type, data, onClose }) {
 
     return () => window.clearInterval(timer)
   }, [autoAdvance, canRevealLine, canRevealSegment, dialogueLines.length, availableSegments.length])
+
+  // 执行弹窗自动推进
+  useEffect(() => {
+    if (!executionAutoAdvance || !executionOpen) return
+    if (executionStepIndex >= executionSteps.length - 1) {
+      setExecutionAutoAdvance(false)
+      return
+    }
+    const timer = window.setInterval(() => {
+      handleAdvanceExecution()
+    }, 1800)
+    return () => window.clearInterval(timer)
+  }, [executionAutoAdvance, executionOpen, executionStepIndex, executionSteps.length])
+
+  // 执行弹窗正文区域自动滚动到底部
+  useEffect(() => {
+    if (!executionBodyRef.current || !executionOpen) return
+    const frame = requestAnimationFrame(() => {
+      if (executionBodyRef.current) {
+        executionBodyRef.current.scrollTo({ top: executionBodyRef.current.scrollHeight, behavior: 'smooth' })
+      }
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [executionStepIndex, executionOpen])
 
   const currentExecutionStep = executionSteps[executionStepIndex] || null
 
@@ -1404,13 +1441,6 @@ export default function StoryInspector({ type, data, onClose }) {
                   执行仪式
                 </button>
               )}
-              <button
-                type="button"
-                style={autoAdvance ? activeToggleButtonStyle : secondaryButtonStyle}
-                onClick={() => setAutoAdvance((value) => !value)}
-              >
-                {autoAdvance ? '停止自动' : '自动下一句'}
-              </button>
               {!canRevealLine && !canRevealSegment && availableSegments.length > 0 && (
                 <span style={smallLineStyle}>当前已推进到可选分支或末尾。</span>
               )}
@@ -1445,15 +1475,8 @@ export default function StoryInspector({ type, data, onClose }) {
         <div style={executionOverlayStyle}>
           <div style={executionModalStyle}>
             <div style={executionStageStyle}>
-              <div style={executionToolbarStyle}>
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ ...sectionTitleStyle, color: '#7a5931' }}>仪式执行</div>
-                  <div style={{ marginTop: 6, fontSize: 28, fontWeight: 900, color: '#3f2a16' }}>
-                    {model.title}
-                  </div>
-                </div>
-                <button type="button" onClick={() => setExecutionOpen(false)} style={closeButtonStyle}>关闭</button>
-              </div>
+              {/* 顶部标题条：仅保留背景，去掉文字内容 */}
+              <div style={executionToolbarStyle} />
 
               <div style={executionBodyStyle}>
                 <div style={{
@@ -1485,10 +1508,7 @@ export default function StoryInspector({ type, data, onClose }) {
                     return (
                       <div
                         key={`execution-${slot.id}`}
-                        style={{
-                          position: 'absolute',
-                          ...layout,
-                        }}
+                        style={{ position: 'absolute', ...layout }}
                       >
                         <div style={executionSlotCardStyle}>
                           <div style={executionSlotLabelStyle}>{slot.title}</div>
@@ -1506,45 +1526,59 @@ export default function StoryInspector({ type, data, onClose }) {
                   })}
                 </div>
 
+                {/* 右侧正文面板：追加显示所有已推进步骤 */}
                 <div style={executionDialoguePanelStyle}>
-                  <div>
-                    <div style={sectionTitleStyle}>{currentExecutionStep?.phase || '仪式执行'}</div>
-                    {currentExecutionStep?.title && (
-                      <div title={currentExecutionStep.title} style={executionStepTitleStyle}>
-                        {currentExecutionStep.title}
-                      </div>
-                    )}
-                    {currentExecutionStep?.conditions?.length > 0 && (
-                      <div title={currentExecutionStep.conditions.join(' / ')} style={{ ...smallLineStyle, marginTop: 8 }}>
-                        {currentExecutionStep.conditions.join(' / ')}
-                      </div>
-                    )}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+                    <div>
+                      <div style={sectionTitleStyle}>仪式正文</div>
+                      <div style={{ marginTop: 4, fontSize: 16, fontWeight: 700, color: '#f8ebd1' }}>{model.title}</div>
+                    </div>
+                    {/* 关闭按钮：深色背景上用亮色区分 */}
+                    <button
+                      type="button"
+                      onClick={() => { setExecutionOpen(false); setExecutionAutoAdvance(false) }}
+                      style={executionCloseButtonStyle}
+                    >
+                      关闭
+                    </button>
                   </div>
 
-                  <div style={executionDialogueBoxStyle}>
-                    {currentExecutionStep?.text ? (
-                      <div style={{ fontSize: 17, lineHeight: 1.95, color: '#f7edd8', whiteSpace: 'pre-wrap' }}>
-                        {currentExecutionStep.text}
+                  {/* 正文区：固定高度，可滚动，追加显示 */}
+                  <div style={executionDialogueBoxStyle} ref={executionBodyRef}>
+                    {executionSteps.slice(0, executionStepIndex + 1).map((step, index) => (
+                      <div key={step.id} style={{ marginBottom: index < executionStepIndex ? 16 : 0 }}>
+                        {step.text ? (
+                          <div style={{ fontSize: 17, lineHeight: 1.95, color: '#f7edd8', whiteSpace: 'pre-wrap' }}>
+                            {step.text}
+                          </div>
+                        ) : null}
+                        <EffectSummary effects={step.effects} />
                       </div>
-                    ) : (
-                      <div style={{ ...smallLineStyle, color: '#d9c39e' }}>当前步骤没有额外文本。</div>
-                    )}
-                    <EffectSummary effects={currentExecutionStep?.effects} />
+                    ))}
                   </div>
 
                   <div style={executionFooterStyle}>
                     <div style={smallLineStyle}>
                       步骤 {Math.min(executionStepIndex + 1, Math.max(executionSteps.length, 1))} / {Math.max(executionSteps.length, 1)}
                     </div>
-                    {executionStepIndex < executionSteps.length - 1 ? (
-                      <button type="button" style={primaryButtonStyle} onClick={handleAdvanceExecution}>
-                        推进下一步
+                    <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                      <button
+                        type="button"
+                        style={executionAutoAdvance ? activeToggleButtonStyle : secondaryButtonStyle}
+                        onClick={() => setExecutionAutoAdvance((v) => !v)}
+                      >
+                        {executionAutoAdvance ? '停止自动' : '自动下一步'}
                       </button>
-                    ) : (
-                      <button type="button" style={primaryButtonStyle} onClick={() => setExecutionOpen(false)}>
-                        执行完成
-                      </button>
-                    )}
+                      {executionStepIndex < executionSteps.length - 1 ? (
+                        <button type="button" style={primaryButtonStyle} onClick={handleAdvanceExecution}>
+                          推进下一步
+                        </button>
+                      ) : (
+                        <button type="button" style={primaryButtonStyle} onClick={() => { setExecutionOpen(false); setExecutionAutoAdvance(false) }}>
+                          执行完成
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1745,12 +1779,15 @@ const executionDialoguePanelStyle = {
 }
 
 const executionDialogueBoxStyle = {
-  minHeight: 0,
+  height: 320,
   borderRadius: 24,
   background: 'rgba(23, 18, 13, 0.96)',
   border: '1px solid rgba(212, 184, 126, 0.14)',
   padding: '22px 20px',
   overflowY: 'auto',
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 12,
 }
 
 const executionFooterStyle = {
@@ -1977,4 +2014,16 @@ const closeButtonStyle = {
   backgroundColor: 'rgba(212, 184, 126, 0.08)',
   color: '#f2ead5',
   cursor: 'pointer',
+}
+
+// 执行弹窗关闭按钮：深色背景上需要更高对比度
+const executionCloseButtonStyle = {
+  padding: '10px 16px',
+  borderRadius: 999,
+  border: '1px solid rgba(212, 184, 126, 0.5)',
+  backgroundColor: 'rgba(212, 184, 126, 0.18)',
+  color: '#ffe8a0',
+  cursor: 'pointer',
+  fontWeight: 600,
+  flexShrink: 0,
 }
