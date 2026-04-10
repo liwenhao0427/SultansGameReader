@@ -419,6 +419,7 @@ export default function StoryInspector({ type, data, onClose }) {
   const [revealedLineCount, setRevealedLineCount] = useState(1)
   const [revealedSegmentCount, setRevealedSegmentCount] = useState(0)
   const [autoAdvance, setAutoAdvance] = useState(false)
+  const [conditionFilterText, setConditionFilterText] = useState('')
   const [slotBubbleTexts, setSlotBubbleTexts] = useState({})
   const readerBodyRef = useRef(null)
   const bubbleTimersRef = useRef({})
@@ -526,12 +527,48 @@ export default function StoryInspector({ type, data, onClose }) {
     ),
     [model?.globalSettlementHints, selectedGlobalHintIds]
   )
+  const selectedHintSegments = useMemo(() => {
+    const slotHintSegments = (model?.slots || [])
+      .flatMap((slot) => slot.settlementHints || [])
+      .filter((hint) => selectedHintIds.has(hint.id))
+      .map((hint) => ({
+        guid: hint.id.split(':').slice(-1)[0] || hint.id,
+        phase: '结算条件',
+        title: hint.label,
+        text: hint.primaryText || '',
+        conditions: hint.conditionText ? [hint.conditionText] : [],
+        options: [],
+        actions: [],
+        choiceActions: [],
+      }))
+
+    const globalHintSegments = (model?.globalSettlementHints || [])
+      .filter((hint) => selectedGlobalHintIds.has(hint.id))
+      .map((hint) => ({
+        guid: hint.id.split(':').slice(-1)[0] || hint.id,
+        phase: '全局条件',
+        title: hint.label,
+        text: hint.primaryText || '',
+        conditions: hint.conditionText ? [hint.conditionText] : [],
+        options: [],
+        actions: [],
+        choiceActions: [],
+      }))
+
+    return [...slotHintSegments, ...globalHintSegments]
+  }, [model?.globalSettlementHints, model?.slots, selectedGlobalHintIds, selectedHintIds])
+
   const availableSegments = useMemo(() => {
     if (type !== 'rite') return model?.segments || []
-    return (model?.segments || []).filter((segment) => (
+    const matchedSegments = (model?.segments || []).filter((segment) => (
       segment.guid && (selectedHintGuids.has(segment.guid) || selectedGlobalHintGuids.has(segment.guid))
     ))
-  }, [model?.segments, selectedHintGuids, selectedGlobalHintGuids, type])
+    const matchedGuids = new Set(matchedSegments.map((segment) => segment.guid).filter(Boolean))
+    const fallbackSegments = selectedHintSegments.filter((segment) => (
+      segment.text && !matchedGuids.has(segment.guid)
+    ))
+    return [...fallbackSegments, ...matchedSegments]
+  }, [model?.segments, selectedHintGuids, selectedGlobalHintGuids, selectedHintSegments, type])
 
   const visibleLines = dialogueLines.slice(0, revealedLineCount)
   const visibleSegments = availableSegments.slice(0, revealedSegmentCount)
@@ -603,6 +640,7 @@ export default function StoryInspector({ type, data, onClose }) {
 
   function handleSelectSlot(slotId) {
     setActiveSlotId(slotId)
+    setConditionFilterText('')
     resetFlow(slotId)
   }
 
@@ -672,6 +710,7 @@ export default function StoryInspector({ type, data, onClose }) {
     setSlotSelections(defaults)
     setSettlementSelections(hintDefaults)
     setGlobalSettlementSelections([])
+    setConditionFilterText('')
     setSlotBubbleTexts({})
     setActiveSlotId(model.slots?.[0]?.id || null)
 
@@ -935,13 +974,26 @@ export default function StoryInspector({ type, data, onClose }) {
                       已选 {selectedSettlementHints.length}
                     </div>
                   </div>
+                  <input
+                    type="text"
+                    value={conditionFilterText}
+                    onChange={(event) => setConditionFilterText(event.target.value)}
+                    placeholder="筛选标题 / 条件…"
+                    style={{ ...readerFilterInputStyle, marginTop: 14 }}
+                  />
                   <div style={{
                     marginTop: 14,
                     display: 'grid',
                     gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
                     gap: 10,
                   }}>
-                    {selectedSlot.settlementHints.map((hint) => (
+                    {selectedSlot.settlementHints
+                      .filter((hint) => {
+                        const keyword = conditionFilterText.trim().toLowerCase()
+                        if (!keyword) return true
+                        return [hint.label, hint.conditionText, hint.primaryText].filter(Boolean).join(' ').toLowerCase().includes(keyword)
+                      })
+                      .map((hint) => (
                       <SettlementHintItem
                         key={hint.id}
                         hint={hint}
@@ -966,13 +1018,26 @@ export default function StoryInspector({ type, data, onClose }) {
                       已选 {globalSettlementSelections.length}
                     </div>
                   </div>
+                  <input
+                    type="text"
+                    value={conditionFilterText}
+                    onChange={(event) => setConditionFilterText(event.target.value)}
+                    placeholder="筛选标题 / 条件…"
+                    style={{ ...readerFilterInputStyle, marginTop: 14 }}
+                  />
                   <div style={{
                     marginTop: 14,
                     display: 'grid',
                     gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
                     gap: 10,
                   }}>
-                    {model.globalSettlementHints.map((hint) => (
+                    {model.globalSettlementHints
+                      .filter((hint) => {
+                        const keyword = conditionFilterText.trim().toLowerCase()
+                        if (!keyword) return true
+                        return [hint.label, hint.conditionText, hint.primaryText].filter(Boolean).join(' ').toLowerCase().includes(keyword)
+                      })
+                      .map((hint) => (
                       <SettlementHintItem
                         key={hint.id}
                         hint={hint}
@@ -1295,6 +1360,18 @@ const settlementCountStyle = {
   background: 'rgba(143, 191, 119, 0.08)',
   color: '#d8e8ca',
   fontSize: 12,
+}
+
+const readerFilterInputStyle = {
+  width: '100%',
+  boxSizing: 'border-box',
+  padding: '10px 12px',
+  borderRadius: 14,
+  border: '1px solid rgba(212, 184, 126, 0.14)',
+  background: 'rgba(212, 184, 126, 0.05)',
+  color: '#f1e8d5',
+  outline: 'none',
+  fontSize: 13,
 }
 
 const candidateStageStyle = {

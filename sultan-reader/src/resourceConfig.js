@@ -43,6 +43,42 @@ export const READER_RESOURCE_ASSETS = {
 }
 
 /**
+ * 固定苏丹卡槽位素材。
+ *
+ * 这些需求不是普通 cards.json 卡牌，而是仪式槽位里直接写在 condition 中的固定苏丹卡。
+ * `image` 使用 resource/Texture2D 下的图片名，`rare` 继续走统一稀有度背景。
+ */
+export const FIXED_SUDAN_SLOT_ASSETS = {
+  杀戮: {
+    name: '杀戮',
+    image: '2010001',
+  },
+  纵欲: {
+    name: '纵欲',
+    image: '2010005',
+  },
+  奢靡: {
+    name: '奢靡',
+    image: '2010009',
+  },
+  征服: {
+    name: '征服',
+    image: '2010013',
+  },
+}
+
+/**
+ * 固定物品槽位素材。
+ * 目前先支持金币，后续如果有更多固定物品要求，也统一加在这里。
+ */
+export const FIXED_ITEM_SLOT_ASSETS = {
+  金币: {
+    name: '金币',
+    image: 'gold',
+  },
+}
+
+/**
  * 根据稀有度读取卡牌底板资源。
  * 未知稀有度时回退到最低档，保证界面始终有卡牌背景可显示。
  */

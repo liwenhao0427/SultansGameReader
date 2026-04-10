@@ -1,4 +1,5 @@
 import { parseConditionObject } from './conditionParser'
+import { FIXED_ITEM_SLOT_ASSETS, FIXED_SUDAN_SLOT_ASSETS } from '../resourceConfig'
 
 function normalizeArray(value) {
   if (!value) return []
@@ -126,6 +127,59 @@ function buildCardSummary(id, cardsMap, cardsById) {
     title: card?.title || '',
     rare: card?.rare || null,
     image: resolveCardResource(card),
+  }
+}
+
+function buildFixedSudanCard(condition = {}) {
+  const sudanKey = Object.keys(FIXED_SUDAN_SLOT_ASSETS).find((key) => Number(condition[key]) > 0)
+  if (!sudanKey) return null
+
+  const asset = FIXED_SUDAN_SLOT_ASSETS[sudanKey]
+  return {
+    id: `fixed-sudan:${sudanKey}`,
+    name: asset.name,
+    title: '苏丹卡',
+    rare: Number(condition['rare=']) || 1,
+    image: asset.image,
+  }
+}
+
+function buildFixedItemCard(condition = {}) {
+  const costKey = Object.keys(condition).find((key) => key.startsWith('cost.'))
+  if (!costKey) return null
+
+  const itemName = costKey.slice('cost.'.length)
+  const asset = FIXED_ITEM_SLOT_ASSETS[itemName]
+  if (!asset) return null
+
+  return {
+    id: `fixed-item:${itemName}`,
+    name: `${asset.name} x${condition[costKey]}`,
+    title: '固定消耗',
+    rare: null,
+    image: asset.image,
+  }
+}
+
+function buildFallbackSlotCandidate(slotId, slot, cardsMap, cardsById) {
+  const condition = slot?.condition || {}
+  const fixedSudanCard = condition.type === 'sudan' ? buildFixedSudanCard(condition) : null
+  const fixedItemCard = condition.type === 'item' ? buildFixedItemCard(condition) : null
+  const defaultCards = fixedSudanCard
+    ? [fixedSudanCard]
+    : fixedItemCard
+      ? [fixedItemCard]
+      : extractConditionCards(condition, cardsMap, cardsById)
+
+  const label = defaultCards[0]?.name || slot?.text || slotId.toUpperCase()
+
+  return {
+    id: `${slotId}:candidate:default`,
+    label,
+    mode: defaultCards.length > 1 ? 'stack' : defaultCards.length === 1 ? 'card' : 'text',
+    cards: defaultCards,
+    bubbleText: '',
+    conditionText: parseConditionObject(condition, cardsMap).join(' / '),
   }
 }
 
@@ -335,9 +389,12 @@ export function adaptStoryData(type, data, cardsMap, cardsById = {}) {
           text: slot.text || '',
           conditions: parseConditionObject(slot.condition, cardsMap),
           defaultCards: extractConditionCards(slot.condition || {}, cardsMap, cardsById),
-          candidates: normalizeArray(slot.pops).map((pop, index) => (
-            buildSlotCandidate(slotId, pop, index, cardsMap, cardsById)
-          )),
+          candidates: (() => {
+            const pops = normalizeArray(slot.pops).map((pop, index) => (
+              buildSlotCandidate(slotId, pop, index, cardsMap, cardsById)
+            ))
+            return pops.length > 0 ? pops : [buildFallbackSlotCandidate(slotId, slot, cardsMap, cardsById)]
+          })(),
           settlementHints: settlementHintsBySlot[slotId] || [],
         })),
         globalSettlementHints,
