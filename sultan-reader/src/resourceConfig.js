@@ -103,9 +103,6 @@ export const FIXED_TAG_CARD_IDS = {
   // 妻子：梅姬（2000006）
   妻子: '2000006',
 }
-export function getCardRarityFrameAsset(rare) {
-  return CARD_RARITY_FRAME_ASSETS[Number(rare)] || CARD_RARITY_FRAME_ASSETS[1]
-}
 
 /**
  * 根据稀有度读取卡牌底板资源。
