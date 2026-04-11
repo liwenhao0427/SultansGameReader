@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import useCanvasStore from '../stores/useCanvasStore.js'
 import { mountNodeOnCanvas } from '../services/graphNavigation.js'
+import { getContentTypeLabel } from '../constants/gameTerminology'
 
 // 类型过滤选项
 const ALL_TYPES = ['event', 'rite', 'loot', 'after_story', 'over', 'card', 'upgrade', 'dt']
@@ -127,7 +128,7 @@ export default function SearchPanel() {
               onChange={() => toggleType(type)}
               style={{ accentColor: TYPE_COLORS[type], cursor: 'pointer' }}
             />
-            <span style={{ color: TYPE_COLORS[type] }}>{type}</span>
+            <span style={{ color: TYPE_COLORS[type] }}>{getContentTypeLabel(type)}</span>
           </label>
         ))}
       </div>
@@ -174,7 +175,7 @@ export default function SearchPanel() {
                   border: `1px solid ${TYPE_COLORS[item.type]}66`,
                   flexShrink: 0,
                 }}>
-                  {item.type}
+                  {getContentTypeLabel(item.type)}
                 </span>
                 {inCanvas && <span style={{ fontSize: 10, color: '#6c7086' }}>已在画布</span>}
                 {isAdding && <span style={{ fontSize: 10, color: '#a6adc8' }}>加入中…</span>}

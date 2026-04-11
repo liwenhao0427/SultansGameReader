@@ -2,16 +2,11 @@
 import { Handle, Position } from '@xyflow/react'
 import { useResolvedImage } from '../../services/imageResolver'
 import { CARD_RENDER_CONFIG, getCardFrameHeight, getCardRarityFrameAsset } from '../../resourceConfig'
+import { CONTENT_TYPE_LABELS } from '../../constants/gameTerminology'
 
 const NODE_TYPE_LABELS = {
-  rite: '仪式',
-  event: '事件',
-  loot: '战利品',
-  card: '卡牌',
-  after_story: '后日谈',
-  over: '结局',
-  dt: '对话树',
-  upgrade: '升级',
+  ...CONTENT_TYPE_LABELS,
+  loot: '掉落池',
 }
 
 function formatDisplayId(id) {

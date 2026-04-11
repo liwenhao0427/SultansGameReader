@@ -3,22 +3,22 @@ import { createJSONStorage, persist } from 'zustand/middleware';
 
 /**
  * usePlayerStore
- * 玩家状态模拟：已触发事件集合、计数器模拟值
+ * 玩家状态模拟：已触发幕后集合、计数器模拟值
  * 使用 persist 中间件持久化到 localStorage
  * 通过 createJSONStorage 的 replacer/reviver 处理 Set 和 Map
  */
 const usePlayerStore = create(
   persist(
     (set, get) => ({
-      // 已触发事件 ID 集合
+      // 已触发幕后 ID 集合
       triggeredEvents: new Set(),
 
       // 计数器 id → 模拟值
       counterValues: new Map(),
 
       /**
-       * 切换事件触发状态（已触发则取消，未触发则标记）
-       * @param {string} id - 事件 ID
+       * 切换幕后触发状态（已触发则取消，未触发则标记）
+       * @param {string} id - 幕后 ID
        */
       toggleEvent: (id) => {
         const { triggeredEvents } = get();

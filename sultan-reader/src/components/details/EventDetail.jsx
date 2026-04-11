@@ -198,7 +198,7 @@ export default function EventDetail({ data }) {
                     <div style={actionWrapStyle}>
                       {followupActions.map((action, index) => (
                         <button key={`${action.targetType}:${action.targetId}:${index}`} type="button" style={actionButtonStyle} onClick={() => handleOpenAction(action, index)}>
-                          打开{action.targetType === 'rite' ? '仪式' : action.targetType === 'event' ? '事件' : '结局'} {action.targetId}
+                          打开{action.targetType === 'rite' ? '仪式' : action.targetType === 'event' ? '幕后' : '结局'} {action.targetId}
                         </button>
                       ))}
                     </div>
@@ -251,7 +251,7 @@ export default function EventDetail({ data }) {
               <div style={actionWrapStyle}>
                 {followupActions.map((action, index) => (
                   <button key={`${action.targetType}:${action.targetId}:${index}`} type="button" style={actionButtonStyle} onClick={() => handleOpenAction(action, index)}>
-                    打开{action.targetType === 'rite' ? '仪式' : action.targetType === 'event' ? '事件' : '结局'} {action.targetId}
+                    打开{action.targetType === 'rite' ? '仪式' : action.targetType === 'event' ? '幕后' : '结局'} {action.targetId}
                   </button>
                 ))}
               </div>

@@ -3,7 +3,7 @@ import useConfigStore from '../stores/useConfigStore'
 import usePlayerStore from '../stores/usePlayerStore'
 
 /**
- * CounterPanel — 计数器与事件触发状态管理侧拉栏
+ * CounterPanel — 计数器与幕后触发状态管理侧拉栏
  * Props:
  *   visible  {boolean} 是否显示
  *   onClose  {function} 关闭回调
@@ -66,7 +66,7 @@ export default function CounterPanel({ visible, onClose }) {
           flexShrink: 0,
         }}>
           <span style={{ color: '#cba6f7', fontWeight: 'bold', fontSize: 14 }}>
-            计数器 &amp; 事件状态
+            计数器 &amp; 幕后状态
           </span>
           <div style={{ display: 'flex', gap: 8 }}>
             {/* 重置全部按钮 */}
@@ -104,7 +104,7 @@ export default function CounterPanel({ visible, onClose }) {
             {counters.length === 0 ? (
               <div style={{ color: '#585b70', fontSize: 12 }}>暂无计数器（请先构建注册表）</div>
             ) : (
-              counters.map(({ id, comment }) => (
+              counters.map(({ id, comment, displayName, scope }) => (
                 <div key={id} style={{
                   display: 'flex', alignItems: 'center', gap: 8,
                   marginBottom: 6,
@@ -113,13 +113,17 @@ export default function CounterPanel({ visible, onClose }) {
                   <span style={{ color: '#89b4fa', fontSize: 12, width: 70, flexShrink: 0, fontFamily: 'monospace' }}>
                     #{id}
                   </span>
-                  {/* 注释描述 */}
-                  <span style={{
-                    color: '#a6adc8', fontSize: 12, flex: 1,
-                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                  }} title={comment ?? ''}>
-                    {comment ?? <span style={{ color: '#585b70' }}>—</span>}
-                  </span>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{
+                      color: '#a6adc8', fontSize: 12,
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    }} title={comment ?? displayName ?? ''}>
+                      {displayName ?? comment ?? <span style={{ color: '#585b70' }}>—</span>}
+                    </div>
+                    <div style={{ color: '#6c7086', fontSize: 10 }}>
+                      {scope === 'global' ? '全局计数器' : '局内计数器'}
+                    </div>
+                  </div>
                   {/* 数字输入框 */}
                   <input
                     type="number"
@@ -136,10 +140,10 @@ export default function CounterPanel({ visible, onClose }) {
             )}
           </div>
 
-          {/* ── 事件触发区 ── */}
+          {/* ── 幕后触发区 ── */}
           <div>
             <div style={{ color: '#a6adc8', fontSize: 12, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 1 }}>
-              已触发事件
+              已触发幕后
             </div>
 
             {/* 搜索框 + 添加事件 */}
@@ -150,11 +154,11 @@ export default function CounterPanel({ visible, onClose }) {
               triggeredEvents={triggeredEvents}
             />
 
-            {/* 已触发事件列表 */}
+            {/* 已触发幕后列表 */}
             <div style={{ maxHeight: 300, overflowY: 'auto', marginTop: 8 }}>
               {filteredEvents.length === 0 ? (
                 <div style={{ color: '#585b70', fontSize: 12 }}>
-                  {triggeredEvents.size === 0 ? '暂无已触发事件' : '无匹配结果'}
+                  {triggeredEvents.size === 0 ? '暂无已触发幕后' : '无匹配结果'}
                 </div>
               ) : (
                 filteredEvents.map(id => (
@@ -182,7 +186,7 @@ export default function CounterPanel({ visible, onClose }) {
 }
 
 /**
- * 事件搜索输入框：输入事件 ID 后按 Enter 或点击按钮切换触发状态
+ * 幕后搜索输入框：输入幕后 ID 后按 Enter 或点击按钮切换触发状态
  */
 function EventSearchInput({ value, onChange, onToggle, triggeredEvents }) {
   const handleKeyDown = (e) => {
@@ -196,7 +200,7 @@ function EventSearchInput({ value, onChange, onToggle, triggeredEvents }) {
     <div style={{ display: 'flex', gap: 6 }}>
       <input
         type="text"
-        placeholder="输入事件 ID，Enter 添加…"
+        placeholder="输入幕后 ID，Enter 添加…"
         value={value}
         onChange={e => onChange(e.target.value)}
         onKeyDown={handleKeyDown}

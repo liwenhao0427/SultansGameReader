@@ -28,7 +28,7 @@ export function evaluateCondition(conditionObj, playerState) {
       // any：子条件中至少一个满足
       if (!evaluateAny(value, playerState)) return false;
     } else if ((m = key.match(/^have\.(.+)$/))) {
-      // 拥有卡牌：已触发事件集合中存在，或计数器 > 0
+      // 拥有卡牌：已触发幕后集合中存在，或计数器 > 0
       const cardId = m[1];
       const ok = triggeredEvents.has(cardId) || (counterValues.get(cardId) ?? 0) > 0;
       if (!ok) return false;

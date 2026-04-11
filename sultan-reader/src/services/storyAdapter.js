@@ -1,5 +1,6 @@
 import { parseConditionObject, parseEffect } from './conditionParser'
 import { EVENT_READER_DEFAULTS, FIXED_ITEM_SLOT_ASSETS, FIXED_SUDAN_SLOT_ASSETS, FIXED_TAG_CARD_IDS } from '../resourceConfig'
+import { getContentTypeLabel } from '../constants/gameTerminology'
 
 function normalizeArray(value) {
   if (!value) return []
@@ -731,8 +732,8 @@ export function adaptStoryData(type, data, cardsMap, cardsById = {}) {
 
       return {
         kind: 'event',
-        title: data.text || `事件 ${data.id}`,
-        subtitle: `事件 #${data.id}`,
+        title: data.text || `幕后 ${data.id}`,
+        subtitle: `幕后 #${data.id}`,
         intro: data.tips_text || '',
         meta: parseConditionObject(data.condition, cardsMap),
         image: pickEventImage(data),
@@ -741,7 +742,7 @@ export function adaptStoryData(type, data, cardsMap, cardsById = {}) {
         fallbackCharacterCard,
         eventFlow,
         segments: normalizeArray(data.settlement)
-          .map((item) => buildPhaseItem(item, cardsMap, cardsById, '事件分支'))
+          .map((item) => buildPhaseItem(item, cardsMap, cardsById, '幕后分支'))
           .filter((item) => item.text || item.title || item.conditions.length || item.options.length || item.actions.length),
       }
 
@@ -828,7 +829,7 @@ export function adaptStoryData(type, data, cardsMap, cardsById = {}) {
     case 'loot':
       return {
         kind: 'loot',
-        title: data.name || `战利品 ${data.id}`,
+        title: data.name || `掉落池 ${data.id}`,
         subtitle: data.type__c || '',
         intro: '',
         meta: [
@@ -861,7 +862,7 @@ export function adaptStoryData(type, data, cardsMap, cardsById = {}) {
     default:
       return {
         kind: type,
-        title: data.name || data.text || `${type}:${data.id || ''}`,
+        title: data.name || data.text || `${getContentTypeLabel(type)}:${data.id || ''}`,
         subtitle: '',
         intro: data.text || '',
         meta: [],

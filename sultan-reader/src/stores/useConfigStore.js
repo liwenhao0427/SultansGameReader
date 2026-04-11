@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { BUILTIN_COUNTER_LABELS, resolveCounterLabel } from '../constants/counterMetadata'
 
 /**
  * useConfigStore
@@ -11,7 +12,7 @@ const useConfigStore = create((set) => ({
   // 卡牌完整数据，供阅读器展示手牌图片与标题
   cardsById: {},
 
-  // 计数器注册表：id → { id, comment, defaultValue }
+  // 计数器注册表：id → { id, comment, displayName, defaultValue, scope, sources }
   counterRegistry: new Map(),
 
   // 各类型缓存文件数量统计
@@ -71,8 +72,17 @@ const useConfigStore = create((set) => ({
           continue;
         }
         // 递归提取对象中所有 counter.\d+ 格式的 key
-        extractCounterKeys(data, registry);
+        extractCounterKeys(data, registry, type);
       }
+    }
+
+    for (const [id, label] of Object.entries(BUILTIN_COUNTER_LABELS)) {
+      mergeCounterMeta(registry, id, {
+        comment: label,
+        displayName: label,
+        scope: 'builtin',
+        source: 'builtin',
+      })
     }
 
     set({ counterRegistry: registry });
@@ -84,28 +94,53 @@ const useConfigStore = create((set) => ({
  * @param {any} obj - 待遍历的对象
  * @param {Map} registry - 计数器注册表（累积写入）
  */
-function extractCounterKeys(obj, registry) {
+function extractCounterKeys(obj, registry, sourceType = 'unknown') {
   if (!obj || typeof obj !== 'object') return;
 
   if (Array.isArray(obj)) {
-    obj.forEach((item) => extractCounterKeys(item, registry));
+    obj.forEach((item) => extractCounterKeys(item, registry, sourceType));
     return;
   }
 
   for (const key of Object.keys(obj)) {
-    // 匹配 counter.\d+ 开头的 key（含 >=、<、= 等后缀）
-    const match = key.match(/^counter[.+-](\d+)/);
+    // 匹配条件和动作中的局内/全局计数器写法
+    const match = key.match(/^(counter|global_counter)(?:[.+=-])(\d+)/);
     if (match) {
-      const id = match[1];
-      if (!registry.has(id)) {
-        // 尝试从同名 __c 注释字段获取注释
-        const comment = obj[`${key}__c`] ?? null;
-        registry.set(id, { id, comment, defaultValue: 0 });
-      }
+      const scope = match[1] === 'global_counter' ? 'global' : 'local'
+      const id = match[2];
+      const comment = obj[`${key}__c`] ?? obj[`${key}__ca`] ?? obj[`${key}__ci`] ?? null;
+      mergeCounterMeta(registry, id, {
+        comment,
+        displayName: resolveCounterLabel(id, comment || ''),
+        defaultValue: 0,
+        scope,
+        source: sourceType,
+      })
     }
     // 递归处理子对象
-    extractCounterKeys(obj[key], registry);
+    extractCounterKeys(obj[key], registry, sourceType);
   }
+}
+
+function mergeCounterMeta(registry, id, payload) {
+  const prev = registry.get(id) || {
+    id,
+    comment: null,
+    displayName: resolveCounterLabel(id),
+    defaultValue: 0,
+    scope: payload.scope || 'local',
+    sources: [],
+  }
+
+  const nextSources = new Set([...(prev.sources || []), payload.source].filter(Boolean))
+  registry.set(id, {
+    ...prev,
+    ...payload,
+    comment: payload.comment || prev.comment || null,
+    displayName: payload.displayName || prev.displayName || resolveCounterLabel(id, payload.comment || prev.comment || ''),
+    scope: payload.scope || prev.scope || 'local',
+    sources: [...nextSources].sort(),
+  })
 }
 
 export default useConfigStore;

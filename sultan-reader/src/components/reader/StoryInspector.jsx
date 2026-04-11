@@ -348,9 +348,9 @@ function formatExecutionActionLabel(action, targetNameMap = {}) {
   if (!action) return ''
 
   const typeLabelMap = {
-    event: '事件',
+    event: '幕后',
     rite: '仪式',
-    loot: '掉落物',
+    loot: '掉落池',
     over: '结局',
     card: '卡牌',
   }
@@ -1615,7 +1615,7 @@ export default function StoryInspector({ type, data, onClose }) {
                           style={actionButtonStyle}
                           onClick={() => handleOpenAction(action, actionIndex)}
                         >
-                          打开{action.targetType === 'rite' ? '仪式' : action.targetType === 'event' ? '事件' : action.targetType === 'loot' ? '掉落物' : '结局'} {action.targetId}
+                          打开{action.targetType === 'rite' ? '仪式' : action.targetType === 'event' ? '幕后' : action.targetType === 'loot' ? '掉落池' : '结局'} {action.targetId}
                         </button>
                       ))}
                     </div>
@@ -1690,7 +1690,7 @@ export default function StoryInspector({ type, data, onClose }) {
                       style={actionButtonStyle}
                       onClick={() => handleOpenAction(action, actionIndex)}
                     >
-                      打开{action.targetType === 'rite' ? '仪式' : action.targetType === 'event' ? '事件' : action.targetType === 'loot' ? '掉落物' : '结局'} {action.targetId}
+                    打开{action.targetType === 'rite' ? '仪式' : action.targetType === 'event' ? '幕后' : action.targetType === 'loot' ? '掉落池' : '结局'} {action.targetId}
                     </button>
                   ))}
                 </div>
@@ -1960,7 +1960,7 @@ export default function StoryInspector({ type, data, onClose }) {
                               style={actionButtonStyle}
                               onClick={() => handleOpenAction(action, actionIndex)}
                             >
-                              打开{action.targetType === 'rite' ? '仪式' : action.targetType === 'event' ? '事件' : action.targetType === 'loot' ? '掉落物' : '结局'} {action.targetId}
+                              打开{action.targetType === 'rite' ? '仪式' : action.targetType === 'event' ? '幕后' : action.targetType === 'loot' ? '掉落池' : '结局'} {action.targetId}
                             </button>
                           ))}
                         </div>

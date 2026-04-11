@@ -11,10 +11,11 @@ import DetailPanel from './DetailPanel'
 import { mountNodeOnCanvas } from '../services/graphNavigation'
 import { useResolvedImage } from '../services/imageResolver'
 import { getCardRarityFrameAsset } from '../resourceConfig'
+import { getContentTypeLabel } from '../constants/gameTerminology'
 
 const TYPE_TABS = [
   { key: 'rite', label: '仪式' },
-  { key: 'event', label: '事件' },
+  { key: 'event', label: '幕后' },
   { key: 'loot', label: '战利品' },
   { key: 'over', label: '结局' },
   { key: 'after_story', label: '后日谈' },
@@ -64,7 +65,7 @@ function CatalogPreview({ item, activeType, cardsById }) {
         />
       ) : (
         <div style={listPreviewPlaceholderStyle}>
-          {activeType === 'card' ? '卡牌' : activeType === 'loot' ? '战利品' : activeType === 'rite' ? '仪式' : '条目'}
+          {activeType === 'card' ? '卡牌' : activeType === 'loot' ? '掉落池' : activeType === 'rite' ? '仪式' : getContentTypeLabel(activeType)}
         </div>
       )}
     </div>
