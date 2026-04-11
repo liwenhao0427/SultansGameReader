@@ -2224,7 +2224,6 @@ export default function StoryInspector({ type, data, onClose }) {
           executionSlotCards={executionSlotCards}
           executionConditionGroups={executionConditionGroups}
           executionConditionSelections={executionConditionSelections}
-          executionComplete={executionFlow.isComplete}
           onSelectCondition={handleSelectExecutionCondition}
           onOpenCard={handleOpenCard}
           onOpenAction={handleOpenAction}

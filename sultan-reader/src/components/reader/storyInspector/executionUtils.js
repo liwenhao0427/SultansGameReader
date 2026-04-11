@@ -103,13 +103,14 @@ function extractGroupIdFromKey(key) {
   if (rMatch) return rMatch[1].toLowerCase()
 
   const slotMatch = String(key).match(/^!?(s\d+)(?:\.(.+))?$/i)
-  if (slotMatch && slotMatch[2]) return slotMatch[1].toLowerCase()
+  if (slotMatch && slotMatch[1]) return slotMatch[1].toLowerCase()
+
+  const normalizedKey = String(key).replace(/^!/, '')
+  const { target } = parseOperator(normalizedKey)
+  const prefix = String(target).split(/[.:]/)[0]?.trim()
+  return prefix ? prefix.toLowerCase() : null
 
   return null
-}
-
-function isSlotOptionKey(key) {
-  return /^!?(s\d+)\.(.+)$/i.test(String(key))
 }
 
 function evaluateAtomicCondition(key, value, context) {
@@ -163,6 +164,25 @@ function evaluateAtomicCondition(key, value, context) {
     return {
       status: context.branchSelections[slotId] === optionId ? 'matched' : 'unmatched',
       groupId: slotId,
+      key,
+      value,
+    }
+  }
+
+  const genericGroupId = extractGroupIdFromKey(key)
+  if (genericGroupId) {
+    const optionId = buildConditionOptionId(genericGroupId, key, value)
+    if (!context.branchSelections?.[genericGroupId]) {
+      return {
+        status: 'pending',
+        groupId: genericGroupId,
+        key,
+        value,
+      }
+    }
+    return {
+      status: context.branchSelections[genericGroupId] === optionId ? 'matched' : 'unmatched',
+      groupId: genericGroupId,
       key,
       value,
     }
@@ -266,6 +286,25 @@ function buildExecutionStepFromPhase(phase) {
   }
 }
 
+function buildChoiceStep(model, group) {
+  const isDice = /^r\d+$/i.test(group.id)
+  const stageMeta = isDice ? (model?.randomTextUp?.[group.id] || {}) : {}
+
+  return {
+    id: `choice:${group.id}`,
+    kind: 'choice',
+    phase: isDice ? `骰子分支 ${group.id.toUpperCase()}` : '条件分支',
+    title: isDice ? (model?.randomText?.[group.id] || group.title) : group.title,
+    text: isDice ? (stageMeta.text || '') : group.description,
+    conditions: [],
+    effects: [],
+    actions: [],
+    popItems: [],
+    tips: isDice ? [stageMeta.type_tips, stageMeta.low_target_tips].filter(Boolean) : [],
+    groupId: group.id,
+  }
+}
+
 function buildDicePromptStep(model, groupId) {
   const stageMeta = model?.randomTextUp?.[groupId] || {}
   return {
@@ -324,17 +363,22 @@ function buildGroupDescription(model, groupId, slotCards) {
   return '可根据当前卡槽卡牌切换对应条件。'
 }
 
+function extractFirstAtomic(condition) {
+  return extractAtomicEntries(condition)[0] || null
+}
+
 function collectGroupOptions(model, phases, startIndex, groupId, cardsMap, slotCards) {
   const options = []
 
   for (let index = startIndex; index < phases.length; index += 1) {
     const phase = phases[index]
-    const atomic = findFirstAtomicForGroup(phase.raw?.condition || {}, groupId)
-    if (!atomic) break
+    const firstAtomic = extractFirstAtomic(phase.raw?.condition || {})
+    if (!firstAtomic) break
 
-    const firstGroupId = extractGroupIdFromKey(atomic.key)
+    const firstGroupId = extractGroupIdFromKey(firstAtomic.key)
     if (firstGroupId !== groupId) break
 
+    const atomic = findFirstAtomicForGroup(phase.raw?.condition || {}, groupId) || firstAtomic
     const optionId = buildConditionOptionId(groupId, atomic.key, atomic.value)
     if (options.some((option) => option.id === optionId)) continue
 
@@ -346,7 +390,7 @@ function collectGroupOptions(model, phases, startIndex, groupId, cardsMap, slotC
       id: optionId,
       rawKey: atomic.key,
       rawValue: atomic.value,
-      label: buildConditionLabel({ [atomic.key]: atomic.value }, cardsMap),
+      label: parseConditionObject(phase.raw?.condition || { [atomic.key]: atomic.value }, cardsMap).join(' / ') || buildConditionLabel({ [atomic.key]: atomic.value }, cardsMap),
       detail,
     })
   }
@@ -392,7 +436,7 @@ export function buildExecutionFlow(model, context = {}) {
   const conditionGroups = []
   const autoSelections = {}
   const resolvedSelections = { ...(context.branchSelections || {}) }
-  const shownDiceSteps = new Set()
+  const renderedChoiceGroups = new Set()
   const phases = model?.rawPhases || []
 
   if (model?.title || model?.intro || normalizeArray(model?.tipsText).length > 0) {
@@ -404,6 +448,18 @@ export function buildExecutionFlow(model, context = {}) {
 
   while (index < phases.length) {
     const phase = phases[index]
+    const firstAtomic = extractFirstAtomic(phase.raw?.condition || {})
+    const blockGroupId = firstAtomic ? extractGroupIdFromKey(firstAtomic.key) : null
+
+    if (blockGroupId && !renderedChoiceGroups.has(blockGroupId)) {
+      const group = collectGroupOptions(model, phases, index, blockGroupId, context.cardsMap, context.slotCards || {})
+      if (group.options.length > 0) {
+        conditionGroups.push(group)
+        steps.push(buildChoiceStep(model, group))
+        renderedChoiceGroups.add(blockGroupId)
+      }
+    }
+
     const analysis = analyzeConditionNode(phase.raw?.condition || {}, {
       branchSelections: resolvedSelections,
       slotCards: context.slotCards || {},
@@ -416,18 +472,10 @@ export function buildExecutionFlow(model, context = {}) {
 
     if (analysis.status === 'pending' && analysis.groupId) {
       const groupId = analysis.groupId
-      let group = conditionGroups.find((entry) => entry.id === groupId) || null
+      const group = conditionGroups.find((entry) => entry.id === groupId) || collectGroupOptions(model, phases, index, groupId, context.cardsMap, context.slotCards || {})
 
-      if (!group) {
-        group = collectGroupOptions(model, phases, index, groupId, context.cardsMap, context.slotCards || {})
-        if (group.options.length > 0) {
-          conditionGroups.push(group)
-        }
-      }
-
-      if (/^r\d+$/i.test(groupId) && !shownDiceSteps.has(groupId)) {
-        shownDiceSteps.add(groupId)
-        steps.push(buildDicePromptStep(model, groupId))
+      if (!conditionGroups.some((entry) => entry.id === group.id) && group.options.length > 0) {
+        conditionGroups.push(group)
       }
 
       if (!group || group.options.length === 0) {

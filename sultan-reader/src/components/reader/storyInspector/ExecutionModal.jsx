@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useResolvedImage } from '../../../services/imageResolver'
 import { CARD_RENDER_CONFIG, getCardFrameHeight, getCardRarityFrameAsset } from '../../../resourceConfig'
 import { executionStyles as styles } from './executionStyles'
@@ -257,6 +257,25 @@ function ConditionPagerGroup({ group, selectedId, onSelect, onOpenDetail }) {
   )
 }
 
+function InlineChoiceStep({ group, selectedId, onSelect, onOpenDetail }) {
+  if (!group) return null
+
+  return group.options.length > 4 ? (
+    <ConditionPagerGroup
+      group={group}
+      selectedId={selectedId}
+      onSelect={onSelect}
+      onOpenDetail={onOpenDetail}
+    />
+  ) : (
+    <ConditionGridGroup
+      group={group}
+      selectedId={selectedId}
+      onSelect={onSelect}
+    />
+  )
+}
+
 export default function ExecutionModal({
   open,
   model,
@@ -271,7 +290,6 @@ export default function ExecutionModal({
   executionSlotCards,
   executionConditionGroups,
   executionConditionSelections,
-  executionComplete,
   onSelectCondition,
   onOpenCard,
   onOpenAction,
@@ -280,6 +298,9 @@ export default function ExecutionModal({
 }) {
   const [detailGroupId, setDetailGroupId] = useState(null)
   const [detailFilterText, setDetailFilterText] = useState('')
+  const [autoPlay, setAutoPlay] = useState(true)
+  const scrollRef = useRef(null)
+  const manualScrollLockRef = useRef(false)
 
   const detailGroup = useMemo(
     () => executionConditionGroups.find((group) => group.id === detailGroupId) || null,
@@ -303,6 +324,49 @@ export default function ExecutionModal({
     .map((slot) => executionSlotCards?.[slot.id])
     .filter(Boolean)
     .slice(0, 5)
+
+  useEffect(() => {
+    setAutoPlay(true)
+    manualScrollLockRef.current = false
+  }, [open, executionConditionSelections, executionSteps.length])
+
+  useEffect(() => {
+    if (!open || !autoPlay || !hasNextStep) return undefined
+
+    const timer = window.setTimeout(() => {
+      onAdvance?.()
+    }, 480)
+
+    return () => window.clearTimeout(timer)
+  }, [autoPlay, hasNextStep, onAdvance, open, executionStepIndex])
+
+  useEffect(() => {
+    if (!open || !scrollRef.current || manualScrollLockRef.current) return
+    const element = scrollRef.current
+    const frame = window.requestAnimationFrame(() => {
+      element.scrollTo({
+        top: element.scrollHeight,
+        behavior: 'smooth',
+      })
+    })
+
+    return () => window.cancelAnimationFrame(frame)
+  }, [open, executionStepIndex, executionSteps.length])
+
+  function handleNarrativeScroll(event) {
+    const element = event.currentTarget
+    const distanceToBottom = element.scrollHeight - element.scrollTop - element.clientHeight
+    if (distanceToBottom > 48) {
+      manualScrollLockRef.current = true
+      setAutoPlay(false)
+    }
+  }
+
+  function handleSelectAndResume(groupId, optionId) {
+    manualScrollLockRef.current = false
+    setAutoPlay(true)
+    onSelectCondition(groupId, optionId)
+  }
 
   return (
     <div style={styles.overlay}>
@@ -389,30 +453,11 @@ export default function ExecutionModal({
                 <div style={styles.title}>{model?.title}</div>
               </div>
 
-              {executionConditionGroups.length > 0 ? (
-                <div style={styles.conditionsScroll}>
-                  {executionConditionGroups.map((group) => (
-                    group.options.length > 4 ? (
-                      <ConditionPagerGroup
-                        key={group.id}
-                        group={group}
-                        selectedId={executionConditionSelections[group.id] || null}
-                        onSelect={onSelectCondition}
-                        onOpenDetail={setDetailGroupId}
-                      />
-                    ) : (
-                      <ConditionGridGroup
-                        key={group.id}
-                        group={group}
-                        selectedId={executionConditionSelections[group.id] || null}
-                        onSelect={onSelectCondition}
-                      />
-                    )
-                  ))}
-                </div>
-              ) : null}
-
-              <div style={styles.narrativeScroll}>
+              <div
+                ref={scrollRef}
+                style={styles.narrativeScroll}
+                onScroll={handleNarrativeScroll}
+              >
                 {visibleSteps.map((step) => (
                   <div key={step.id} style={styles.narrativeSection}>
                     <div style={styles.metaTag}>{step.phase}</div>
@@ -434,6 +479,14 @@ export default function ExecutionModal({
                         <div style={styles.tipText}>{tip}</div>
                       </div>
                     ))}
+                    {step.kind === 'choice' ? (
+                      <InlineChoiceStep
+                        group={executionConditionGroups.find((group) => group.id === step.groupId)}
+                        selectedId={executionConditionSelections[step.groupId] || null}
+                        onSelect={handleSelectAndResume}
+                        onOpenDetail={setDetailGroupId}
+                      />
+                    ) : null}
                     {step.effects?.length > 0 ? (
                       <div style={styles.contentBlock}>
                         <ExecutionEffectList effects={step.effects} onOpenCard={onOpenCard} />
@@ -465,12 +518,6 @@ export default function ExecutionModal({
                   </div>
                 ))}
               </div>
-
-              <div style={styles.footer}>
-                <button type="button" style={styles.primaryButton} onClick={hasNextStep ? onAdvance : onClose}>
-                  {hasNextStep ? '推进下一步' : (executionComplete ? '结算完成' : '关闭结算')}
-                </button>
-              </div>
             </div>
           </div>
         </div>
@@ -501,7 +548,7 @@ export default function ExecutionModal({
                   key={option.id}
                   type="button"
                   onClick={() => {
-                    onSelectCondition(detailGroup.id, option.id)
+                    handleSelectAndResume(detailGroup.id, option.id)
                     setDetailGroupId(null)
                     setDetailFilterText('')
                   }}

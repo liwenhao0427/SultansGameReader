@@ -100,6 +100,7 @@ export const executionStyles = {
     border: '1px solid rgba(244, 232, 206, 0.12)',
     backdropFilter: 'blur(8px)',
     overflowY: 'auto',
+    zIndex: 1,
   },
   slotPreviewWrap: {
     position: 'absolute',
@@ -108,6 +109,7 @@ export const executionStyles = {
     width: 360,
     height: 240,
     pointerEvents: 'none',
+    zIndex: 3,
   },
   slotPreviewCardButton: {
     position: 'absolute',
@@ -150,8 +152,8 @@ export const executionStyles = {
   rightPane: {
     minHeight: 0,
     display: 'grid',
-    gridTemplateRows: 'auto auto minmax(0, 1fr) auto',
-    gap: 14,
+    gridTemplateRows: 'auto minmax(0, 1fr)',
+    gap: 18,
     padding: '12px 12px 10px 0',
     background: 'transparent',
   },
@@ -171,13 +173,6 @@ export const executionStyles = {
     fontWeight: 800,
     lineHeight: 1.2,
     textShadow: '0 3px 14px rgba(0, 0, 0, 0.42)',
-  },
-  conditionsScroll: {
-    maxHeight: 260,
-    overflowY: 'auto',
-    display: 'grid',
-    gap: 12,
-    paddingRight: 6,
   },
   conditionGroup: {
     display: 'grid',
@@ -246,7 +241,7 @@ export const executionStyles = {
   narrativeSection: {
     display: 'grid',
     gap: 10,
-    padding: '14px 0 6px',
+    padding: '14px 0 10px',
   },
   metaTag: {
     display: 'inline-flex',
@@ -330,12 +325,6 @@ export const executionStyles = {
     gridTemplateColumns: '48px minmax(0, 1fr)',
     gap: 12,
     alignItems: 'start',
-  },
-  footer: {
-    display: 'flex',
-    justifyContent: 'flex-end',
-    gap: 10,
-    alignItems: 'center',
   },
   primaryButton: {
     padding: '12px 18px',
