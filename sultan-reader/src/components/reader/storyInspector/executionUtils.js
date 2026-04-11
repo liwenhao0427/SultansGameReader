@@ -401,6 +401,7 @@ function collectGroupOptions(model, phases, startIndex, groupId, cardsMap, slotC
     description: buildGroupDescription(model, groupId, slotCards),
     options,
     isDice: /^r\d+$/i.test(groupId),
+    isSlot: /^s\d+$/i.test(groupId),
     stageId: /^r\d+$/i.test(groupId) ? groupId : null,
   }
 }
@@ -482,7 +483,7 @@ export function buildExecutionFlow(model, context = {}) {
         break
       }
 
-      if (!resolvedSelections[groupId] && !group.isDice) {
+      if (!resolvedSelections[groupId] && group.isSlot) {
         const selectedCard = context.slotCards?.[groupId] || null
         const autoOptionId = pickDefaultSlotOption(group, selectedCard)
         if (autoOptionId) {

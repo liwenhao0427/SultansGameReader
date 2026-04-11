@@ -13,6 +13,20 @@ import * as storyInspectorStyles from './storyInspector/storyInspectorStyles'
 const FULLSCREEN_TYPES = new Set(['rite', 'event', 'dt', 'over', 'after_story'])
 const AUTO_FOLLOWUP_TARGET_TYPES = new Set(['event', 'rite', 'loot', 'over'])
 
+function shallowEqualObject(left, right) {
+  const leftKeys = Object.keys(left || {})
+  const rightKeys = Object.keys(right || {})
+  if (leftKeys.length !== rightKeys.length) return false
+  return leftKeys.every((key) => {
+    const leftValue = left[key]
+    const rightValue = right[key]
+    if (leftValue && typeof leftValue === 'object' && rightValue && typeof rightValue === 'object') {
+      return JSON.stringify(leftValue) === JSON.stringify(rightValue)
+    }
+    return leftValue === rightValue
+  })
+}
+
 const {
   imageFallbackStyle,
   eventFallbackBoardStyle,
@@ -1200,6 +1214,10 @@ export default function StoryInspector({ type, data, onClose }) {
       return changed ? next : current
     })
   }, [executionFlow.autoSelections, executionMode])
+  useEffect(() => {
+    if (!executionOpen) return
+    setExecutionStepIndex(Math.max(0, executionSteps.length - 1))
+  }, [executionOpen, executionSteps.length])
   const currentGateSegment = visibleSegments.find((segment) => segment.options?.length > 0)
   const canRevealLine = revealedLineCount < dialogueLines.length
   const canRevealSegment = !canRevealLine && !currentGateSegment && revealedSegmentCount < availableSegments.length
@@ -1518,7 +1536,7 @@ export default function StoryInspector({ type, data, onClose }) {
       }
 
       if (!cancelled) {
-        setExecutionTargetNameMap(next)
+        setExecutionTargetNameMap((current) => (shallowEqualObject(current, next) ? current : next))
       }
     }
 
@@ -2216,7 +2234,6 @@ export default function StoryInspector({ type, data, onClose }) {
           settlementBgUrl={settlementBgUrl}
           settlementDiceBgUrl={settlementDiceBgUrl}
           executionSteps={executionSteps}
-          executionStepIndex={executionStepIndex}
           executionSummaryEffects={executionSummaryEffects}
           executionSummaryActions={executionSummaryActions}
           executionSummaryPops={executionSummaryPops}
@@ -2227,7 +2244,6 @@ export default function StoryInspector({ type, data, onClose }) {
           onSelectCondition={handleSelectExecutionCondition}
           onOpenCard={handleOpenCard}
           onOpenAction={handleOpenAction}
-          onAdvance={handleAdvanceExecution}
           onClose={() => {
             setExecutionOpen(false)
             setExecutionMode('normal')

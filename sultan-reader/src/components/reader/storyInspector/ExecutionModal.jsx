@@ -282,7 +282,6 @@ export default function ExecutionModal({
   settlementBgUrl,
   settlementDiceBgUrl,
   executionSteps,
-  executionStepIndex,
   executionSummaryEffects,
   executionSummaryActions,
   executionSummaryPops,
@@ -293,12 +292,10 @@ export default function ExecutionModal({
   onSelectCondition,
   onOpenCard,
   onOpenAction,
-  onAdvance,
   onClose,
 }) {
   const [detailGroupId, setDetailGroupId] = useState(null)
   const [detailFilterText, setDetailFilterText] = useState('')
-  const [autoPlay, setAutoPlay] = useState(true)
   const scrollRef = useRef(null)
   const manualScrollLockRef = useRef(false)
 
@@ -318,27 +315,15 @@ export default function ExecutionModal({
 
   if (!open) return null
 
-  const visibleSteps = executionSteps.slice(0, executionStepIndex + 1)
-  const hasNextStep = executionStepIndex < executionSteps.length - 1
+  const visibleSteps = executionSteps
   const stackedCards = (model?.slots || [])
     .map((slot) => executionSlotCards?.[slot.id])
     .filter(Boolean)
     .slice(0, 5)
 
   useEffect(() => {
-    setAutoPlay(true)
     manualScrollLockRef.current = false
   }, [open, executionConditionSelections, executionSteps.length])
-
-  useEffect(() => {
-    if (!open || !autoPlay || !hasNextStep) return undefined
-
-    const timer = window.setTimeout(() => {
-      onAdvance?.()
-    }, 480)
-
-    return () => window.clearTimeout(timer)
-  }, [autoPlay, hasNextStep, onAdvance, open, executionStepIndex])
 
   useEffect(() => {
     if (!open || !scrollRef.current || manualScrollLockRef.current) return
@@ -351,20 +336,18 @@ export default function ExecutionModal({
     })
 
     return () => window.cancelAnimationFrame(frame)
-  }, [open, executionStepIndex, executionSteps.length])
+  }, [open, executionSteps])
 
   function handleNarrativeScroll(event) {
     const element = event.currentTarget
     const distanceToBottom = element.scrollHeight - element.scrollTop - element.clientHeight
     if (distanceToBottom > 48) {
       manualScrollLockRef.current = true
-      setAutoPlay(false)
     }
   }
 
   function handleSelectAndResume(groupId, optionId) {
     manualScrollLockRef.current = false
-    setAutoPlay(true)
     onSelectCondition(groupId, optionId)
   }
 

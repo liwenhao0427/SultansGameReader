@@ -100,7 +100,7 @@ export const executionStyles = {
     border: '1px solid rgba(244, 232, 206, 0.12)',
     backdropFilter: 'blur(8px)',
     overflowY: 'auto',
-    zIndex: 1,
+    zIndex: 4,
   },
   slotPreviewWrap: {
     position: 'absolute',
@@ -109,7 +109,7 @@ export const executionStyles = {
     width: 360,
     height: 240,
     pointerEvents: 'none',
-    zIndex: 3,
+    zIndex: 2,
   },
   slotPreviewCardButton: {
     position: 'absolute',
