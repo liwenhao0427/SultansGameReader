@@ -92,6 +92,67 @@ function extractChoiceOptions(chooseValue) {
   return []
 }
 
+function collectConditionKeys(condition = {}, collector = new Set()) {
+  if (!condition || typeof condition !== 'object') return collector
+
+  Object.entries(condition).forEach(([key, value]) => {
+    if (key.endsWith('__c') || key.endsWith('__ca') || key.endsWith('__ci')) return
+    collector.add(key)
+    if (key === 'any' || key === 'all') {
+      if (Array.isArray(value)) {
+        value.forEach((item) => collectConditionKeys(item, collector))
+      } else if (value && typeof value === 'object') {
+        collectConditionKeys(value, collector)
+      }
+    }
+  })
+
+  return collector
+}
+
+function extractRStageKeys(condition = {}) {
+  const result = []
+  Array.from(collectConditionKeys(condition)).forEach((key) => {
+    const match = String(key).match(/^(r\d+):/)
+    if (match && !result.includes(match[1])) result.push(match[1])
+  })
+  return result
+}
+
+function extractSettlementPopItems(result = {}) {
+  const lines = []
+
+  function visit(node) {
+    if (!node || typeof node !== 'object') return
+    if (Array.isArray(node)) {
+      node.forEach((item) => visit(item))
+      return
+    }
+
+    Object.entries(node).forEach(([key, value]) => {
+      if (key.endsWith('__c') || key.endsWith('__ca') || key.endsWith('__ci')) return
+      if (key === 'choose') {
+        visit(value)
+        return
+      }
+      if (!key.startsWith('pop.') || typeof value !== 'string') return
+
+      const parts = key.split('.')
+      const slotTail = parts[parts.length - 1]
+      const slotId = /^s\d+$/i.test(slotTail) ? slotTail.toLowerCase() : null
+      lines.push({
+        key,
+        slotId,
+        speakerKey: slotId || parts[1] || '角色',
+        text: value,
+      })
+    })
+  }
+
+  visit(result)
+  return lines
+}
+
 function extractPopBubbleText(result = {}, slotId = '') {
   if (!result || typeof result !== 'object') return ''
 
@@ -455,13 +516,17 @@ function buildPhaseItem(item, cardsMap, cardsById, phase, slotIds = []) {
     phase,
     title: item.result_title || '',
     text: item.result_text || item.tips_text || '',
+    resultText: item.result_text || '',
+    tipsText: item.tips_text || '',
     conditions: parseConditionObject(condition, cardsMap),
     conditionRaw: condition,
+    rStageKeys: extractRStageKeys(condition),
     slotBindingIds,
     actions: extractActionTargets(item.action),
     choiceActions: extractActionTargets(item.action).filter((entry) => entry.targetType === 'event' || entry.targetType === 'rite' || entry.targetType === 'over'),
     options: extractChoiceOptions(item.result?.choose || item.action?.choose),
     effects: buildResultEffects(item.result, cardsMap, cardsById),
+    popItems: extractSettlementPopItems(item.result),
     note: item.__ca || item.__c || '',
   }
 }
@@ -648,6 +713,8 @@ export function adaptStoryData(type, data, cardsMap, cardsById = {}) {
           settlementHints: settlementHintsBySlot[slotId] || [],
         })),
         globalSettlementHints,
+        randomText: data.random_text || {},
+        randomTextUp: data.random_text_up || {},
         segments: [
           ...normalizeArray(data.settlement_prior).map((item) => buildPhaseItem(item, cardsMap, cardsById, '前置结算', riteSlotIds)),
           ...normalizeArray(data.settlement).map((item) => buildPhaseItem(item, cardsMap, cardsById, '主结算', riteSlotIds)),

@@ -357,11 +357,99 @@ function formatExecutionActionLabel(action, targetNameMap = {}) {
 
   if (action.targetType && action.targetId) {
     const key = `${action.targetType}:${action.targetId}`
-    const targetName = targetNameMap[key] || action.targetId
+    const targetEntry = targetNameMap[key]
+    const targetName = typeof targetEntry === 'object' ? targetEntry?.name : targetEntry
     return `${typeLabelMap[action.targetType] || action.targetType}：${targetName}`
   }
 
   return action.text || action.key || ''
+}
+
+function resolveStepPopCard(pop, slotOverrideCards, model, slotSelections) {
+  if (!pop?.slotId) return null
+  if (slotOverrideCards?.[pop.slotId]) return slotOverrideCards[pop.slotId]
+  const slot = model?.slots?.find((entry) => entry.id === pop.slotId)
+  const candidate = slot?.candidates?.find((entry) => entry.id === slotSelections?.[pop.slotId]) || slot?.candidates?.[0] || null
+  return candidate?.cards?.[0] || slot?.defaultCards?.[0] || null
+}
+
+function StoryPopLine({ pop, card }) {
+  const { url } = useResolvedImage(card?.image)
+
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '56px minmax(0,1fr)', gap: 10, alignItems: 'start' }}>
+      <div style={{
+        width: 56,
+        height: 56,
+        borderRadius: 12,
+        overflow: 'hidden',
+        background: 'rgba(12, 10, 8, 0.42)',
+        border: '1px solid rgba(244, 232, 206, 0.18)',
+      }}>
+        {url ? (
+          <img src={url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top center' }} />
+        ) : (
+          <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ead7b2', fontSize: 11 }}>
+            角色
+          </div>
+        )}
+      </div>
+      <div style={{ color: '#f5ecd9', fontSize: 14, lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>
+        {pop.text}
+      </div>
+    </div>
+  )
+}
+
+function resolveExecutionTargetImage(targetType, targetData, cardsById) {
+  if (!targetData) return null
+  if (targetType === 'card') {
+    const card = cardsById?.[String(targetData.id)] || targetData
+    const resource = card?.resource
+    return Array.isArray(resource) ? resource[0] || null : resource || null
+  }
+  if (targetType === 'rite' || targetType === 'event') return targetData.icon || null
+  if (targetType === 'over') return targetData.bg || null
+  return targetData.pic || targetData.icon || null
+}
+
+function ExecutionEffectList({ effects, onOpenCard }) {
+  if (!effects?.length) return null
+
+  return (
+    <div style={{ display: 'grid', gap: 10 }}>
+      {effects.map((effect, index) => (
+        <div key={`${effect.label}:${index}`} style={executionResultItemStyle}>
+          <div style={{ color: '#f1dfbb', fontSize: 13, lineHeight: 1.5 }}>{effect.label}</div>
+          {effect.cards?.length > 0 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
+              {effect.cards.map((card) => (
+                <button
+                  key={card.id}
+                  type="button"
+                  onClick={() => onOpenCard?.(card)}
+                  style={{ background: 'transparent', border: 'none', padding: 0, cursor: 'pointer' }}
+                >
+                  <CardPortrait card={card} compact />
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function ExecutionActionBadge({ action, targetData }) {
+  const { url } = useResolvedImage(targetData?.image)
+
+  return (
+    <div style={effectChipStyle}>
+      {url && <img src={url} alt="" style={{ width: 24, height: 24, borderRadius: 6, objectFit: 'cover', objectPosition: 'center', flexShrink: 0 }} />}
+      <span>{formatExecutionActionLabel(action, targetData ? { [`${action.targetType}:${action.targetId}`]: targetData.name } : {})}</span>
+    </div>
+  )
 }
 
 function SlotButton({ slot, active, candidate, tags, onClick, slotBgKey, bubbleText }) {
@@ -803,7 +891,6 @@ export default function StoryInspector({ type, data, onClose }) {
   const [executionOpen, setExecutionOpen] = useState(false)
   const [executionStepIndex, setExecutionStepIndex] = useState(0)
   const [executionAutoAdvance, setExecutionAutoAdvance] = useState(false)
-  const [bgPreviewOpen, setBgPreviewOpen] = useState(false)
   const [eventChoicePath, setEventChoicePath] = useState([])
   const executionBodyRef = useRef(null)
   const readerBodyRef = useRef(null)
@@ -811,8 +898,9 @@ export default function StoryInspector({ type, data, onClose }) {
   const autoMountedEventIdRef = useRef(null)
   const executedActionKeyRef = useRef(new Set())
   const { url: templateBgUrl } = useResolvedImage(templateData?.bg || READER_RESOURCE_ASSETS.defaultRiteBackground)
-  const { url: templateFgUrl } = useResolvedImage(templateData?.fg || null)
-  const { url: riteExecutionBgUrl } = useResolvedImage(READER_RESOURCE_ASSETS.riteExecutionBackground)
+  const { url: settlementBgUrl } = useResolvedImage(READER_RESOURCE_ASSETS.settlementBackground)
+  const { url: settlementDiceBgUrl } = useResolvedImage(READER_RESOURCE_ASSETS.settlementDiceBackground)
+  const { url: riteTitlePlateUrl } = useResolvedImage(READER_RESOURCE_ASSETS.riteTitlePlate)
   const [executionTargetNameMap, setExecutionTargetNameMap] = useState({})
 
   function buildDialogueLines(slotId, selections, settlementState, globalSelection = globalSettlementSelection) {
@@ -1400,6 +1488,10 @@ export default function StoryInspector({ type, data, onClose }) {
     () => executionSteps.slice(0, executionStepIndex + 1).flatMap((step) => step.actions || []),
     [executionStepIndex, executionSteps]
   )
+  const executionSummaryPops = useMemo(
+    () => executionSteps.slice(0, executionStepIndex + 1).flatMap((step) => step.popItems || []),
+    [executionStepIndex, executionSteps]
+  )
 
   useEffect(() => {
     let cancelled = false
@@ -1415,9 +1507,15 @@ export default function StoryInspector({ type, data, onClose }) {
         if (next[key]) continue
         try {
           const result = await window.electronAPI.configReadCache(action.targetType, String(action.targetId))
-          next[key] = result?.name || result?.title || String(action.targetId)
+          next[key] = {
+            name: result?.name || result?.title || String(action.targetId),
+            image: resolveExecutionTargetImage(action.targetType, result, cardsById),
+          }
         } catch {
-          next[key] = String(action.targetId)
+          next[key] = {
+            name: String(action.targetId),
+            image: null,
+          }
         }
       }
 
@@ -1428,7 +1526,7 @@ export default function StoryInspector({ type, data, onClose }) {
 
     loadExecutionTargetNames()
     return () => { cancelled = true }
-  }, [executionSteps])
+  }, [cardsById, executionSteps])
 
   useEffect(() => {
     if (!executionOpen) return
@@ -1974,62 +2072,71 @@ export default function StoryInspector({ type, data, onClose }) {
                   position: 'relative',
                   background: 'rgba(19, 15, 11, 0.96)',
                 }}>
-                  {riteExecutionBgUrl && (
+                  {settlementBgUrl && (
                     <img
-                      src={riteExecutionBgUrl}
+                      src={settlementBgUrl}
                       alt=""
                       style={{
                         position: 'absolute',
                         inset: 0,
                         width: '100%',
                         height: '100%',
-                        objectFit: 'cover',
+                        objectFit: 'contain',
                         objectPosition: 'center',
                         pointerEvents: 'none',
                       }}
                     />
                   )}
-
-                  {bgPreviewOpen && riteExecutionBgUrl && (
-                    <div style={{
-                      position: 'absolute',
-                      top: 8,
-                      left: 8,
-                      right: 8,
-                      zIndex: 10,
-                      borderRadius: 10,
-                      overflow: 'hidden',
-                      border: '1px solid rgba(212,184,126,0.3)',
-                      boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
-                      background: 'rgba(12, 10, 8, 0.92)',
-                    }}>
-                      <img
-                        src={riteExecutionBgUrl}
-                        alt="背景全图"
-                        style={{ width: '100%', display: 'block', maxHeight: 160, objectFit: 'cover', objectPosition: 'left top' }}
-                      />
-                    </div>
+                  {settlementDiceBgUrl && (
+                    <img
+                      src={settlementDiceBgUrl}
+                      alt=""
+                      style={{
+                        position: 'absolute',
+                        left: '3.2%',
+                        top: '6%',
+                        width: '43%',
+                        height: '88%',
+                        objectFit: 'contain',
+                        objectPosition: 'left center',
+                        pointerEvents: 'none',
+                      }}
+                    />
                   )}
                   <div style={executionSummaryPanelStyle}>
                     <div style={sectionTitleStyle}>结算获取</div>
 
                     {executionSummaryEffects.length > 0 && (
                       <div style={{ marginTop: 12 }}>
-                        <EffectSummary effects={executionSummaryEffects} onOpenCard={handleOpenCard} />
+                        <ExecutionEffectList effects={executionSummaryEffects} onOpenCard={handleOpenCard} />
                       </div>
                     )}
 
                     {executionSummaryActions.length > 0 && (
                       <div style={{ marginTop: 14, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                         {executionSummaryActions.map((action, index) => (
-                          <div key={`${action.key}:${action.targetId || ''}:${index}`} style={effectChipStyle}>
-                            {formatExecutionActionLabel(action, executionTargetNameMap)}
-                          </div>
+                          <ExecutionActionBadge
+                            key={`${action.key}:${action.targetId || ''}:${index}`}
+                            action={action}
+                            targetData={executionTargetNameMap[`${action.targetType}:${action.targetId}`]}
+                          />
                         ))}
                       </div>
                     )}
 
-                    {executionSummaryEffects.length === 0 && executionSummaryActions.length === 0 && (
+                    {executionSummaryPops.length > 0 && (
+                      <div style={{ marginTop: 14, display: 'grid', gap: 10 }}>
+                        {executionSummaryPops.map((pop, index) => (
+                          <StoryPopLine
+                            key={`${pop.key}:${index}`}
+                            pop={pop}
+                            card={resolveStepPopCard(pop, slotOverrideCards, model, slotSelections)}
+                          />
+                        ))}
+                      </div>
+                    )}
+
+                    {executionSummaryEffects.length === 0 && executionSummaryActions.length === 0 && executionSummaryPops.length === 0 && (
                       <div style={{ ...smallLineStyle, marginTop: 12 }}>
                         当前还没有结算结果，先在右侧推进文本与分支选择。
                       </div>
@@ -2041,19 +2148,13 @@ export default function StoryInspector({ type, data, onClose }) {
                 <div style={executionDialoguePanelStyle}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
                     <div>
-                      <div style={sectionTitleStyle}>仪式正文</div>
-                      <div style={{ marginTop: 4, fontSize: 16, fontWeight: 700, color: '#f8ebd1' }}>{model.title}</div>
+                      <div style={sectionTitleStyle}>仪式结算</div>
+                      <div style={executionTitleWrapStyle}>
+                        {riteTitlePlateUrl && <img src={riteTitlePlateUrl} alt="" style={executionTitlePlateStyle} />}
+                        <div style={executionTitleTextStyle}>{model.title}</div>
+                      </div>
                     </div>
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
-                      {riteExecutionBgUrl && (
-                        <button
-                          type="button"
-                          style={secondaryButtonStyle}
-                          onClick={() => setBgPreviewOpen((v) => !v)}
-                        >
-                          {bgPreviewOpen ? '关闭预览' : '预览背景'}
-                        </button>
-                      )}
                       <button
                         type="button"
                         onClick={() => { setExecutionOpen(false); setExecutionAutoAdvance(false) }}
@@ -2103,6 +2204,28 @@ export default function StoryInspector({ type, data, onClose }) {
                   <div style={executionDialogueBoxStyle} ref={executionBodyRef}>
                     {executionSteps.slice(0, executionStepIndex + 1).map((step, index) => (
                       <div key={step.id} style={{ marginBottom: index < executionStepIndex ? 16 : 0 }}>
+                        {step.rStageKeys?.length > 0 && step.rStageKeys.map((stageKey) => (
+                          <div key={`${step.id}:${stageKey}`} style={{ marginBottom: 12 }}>
+                            <div style={{ color: '#f8ebd1', fontSize: 18, fontWeight: 700, lineHeight: 1.6 }}>
+                              {model.randomText?.[stageKey] || stageKey}
+                            </div>
+                            {model.randomTextUp?.[stageKey]?.text && (
+                              <div style={{ marginTop: 6, color: '#f4ead8', fontSize: 15, lineHeight: 1.8 }}>
+                                {model.randomTextUp[stageKey].text}
+                              </div>
+                            )}
+                            {model.randomTextUp?.[stageKey]?.type_tips && (
+                              <div style={{ marginTop: 4, color: '#d9c7a5', fontSize: 14, lineHeight: 1.7 }}>
+                                {model.randomTextUp[stageKey].type_tips}
+                              </div>
+                            )}
+                            {model.randomTextUp?.[stageKey]?.low_target_tips && (
+                              <div style={{ marginTop: 2, color: '#d9c7a5', fontSize: 14, lineHeight: 1.7 }}>
+                                {model.randomTextUp[stageKey].low_target_tips}
+                              </div>
+                            )}
+                          </div>
+                        ))}
                         {step.conditions?.length > 0 && (
                           <div style={{ marginBottom: 6, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                             {step.conditions.map((cond, ci) => (
@@ -2117,6 +2240,17 @@ export default function StoryInspector({ type, data, onClose }) {
                         ) : null}
                         <EffectSummary effects={step.effects} onOpenCard={handleOpenCard} />
                         <ActionSummary actions={step.actions} onOpenAction={handleOpenAction} />
+                        {step.popItems?.length > 0 && (
+                          <div style={{ marginTop: 12, display: 'grid', gap: 10 }}>
+                            {step.popItems.map((pop, popIndex) => (
+                              <StoryPopLine
+                                key={`${step.id}:pop:${popIndex}`}
+                                pop={pop}
+                                card={resolveStepPopCard(pop, slotOverrideCards, model, slotSelections)}
+                              />
+                            ))}
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -2464,6 +2598,13 @@ const effectChipStyle = {
   lineHeight: 1.5,
 }
 
+const executionResultItemStyle = {
+  padding: '8px 10px',
+  borderRadius: 14,
+  background: 'rgba(18, 14, 11, 0.16)',
+  border: '1px solid rgba(244, 232, 206, 0.1)',
+}
+
 const effectCardLinkStyle = {
   padding: '2px 8px',
   borderRadius: 999,
@@ -2536,15 +2677,15 @@ const executionCanvasStyle = {
 
 const executionSummaryPanelStyle = {
   position: 'absolute',
-  top: 18,
-  left: 18,
-  bottom: 18,
-  width: '34%',
+  top: '19%',
+  left: '11.5%',
+  bottom: '16%',
+  width: '23%',
   minWidth: 220,
-  padding: '18px 16px',
-  borderRadius: 22,
-  background: 'rgba(12, 10, 8, 0.32)',
-  border: '1px solid rgba(244, 232, 206, 0.18)',
+  padding: '14px 12px',
+  borderRadius: 18,
+  background: 'rgba(12, 10, 8, 0.08)',
+  border: '1px solid rgba(244, 232, 206, 0.08)',
   overflowY: 'auto',
 }
 
@@ -2554,18 +2695,47 @@ const executionDialoguePanelStyle = {
   gap: 14,
   minHeight: 0,
   padding: '12px 8px 8px 0',
+  background: 'rgba(18, 14, 11, 0.03)',
 }
 
 const executionDialogueBoxStyle = {
   minHeight: 0,
   borderRadius: 24,
-  background: 'rgba(23, 18, 13, 0.96)',
-  border: '1px solid rgba(212, 184, 126, 0.14)',
+  background: 'rgba(23, 18, 13, 0.08)',
+  border: '1px solid rgba(212, 184, 126, 0.08)',
   padding: '22px 20px',
   overflowY: 'auto',
   display: 'flex',
   flexDirection: 'column',
   gap: 12,
+}
+
+const executionTitleWrapStyle = {
+  position: 'relative',
+  marginTop: 8,
+  width: 320,
+  maxWidth: '100%',
+  height: 74,
+}
+
+const executionTitlePlateStyle = {
+  width: '100%',
+  height: '100%',
+  objectFit: 'fill',
+  display: 'block',
+}
+
+const executionTitleTextStyle = {
+  position: 'absolute',
+  inset: 0,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  color: '#2f1908',
+  fontSize: 22,
+  fontWeight: 800,
+  textAlign: 'center',
+  padding: '0 26px',
 }
 
 const executionFooterStyle = {
