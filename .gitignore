@@ -21,3 +21,4 @@ Thumbs.db
 # 日志
 *.log
 /sultan-reader/dist-electron/
+codex_reverse_pack
