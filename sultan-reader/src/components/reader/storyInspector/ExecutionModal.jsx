@@ -3,40 +3,46 @@ import { useResolvedImage } from '../../../services/imageResolver'
 import { CARD_RENDER_CONFIG, getCardFrameHeight, getCardRarityFrameAsset } from '../../../resourceConfig'
 import { executionStyles as styles } from './executionStyles'
 
-function CardPortrait({ card, compact = false, showName = true, widthOverride = null }) {
-  const { url } = useResolvedImage(card?.image)
+function resolveCardImageKey(card) {
+  if (!card) return null
+  if (card.image) return card.image
+  if (Array.isArray(card.resource)) return card.resource[0] || null
+  return card.resource || null
+}
+
+function CardPortrait({ card, showName = true, widthOverride = null }) {
+  const { url } = useResolvedImage(resolveCardImageKey(card))
   const { url: rareFrameUrl } = useResolvedImage(getCardRarityFrameAsset(card?.rare))
-  const width = widthOverride || (compact ? 54 : 66)
+  const width = widthOverride || 90
   const height = getCardFrameHeight(width)
-  const artInset = compact
-    ? '1px 2px 9px'
-    : width > 66
-      ? '5px 6px 24px'
-      : '4px 5px 20px'
+  const artInset = width >= 90 ? '5px 6px 24px' : '3px 4px 18px'
 
   return (
-    <div style={{
-      width,
-      height,
-      borderRadius: 16,
-      overflow: 'hidden',
-      border: '1px solid rgba(233, 219, 183, 0.22)',
-      boxShadow: '0 14px 26px rgba(0, 0, 0, 0.26)',
-      backgroundColor: 'rgba(18, 15, 11, 0.92)',
-      backgroundImage: rareFrameUrl ? `url("${rareFrameUrl}")` : 'none',
-      backgroundRepeat: 'no-repeat',
-      backgroundSize: '100% 100%',
-      backgroundPosition: 'center',
-      position: 'relative',
-      flexShrink: 0,
-    }}>
-      <div style={{
-        position: 'absolute',
-        inset: artInset,
+    <div
+      style={{
+        width,
+        height,
+        borderRadius: 16,
         overflow: 'hidden',
-        borderRadius: compact ? 14 : 18,
-        background: 'linear-gradient(180deg, rgba(87, 78, 58, 0.55), rgba(21, 17, 12, 0.88))',
-      }}>
+        backgroundColor: 'rgba(18, 15, 11, 0.92)',
+        backgroundImage: rareFrameUrl ? `url("${rareFrameUrl}")` : 'none',
+        backgroundRepeat: 'no-repeat',
+        backgroundSize: '100% 100%',
+        backgroundPosition: 'center',
+        position: 'relative',
+        flexShrink: 0,
+        boxShadow: '0 16px 28px rgba(0, 0, 0, 0.28)',
+      }}
+    >
+      <div
+        style={{
+          position: 'absolute',
+          inset: artInset,
+          overflow: 'hidden',
+          borderRadius: width >= 90 ? 18 : 14,
+          background: 'linear-gradient(180deg, rgba(87, 78, 58, 0.55), rgba(21, 17, 12, 0.88))',
+        }}
+      >
         {url ? (
           <img
             src={url}
@@ -50,36 +56,44 @@ function CardPortrait({ card, compact = false, showName = true, widthOverride = 
             }}
           />
         ) : (
-          <div style={{
-            width: '100%',
-            height: '100%',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 8,
-            textAlign: 'center',
-            color: '#f4e9cd',
-            fontSize: compact ? 11 : width > 66 ? 13 : 12,
-            lineHeight: 1.5,
-          }}>
+          <div
+            style={{
+              width: '100%',
+              height: '100%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: 8,
+              textAlign: 'center',
+              color: '#f4e9cd',
+              fontSize: width >= 90 ? 14 : 12,
+              lineHeight: 1.5,
+            }}
+          >
             {card?.name || '未知卡牌'}
           </div>
         )}
       </div>
       {showName ? (
-        <div style={{
-          position: 'absolute',
-          left: 0,
-          right: 0,
-          bottom: 0,
-          padding: compact ? '6px 6px 7px' : '8px 8px 9px',
-          backgroundImage: 'linear-gradient(180deg, transparent, rgba(4, 3, 2, 0.9))',
-          color: '#fff7e6',
-          fontSize: compact ? 10 : width > 66 ? 13 : 11,
-          lineHeight: 1.4,
-          zIndex: 2,
-          fontWeight: 700,
-        }}>
+        <div
+          style={{
+            position: 'absolute',
+            left: 0,
+            right: 0,
+            bottom: 0,
+            padding: width >= 90 ? '8px 8px 9px' : '6px 6px 7px',
+            backgroundImage: 'linear-gradient(180deg, transparent, rgba(4, 3, 2, 0.9))',
+            color: '#fff7e6',
+            fontSize: width >= 90 ? 13 : 11,
+            lineHeight: 1.4,
+            zIndex: 2,
+            fontWeight: 700,
+            textAlign: 'center',
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+          }}
+        >
           {card?.name}
         </div>
       ) : null}
@@ -120,17 +134,20 @@ function ExecutionEffectList({ effects, onOpenCard }) {
     <div style={styles.effectList}>
       {effects.map((effect, index) => (
         <div key={`${effect.label}:${index}`} style={styles.effectItem}>
-          <div style={{ color: '#f1dfbb', fontSize: 13, lineHeight: 1.6 }}>{effect.label}</div>
+          <div style={{ color: '#f1dfbb', fontSize: 13, lineHeight: 1.7 }}>{effect.label}</div>
           {effect.cards?.length > 0 ? (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
               {effect.cards.map((card) => (
                 <button
                   key={card.id}
                   type="button"
-                  onClick={() => onOpenCard?.(card)}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    onOpenCard?.(card)
+                  }}
                   style={styles.effectCardButton}
                 >
-                  <CardPortrait card={card} compact />
+                  <CardPortrait card={card} showName={false} widthOverride={52} />
                 </button>
               ))}
             </div>
@@ -146,7 +163,13 @@ function ExecutionActionBadge({ action, targetData }) {
 
   return (
     <div style={styles.effectChip}>
-      {url ? <img src={url} alt="" style={{ width: 24, height: 24, borderRadius: 6, objectFit: 'cover', objectPosition: 'center', flexShrink: 0 }} /> : null}
+      {url ? (
+        <img
+          src={url}
+          alt=""
+          style={{ width: 24, height: 24, borderRadius: 6, objectFit: 'cover', objectPosition: 'center', flexShrink: 0 }}
+        />
+      ) : null}
       <span>{formatExecutionActionLabel(action, targetData ? { [`${action.targetType}:${action.targetId}`]: targetData.name } : {})}</span>
     </div>
   )
@@ -158,7 +181,7 @@ function StoryPopLine({ pop, executionSlotCards }) {
   return (
     <div style={styles.popLine}>
       <div style={{ paddingTop: 2 }}>
-        <CardPortrait card={card} compact showName={false} widthOverride={48} />
+        <CardPortrait card={card} showName={false} widthOverride={48} />
       </div>
       <div style={{ ...styles.contentBlock, ...styles.text }}>
         {pop.text}
@@ -248,6 +271,7 @@ export default function ExecutionModal({
   executionSlotCards,
   executionConditionGroups,
   executionConditionSelections,
+  executionComplete,
   onSelectCondition,
   onOpenCard,
   onOpenAction,
@@ -275,6 +299,10 @@ export default function ExecutionModal({
 
   const visibleSteps = executionSteps.slice(0, executionStepIndex + 1)
   const hasNextStep = executionStepIndex < executionSteps.length - 1
+  const stackedCards = (model?.slots || [])
+    .map((slot) => executionSlotCards?.[slot.id])
+    .filter(Boolean)
+    .slice(0, 5)
 
   return (
     <div style={styles.overlay}>
@@ -298,16 +326,25 @@ export default function ExecutionModal({
           <div style={styles.bodyGrid}>
             <div style={styles.leftPane}>
               <div style={styles.slotPreviewWrap}>
-                {(model?.slots || []).map((slot) => {
-                  const card = executionSlotCards[slot.id]
-                  return (
-                    <div key={slot.id} style={styles.slotCard}>
-                      <div style={styles.slotLabel}>{slot.id.toUpperCase()}</div>
-                      {card ? <CardPortrait card={card} widthOverride={84} /> : <div style={styles.emptySlot}>空槽</div>}
-                      <div style={styles.slotName}>{card?.name || slot.text || slot.title}</div>
-                    </div>
-                  )
-                })}
+                {stackedCards.map((card, index) => (
+                  <button
+                    key={`${card.id || card.name}-${index}`}
+                    type="button"
+                    style={{
+                      ...styles.slotPreviewCardButton,
+                      left: `${index * 56}px`,
+                      top: `${index % 2 === 0 ? 0 : 10}px`,
+                      zIndex: 10 + index,
+                      transform: `rotate(${15 + index * 1.5}deg)`,
+                    }}
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      onOpenCard?.(card, index)
+                    }}
+                  >
+                    <CardPortrait card={card} widthOverride={96} />
+                  </button>
+                ))}
               </div>
 
               <div style={styles.summaryPanel}>
@@ -352,26 +389,28 @@ export default function ExecutionModal({
                 <div style={styles.title}>{model?.title}</div>
               </div>
 
-              <div style={styles.conditionsScroll}>
-                {executionConditionGroups.map((group) => (
-                  group.options.length > 4 ? (
-                    <ConditionPagerGroup
-                      key={group.id}
-                      group={group}
-                      selectedId={executionConditionSelections[group.id] || null}
-                      onSelect={onSelectCondition}
-                      onOpenDetail={setDetailGroupId}
-                    />
-                  ) : (
-                    <ConditionGridGroup
-                      key={group.id}
-                      group={group}
-                      selectedId={executionConditionSelections[group.id] || null}
-                      onSelect={onSelectCondition}
-                    />
-                  )
-                ))}
-              </div>
+              {executionConditionGroups.length > 0 ? (
+                <div style={styles.conditionsScroll}>
+                  {executionConditionGroups.map((group) => (
+                    group.options.length > 4 ? (
+                      <ConditionPagerGroup
+                        key={group.id}
+                        group={group}
+                        selectedId={executionConditionSelections[group.id] || null}
+                        onSelect={onSelectCondition}
+                        onOpenDetail={setDetailGroupId}
+                      />
+                    ) : (
+                      <ConditionGridGroup
+                        key={group.id}
+                        group={group}
+                        selectedId={executionConditionSelections[group.id] || null}
+                        onSelect={onSelectCondition}
+                      />
+                    )
+                  ))}
+                </div>
+              ) : null}
 
               <div style={styles.narrativeScroll}>
                 {visibleSteps.map((step) => (
@@ -429,7 +468,7 @@ export default function ExecutionModal({
 
               <div style={styles.footer}>
                 <button type="button" style={styles.primaryButton} onClick={hasNextStep ? onAdvance : onClose}>
-                  {hasNextStep ? '推进下一步' : '执行完成'}
+                  {hasNextStep ? '推进下一步' : (executionComplete ? '结算完成' : '关闭结算')}
                 </button>
               </div>
             </div>

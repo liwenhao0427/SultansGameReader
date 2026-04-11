@@ -7,7 +7,7 @@ import { CARD_RENDER_CONFIG, getCardFrameHeight, getCardRarityFrameAsset, READER
 import { linkNodesOnCanvas, mountNodeOnCanvas } from '../../services/graphNavigation'
 import RawFileView from '../RawFileView'
 import ExecutionModal from './storyInspector/ExecutionModal'
-import { buildExecutionConditionGroups, buildExecutionSteps, evaluateExecutionCondition, resolveExecutionTargetImage, resolveSelectedSlotCard } from './storyInspector/executionUtils'
+import { buildExecutionFlow, resolveExecutionTargetImage, resolveSelectedSlotCard } from './storyInspector/executionUtils'
 import * as storyInspectorStyles from './storyInspector/storyInspectorStyles'
 
 const FULLSCREEN_TYPES = new Set(['rite', 'event', 'dt', 'over', 'after_story'])
@@ -1152,63 +1152,54 @@ export default function StoryInspector({ type, data, onClose }) {
       resolveSelectedSlotCard(model, slot.id, slotSelections, settlementSelections, cardsById),
     ]))
   }, [cardsById, model, settlementSelections, slotSelections])
-  const executionConditionGroups = useMemo(() => (
-    buildExecutionConditionGroups(model, cardsLite, executionSlotCards)
-  ), [cardsLite, executionSlotCards, model])
-  const executionSteps = useMemo(() => {
+  const executionFlow = useMemo(() => {
     if (executionMode === 'waiting_round_end') {
       if (!model?.waitingRoundEnd) return []
-      return [{
-        id: 'waiting-round-end',
-        phase: '超时结算',
-        title: '等待回合结束',
-        text: model.waitingRoundEnd.raw?.result_text || model.waitingRoundEnd.raw?.tips_text || '',
-        effects: model.waitingRoundEnd.effects || [],
-        actions: (model.waitingRoundEnd.actions || []).filter((action) => action?.targetType && action?.targetId),
-        conditions: [],
-        popItems: [],
-        tips: [],
-      }]
+      return {
+        steps: [{
+          id: 'waiting-round-end',
+          phase: '超时结算',
+          title: '等待回合结束',
+          text: model.waitingRoundEnd.raw?.result_text || model.waitingRoundEnd.raw?.tips_text || '',
+          effects: model.waitingRoundEnd.effects || [],
+          actions: (model.waitingRoundEnd.actions || []).filter((action) => action?.targetType && action?.targetId),
+          conditions: [],
+          popItems: [],
+          tips: [],
+        }],
+        conditionGroups: [],
+        autoSelections: {},
+        isComplete: true,
+      }
     }
 
-    return buildExecutionSteps(model, {
+    return buildExecutionFlow(model, {
       branchSelections: executionConditionSelections,
       slotCards: executionSlotCards,
+      cardsMap: cardsLite,
     })
-  }, [executionConditionSelections, executionMode, executionSlotCards, model])
+  }, [cardsLite, executionConditionSelections, executionMode, executionSlotCards, model])
+  const executionConditionGroups = executionFlow.conditionGroups || []
+  const executionSteps = executionFlow.steps || []
   useEffect(() => {
-    if (executionMode !== 'normal' || executionConditionGroups.length === 0) return
+    if (executionMode !== 'normal') return
+
+    const nextEntries = Object.entries(executionFlow.autoSelections || {}).filter(([, optionId]) => Boolean(optionId))
+    if (nextEntries.length === 0) return
 
     setExecutionConditionSelections((current) => {
       let changed = false
       const next = { ...current }
 
-      executionConditionGroups.forEach((group) => {
-        if (group.isDice) return
-        if (next[group.id]) return
-
-        const selectedCard = executionSlotCards[group.id]
-        const matched = group.options.find((option) => {
-          const [, rawKey, rawValue] = option.id.split('::')
-          try {
-            return evaluateExecutionCondition({ [rawKey]: JSON.parse(rawValue) }, {
-              branchSelections: {},
-              slotCards: { [group.id]: selectedCard },
-            })
-          } catch {
-            return false
-          }
-        })
-
-        if (matched) {
-          next[group.id] = matched.id
-          changed = true
-        }
+      nextEntries.forEach(([groupId, optionId]) => {
+        if (next[groupId] === optionId) return
+        next[groupId] = optionId
+        changed = true
       })
 
       return changed ? next : current
     })
-  }, [executionConditionGroups, executionMode, executionSlotCards])
+  }, [executionFlow.autoSelections, executionMode])
   const currentGateSegment = visibleSegments.find((segment) => segment.options?.length > 0)
   const canRevealLine = revealedLineCount < dialogueLines.length
   const canRevealSegment = !canRevealLine && !currentGateSegment && revealedSegmentCount < availableSegments.length
@@ -1265,7 +1256,7 @@ export default function StoryInspector({ type, data, onClose }) {
         name: card.name,
       },
       { x: 560 + offsetIndex * 32, y: 220 + offsetIndex * 24 },
-      { autoSelect: true, expandRelations: false }
+      { autoSelect: false, expandRelations: false }
     )
   }
 
@@ -1323,10 +1314,15 @@ export default function StoryInspector({ type, data, onClose }) {
   }
 
   function handleSelectExecutionCondition(groupId, optionId) {
-    setExecutionConditionSelections((current) => ({
-      ...current,
-      [groupId]: optionId,
-    }))
+    setExecutionConditionSelections((current) => {
+      const next = { ...current }
+      if (optionId) {
+        next[groupId] = optionId
+      } else {
+        delete next[groupId]
+      }
+      return next
+    })
     setExecutionStepIndex(0)
   }
 
@@ -2228,6 +2224,7 @@ export default function StoryInspector({ type, data, onClose }) {
           executionSlotCards={executionSlotCards}
           executionConditionGroups={executionConditionGroups}
           executionConditionSelections={executionConditionSelections}
+          executionComplete={executionFlow.isComplete}
           onSelectCondition={handleSelectExecutionCondition}
           onOpenCard={handleOpenCard}
           onOpenAction={handleOpenAction}

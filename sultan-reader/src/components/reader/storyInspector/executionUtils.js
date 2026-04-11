@@ -71,16 +71,24 @@ function evaluateSlotCondition(card, selector, expectedValue) {
   return compareByOperator(actualValue, expectedValue, operator)
 }
 
-function collectAtomicConditions(condition, collector = []) {
+function isDisplayMetaKey(key) {
+  return String(key).endsWith('__c') || String(key).endsWith('__ca') || String(key).endsWith('__ci')
+}
+
+function buildConditionLabel(condition, cardsMap) {
+  return parseConditionObject(condition, cardsMap)[0] || Object.keys(condition || {})[0] || '未命名条件'
+}
+
+function extractAtomicEntries(condition, collector = []) {
   if (!condition || typeof condition !== 'object') return collector
 
   Object.entries(condition).forEach(([key, value]) => {
-    if (key.endsWith('__c') || key.endsWith('__ca') || key.endsWith('__ci')) return
+    if (isDisplayMetaKey(key)) return
     if (key === 'any' || key === 'all') {
       if (Array.isArray(value)) {
-        value.forEach((item) => collectAtomicConditions(item, collector))
+        value.forEach((item) => extractAtomicEntries(item, collector))
       } else if (isPlainObject(value)) {
-        collectAtomicConditions(value, collector)
+        extractAtomicEntries(value, collector)
       }
       return
     }
@@ -88,6 +96,269 @@ function collectAtomicConditions(condition, collector = []) {
   })
 
   return collector
+}
+
+function extractGroupIdFromKey(key) {
+  const rMatch = String(key).match(/^(r\d+):(.*)$/i)
+  if (rMatch) return rMatch[1].toLowerCase()
+
+  const slotMatch = String(key).match(/^!?(s\d+)(?:\.(.+))?$/i)
+  if (slotMatch && slotMatch[2]) return slotMatch[1].toLowerCase()
+
+  return null
+}
+
+function isSlotOptionKey(key) {
+  return /^!?(s\d+)\.(.+)$/i.test(String(key))
+}
+
+function evaluateAtomicCondition(key, value, context) {
+  const rMatch = String(key).match(/^(r\d+):(.*)$/i)
+  if (rMatch) {
+    const groupId = rMatch[1].toLowerCase()
+    const optionId = buildConditionOptionId(groupId, key, value)
+    if (!context.branchSelections?.[groupId]) {
+      return {
+        status: 'pending',
+        groupId,
+        key,
+        value,
+      }
+    }
+    return {
+      status: context.branchSelections[groupId] === optionId ? 'matched' : 'unmatched',
+      groupId,
+      key,
+      value,
+    }
+  }
+
+  const slotMatch = String(key).match(/^(!)?(s\d+)(?:\.(.+))?$/i)
+  if (slotMatch) {
+    const negate = Boolean(slotMatch[1])
+    const slotId = slotMatch[2].toLowerCase()
+    const selector = slotMatch[3] || ''
+    const card = context.slotCards?.[slotId] || null
+
+    if (!selector) {
+      const occupied = Boolean(card)
+      return {
+        status: negate ? (!occupied ? 'matched' : 'unmatched') : (occupied ? 'matched' : 'unmatched'),
+        groupId: slotId,
+        key,
+        value,
+      }
+    }
+
+    const optionId = buildConditionOptionId(slotId, key, value)
+    if (!context.branchSelections?.[slotId]) {
+      return {
+        status: 'pending',
+        groupId: slotId,
+        key,
+        value,
+      }
+    }
+
+    return {
+      status: context.branchSelections[slotId] === optionId ? 'matched' : 'unmatched',
+      groupId: slotId,
+      key,
+      value,
+    }
+  }
+
+  return {
+    status: 'matched',
+    groupId: null,
+    key,
+    value,
+  }
+}
+
+function analyzeAnyCondition(condition, context) {
+  const entries = Array.isArray(condition)
+    ? condition
+    : (isPlainObject(condition)
+      ? Object.entries(condition)
+        .filter(([key]) => !isDisplayMetaKey(key))
+        .map(([key, value]) => ({ [key]: value }))
+      : [])
+
+  if (entries.length === 0) return { status: 'matched' }
+
+  let pending = null
+  for (const entry of entries) {
+    const result = analyzeConditionNode(entry, context)
+    if (result.status === 'matched') return { status: 'matched' }
+    if (!pending && result.status === 'pending') pending = result
+  }
+
+  return pending || { status: 'unmatched' }
+}
+
+function analyzeAllCondition(condition, context) {
+  const entries = Array.isArray(condition)
+    ? condition
+    : (isPlainObject(condition)
+      ? Object.entries(condition)
+        .filter(([key]) => !isDisplayMetaKey(key))
+        .map(([key, value]) => ({ [key]: value }))
+      : [])
+
+  if (entries.length === 0) return { status: 'matched' }
+
+  let pending = null
+  for (const entry of entries) {
+    const result = analyzeConditionNode(entry, context)
+    if (result.status === 'unmatched') return result
+    if (!pending && result.status === 'pending') pending = result
+  }
+
+  return pending || { status: 'matched' }
+}
+
+function analyzeConditionNode(condition, context) {
+  if (!condition || typeof condition !== 'object') return { status: 'matched' }
+
+  let pending = null
+  for (const [key, value] of Object.entries(condition)) {
+    if (isDisplayMetaKey(key)) continue
+
+    let result
+    if (key === 'any') {
+      result = analyzeAnyCondition(value, context)
+    } else if (key === 'all') {
+      result = analyzeAllCondition(value, context)
+    } else {
+      result = evaluateAtomicCondition(key, value, context)
+    }
+
+    if (result.status === 'unmatched') return result
+    if (!pending && result.status === 'pending') pending = result
+  }
+
+  return pending || { status: 'matched' }
+}
+
+function findFirstAtomicForGroup(condition, groupId) {
+  const entries = extractAtomicEntries(condition)
+  return entries.find((entry) => extractGroupIdFromKey(entry.key) === groupId) || null
+}
+
+function hasMeaningfulResult(result) {
+  if (!result || typeof result !== 'object') return false
+  return Object.keys(result).some((key) => !isDisplayMetaKey(key))
+}
+
+function buildExecutionStepFromPhase(phase) {
+  return {
+    id: `${phase.phaseKey}:${phase.index}`,
+    kind: 'result',
+    phase: phase.phase || phase.phaseLabel || phase.phaseKey || '结算',
+    title: phase.title || '',
+    text: phase.text || '',
+    conditions: phase.conditions || [],
+    effects: phase.effects || [],
+    actions: (phase.actions || []).filter((action) => action?.targetType && action?.targetId),
+    popItems: phase.popItems || [],
+    tips: [],
+  }
+}
+
+function buildDicePromptStep(model, groupId) {
+  const stageMeta = model?.randomTextUp?.[groupId] || {}
+  return {
+    id: `dice:${groupId}`,
+    kind: 'dice',
+    phase: `骰子分支 ${groupId.toUpperCase()}`,
+    title: model?.randomText?.[groupId] || '',
+    text: stageMeta.text || '',
+    conditions: [],
+    effects: [],
+    actions: [],
+    popItems: [],
+    tips: [stageMeta.type_tips, stageMeta.low_target_tips].filter(Boolean),
+  }
+}
+
+function buildExecutionIntroStep(model) {
+  return {
+    id: 'execution:intro',
+    kind: 'intro',
+    phase: '仪式正文',
+    title: model?.title || '',
+    text: model?.intro || '',
+    conditions: [],
+    effects: [],
+    actions: [],
+    popItems: [],
+    tips: normalizeArray(model?.tipsText).filter(Boolean),
+  }
+}
+
+function pickDefaultSlotOption(group, selectedCard) {
+  if (!group?.options?.length) return null
+
+  const matched = group.options.find((option) => evaluateExecutionCondition(
+    { [option.rawKey]: option.rawValue },
+    {
+      branchSelections: {},
+      slotCards: { [group.id]: selectedCard },
+    }
+  ))
+
+  return matched?.id || group.options[0]?.id || null
+}
+
+function buildGroupDescription(model, groupId, slotCards) {
+  if (/^r\d+$/i.test(groupId)) {
+    return model?.randomText?.[groupId] || '请选择这次骰子分支的结果。'
+  }
+
+  const currentCard = slotCards?.[groupId]
+  if (currentCard?.name) {
+    return `当前带入：${currentCard.name}`
+  }
+
+  return '可根据当前卡槽卡牌切换对应条件。'
+}
+
+function collectGroupOptions(model, phases, startIndex, groupId, cardsMap, slotCards) {
+  const options = []
+
+  for (let index = startIndex; index < phases.length; index += 1) {
+    const phase = phases[index]
+    const atomic = findFirstAtomicForGroup(phase.raw?.condition || {}, groupId)
+    if (!atomic) break
+
+    const firstGroupId = extractGroupIdFromKey(atomic.key)
+    if (firstGroupId !== groupId) break
+
+    const optionId = buildConditionOptionId(groupId, atomic.key, atomic.value)
+    if (options.some((option) => option.id === optionId)) continue
+
+    const detail = /^r\d+$/i.test(groupId)
+      ? (model?.randomTextUp?.[groupId]?.text || '')
+      : ''
+
+    options.push({
+      id: optionId,
+      rawKey: atomic.key,
+      rawValue: atomic.value,
+      label: buildConditionLabel({ [atomic.key]: atomic.value }, cardsMap),
+      detail,
+    })
+  }
+
+  return {
+    id: groupId,
+    title: /^r\d+$/i.test(groupId) ? `骰子分支 ${groupId.toUpperCase()}` : `${groupId.toUpperCase()} 条件`,
+    description: buildGroupDescription(model, groupId, slotCards),
+    options,
+    isDice: /^r\d+$/i.test(groupId),
+    stageId: /^r\d+$/i.test(groupId) ? groupId : null,
+  }
 }
 
 export function buildConditionOptionId(groupId, key, value) {
@@ -113,165 +384,88 @@ export function resolveSelectedSlotCard(model, slotId, slotSelections, settlemen
 
 export function evaluateExecutionCondition(condition, context) {
   if (!condition || typeof condition !== 'object') return true
-
-  return Object.entries(condition).every(([key, value]) => {
-    if (key.endsWith('__c') || key.endsWith('__ca') || key.endsWith('__ci')) return true
-
-    if (key === 'any') {
-      const items = Array.isArray(value)
-        ? value
-        : (isPlainObject(value) ? Object.entries(value).map(([subKey, subValue]) => ({ [subKey]: subValue })) : [])
-      if (items.length === 0) return true
-      return items.some((item) => evaluateExecutionCondition(item, context))
-    }
-
-    if (key === 'all') {
-      const items = Array.isArray(value)
-        ? value
-        : (isPlainObject(value) ? Object.entries(value).map(([subKey, subValue]) => ({ [subKey]: subValue })) : [])
-      if (items.length === 0) return true
-      return items.every((item) => evaluateExecutionCondition(item, context))
-    }
-
-    const rMatch = String(key).match(/^(r\d+):(.*)$/i)
-    if (rMatch) {
-      const stageId = rMatch[1].toLowerCase()
-      const optionId = buildConditionOptionId(stageId, key, value)
-      return context.branchSelections?.[stageId] === optionId
-    }
-
-    const slotMatch = String(key).match(/^(!)?(s\d+)(?:\.(.+))?$/i)
-    if (slotMatch) {
-      const negate = Boolean(slotMatch[1])
-      const slotId = slotMatch[2].toLowerCase()
-      const selector = slotMatch[3] || ''
-      const card = context.slotCards?.[slotId] || null
-
-      if (!selector) {
-        const occupied = Boolean(card)
-        return negate ? !occupied : occupied
-      }
-
-      const optionId = buildConditionOptionId(slotId, key, value)
-      if (context.branchSelections?.[slotId]) {
-        return context.branchSelections[slotId] === optionId
-      }
-
-      const matched = evaluateSlotCondition(card, selector, value)
-      return negate ? !matched : matched
-    }
-
-    return true
-  })
+  return analyzeConditionNode(condition, context).status === 'matched'
 }
 
-export function buildExecutionConditionGroups(model, cardsMap, slotCards) {
-  const groups = new Map()
-
-  ;(model?.rawPhases || []).forEach((phase) => {
-    collectAtomicConditions(phase.raw?.condition || {}).forEach(({ key, value }) => {
-      const rMatch = String(key).match(/^(r\d+):(.*)$/i)
-      if (rMatch) {
-        const stageId = rMatch[1].toLowerCase()
-        const groupId = stageId
-        const group = groups.get(groupId) || {
-          id: groupId,
-          title: `骰子分支 ${stageId.toUpperCase()}`,
-          description: model?.randomText?.[stageId] || '请选择这次骰子检定的结果分支。',
-          options: [],
-          isDice: true,
-          stageId,
-        }
-        const optionId = buildConditionOptionId(groupId, key, value)
-        if (!group.options.some((option) => option.id === optionId)) {
-          group.options.push({
-            id: optionId,
-            label: parseConditionObject({ [key]: value }, cardsMap)[0] || key,
-            detail: model?.randomTextUp?.[stageId]?.text || '',
-          })
-        }
-        groups.set(groupId, group)
-        return
-      }
-
-      const slotMatch = String(key).match(/^!?((s\d+))(?:\.(.+))?$/i)
-      if (!slotMatch || !slotMatch[3]) return
-
-      const slotId = slotMatch[2].toLowerCase()
-      const group = groups.get(slotId) || {
-        id: slotId,
-        title: `${slotId.toUpperCase()} 条件`,
-        description: slotCards?.[slotId]?.name ? `当前带入：${slotCards[slotId].name}` : '可手动调整当前卡槽对应条件。',
-        options: [],
-        isDice: false,
-      }
-
-      const optionId = buildConditionOptionId(slotId, key, value)
-      if (!group.options.some((option) => option.id === optionId)) {
-        group.options.push({
-          id: optionId,
-          label: parseConditionObject({ [key]: value }, cardsMap)[0] || key,
-          detail: '',
-        })
-      }
-      groups.set(slotId, group)
-    })
-  })
-
-  return Array.from(groups.values())
-}
-
-export function buildExecutionSteps(model, context) {
+export function buildExecutionFlow(model, context = {}) {
   const steps = []
-  const promptedDiceStages = new Set()
+  const conditionGroups = []
+  const autoSelections = {}
+  const resolvedSelections = { ...(context.branchSelections || {}) }
+  const shownDiceSteps = new Set()
+  const phases = model?.rawPhases || []
 
-  for (const phase of (model?.rawPhases || [])) {
-    const rawCondition = phase.raw?.condition || {}
-    const stageKeys = phase.rStageKeys || []
-    const nonDiceConditions = Object.fromEntries(
-      Object.entries(rawCondition).filter(([key]) => !String(key).match(/^r\d+:/i))
-    )
-
-    if (!evaluateExecutionCondition(nonDiceConditions, context)) {
-      continue
-    }
-
-    for (const stageId of stageKeys) {
-      if (promptedDiceStages.has(stageId)) continue
-      promptedDiceStages.add(stageId)
-      const stageMeta = model?.randomTextUp?.[stageId] || {}
-      steps.push({
-        id: `dice:${stageId}`,
-        kind: 'dice',
-        stageId,
-        phase: '结算骰子',
-        title: model?.randomText?.[stageId] || stageId.toUpperCase(),
-        text: stageMeta.text || '',
-        tips: [stageMeta.type_tips, stageMeta.low_target_tips].filter(Boolean),
-        conditions: [],
-        effects: [],
-        actions: [],
-        popItems: [],
-      })
-    }
-
-    if (!evaluateExecutionCondition(rawCondition, context)) {
-      continue
-    }
-
-    steps.push({
-      ...phase,
-      id: `${phase.phaseKey}:${phase.index}`,
-      kind: 'result',
-      tips: [],
-    })
-
-    if (phase.raw?.result && Object.keys(phase.raw.result).some((key) => !String(key).endsWith('__c') && !String(key).endsWith('__ca') && !String(key).endsWith('__ci'))) {
-      break
-    }
+  if (model?.title || model?.intro || normalizeArray(model?.tipsText).length > 0) {
+    steps.push(buildExecutionIntroStep(model))
   }
 
-  return steps
+  let isComplete = false
+  let index = 0
+
+  while (index < phases.length) {
+    const phase = phases[index]
+    const analysis = analyzeConditionNode(phase.raw?.condition || {}, {
+      branchSelections: resolvedSelections,
+      slotCards: context.slotCards || {},
+    })
+
+    if (analysis.status === 'unmatched') {
+      index += 1
+      continue
+    }
+
+    if (analysis.status === 'pending' && analysis.groupId) {
+      const groupId = analysis.groupId
+      let group = conditionGroups.find((entry) => entry.id === groupId) || null
+
+      if (!group) {
+        group = collectGroupOptions(model, phases, index, groupId, context.cardsMap, context.slotCards || {})
+        if (group.options.length > 0) {
+          conditionGroups.push(group)
+        }
+      }
+
+      if (/^r\d+$/i.test(groupId) && !shownDiceSteps.has(groupId)) {
+        shownDiceSteps.add(groupId)
+        steps.push(buildDicePromptStep(model, groupId))
+      }
+
+      if (!group || group.options.length === 0) {
+        break
+      }
+
+      if (!resolvedSelections[groupId] && !group.isDice) {
+        const selectedCard = context.slotCards?.[groupId] || null
+        const autoOptionId = pickDefaultSlotOption(group, selectedCard)
+        if (autoOptionId) {
+          resolvedSelections[groupId] = autoOptionId
+          autoSelections[groupId] = autoOptionId
+          continue
+        }
+      }
+
+      if (!resolvedSelections[groupId]) {
+        break
+      }
+
+      continue
+    }
+
+    steps.push(buildExecutionStepFromPhase(phase))
+    if (hasMeaningfulResult(phase.raw?.result)) {
+      isComplete = true
+      break
+    }
+
+    index += 1
+  }
+
+  return {
+    steps,
+    conditionGroups,
+    autoSelections,
+    isComplete,
+  }
 }
 
 export function resolveExecutionTargetImage(targetType, targetData, cardsById) {
@@ -279,7 +473,7 @@ export function resolveExecutionTargetImage(targetType, targetData, cardsById) {
   if (targetType === 'card') {
     const card = cardsById?.[String(targetData.id)] || targetData
     const resource = card?.resource
-    return Array.isArray(resource) ? resource[0] || null : resource || null
+    return Array.isArray(resource) ? resource[0] || null : resource || card?.image || null
   }
   if (targetType === 'rite' || targetType === 'event') return targetData.icon || null
   if (targetType === 'over') return targetData.bg || null
