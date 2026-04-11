@@ -57,6 +57,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   configGetCardsLite: () =>
     ipcRenderer.invoke('config:getCardsLite'),
 
+  configGetContentNameMap: (forceRefresh = false) =>
+    ipcRenderer.invoke('config:getContentNameMap', forceRefresh),
+
   // ── asset: 组 ───────────────────────────────────────────────────────────────
 
   /** 设置 AssetStudio CLI 路径 */
@@ -104,4 +107,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   /** 写入用户设置 */
   settingsSet: (key, value) =>
     ipcRenderer.invoke('settings:set', key, value),
+
+  storageGetJson: (key) =>
+    ipcRenderer.invoke('storage:getJson', key),
+
+  storageSetJson: (key, value) =>
+    ipcRenderer.invoke('storage:setJson', key, value),
+
+  storageRemoveJson: (key) =>
+    ipcRenderer.invoke('storage:removeJson', key),
 });

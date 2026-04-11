@@ -64,6 +64,51 @@ let searchIndex = [];
 /** 主窗口引用 */
 let mainWindow = null;
 
+const PERSISTENT_STORAGE_FILES = {
+  contentNameMap: 'content-name-map.json',
+  readingState: 'reading-state.json',
+};
+
+function getDataRoot() {
+  return path.join(app.getPath('appData'), 'sultan-reader-data');
+}
+
+function getPersistentDataDir() {
+  const dir = path.join(getDataRoot(), 'persistent');
+  ensureDir(dir);
+  return dir;
+}
+
+function getPersistentStorageFile(key) {
+  const fileName = PERSISTENT_STORAGE_FILES[key];
+  if (!fileName) return null;
+  return path.join(getPersistentDataDir(), fileName);
+}
+
+function readPersistentJson(key, fallbackValue = null) {
+  const filePath = getPersistentStorageFile(key);
+  if (!filePath || !fs.existsSync(filePath)) return fallbackValue;
+  try {
+    return JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+  } catch {
+    return fallbackValue;
+  }
+}
+
+function writePersistentJson(key, value) {
+  const filePath = getPersistentStorageFile(key);
+  if (!filePath) return false;
+  fs.writeFileSync(filePath, JSON.stringify(value ?? null, null, 2), 'utf-8');
+  return true;
+}
+
+function removePersistentJson(key) {
+  const filePath = getPersistentStorageFile(key);
+  if (!filePath || !fs.existsSync(filePath)) return false;
+  fs.unlinkSync(filePath);
+  return true;
+}
+
 /** 读取卡牌总表（cache/single/cards.json） */
 function readCardsCatalog() {
   const cardsPath = path.join(getCacheDir(), 'single', 'cards.json');
@@ -133,6 +178,114 @@ function readOverEntries() {
     }));
 }
 
+function listCacheEntriesByType(type) {
+  if (type === 'card') {
+    const cards = readCardsCatalog();
+    return Object.values(cards)
+      .filter((card) => card && card.id != null)
+      .map((card) => ({
+        id: String(card.id),
+        name: card.name || null,
+        text: card.text || null,
+        title: card.title || null,
+        rare: card.rare ?? null,
+        image: Array.isArray(card.resource) ? (card.resource[0] || null) : (card.resource || null),
+      }));
+  }
+
+  if (type === 'over') {
+    return readOverEntries().map((entry) => ({
+      id: entry.id,
+      name: entry.name || null,
+      text: entry.text || null,
+      title: entry.title || entry.sub_name || null,
+      icon: entry.icon || null,
+      image: entry.bg || null,
+    }));
+  }
+
+  const cacheDir = getCacheDir();
+  const typeDir = path.join(cacheDir, type);
+  if (!fs.existsSync(typeDir)) return [];
+
+  const files = fs.readdirSync(typeDir).filter((file) => file.endsWith('.json'));
+  const result = [];
+
+  for (const file of files) {
+    const id = path.basename(file, '.json');
+    try {
+      const data = JSON.parse(fs.readFileSync(path.join(typeDir, file), 'utf-8'));
+      let image = null;
+
+      if (type === 'loot') {
+        const cards = readCardsCatalog();
+        const firstCardItem = (Array.isArray(data.item) ? data.item : []).find((item) => item?.type === 'card' && item.id != null);
+        const previewCard = firstCardItem ? cards[String(firstCardItem.id)] : null;
+        image = previewCard
+          ? (Array.isArray(previewCard.resource) ? (previewCard.resource[0] || null) : (previewCard.resource || null))
+          : null;
+      }
+
+      result.push({
+        id,
+        name: data.name || data.dialog_tree_id || null,
+        text: data.text || data.description || null,
+        title: data.title || data.sub_name || null,
+        image: data.pic || data.icon || image || null,
+        icon: type === 'rite' ? (data.icon || null) : undefined,
+        pic: type === 'after_story'
+          ? (Array.isArray(data.extra) ? (data.extra.find((entry) => entry?.pic)?.pic || null) : null)
+          : undefined,
+        rare: type === 'loot' ? (() => {
+          const cards = readCardsCatalog();
+          const firstCardItem = (Array.isArray(data.item) ? data.item : []).find((item) => item?.type === 'card' && item.id != null);
+          return firstCardItem ? (cards[String(firstCardItem.id)]?.rare ?? null) : null;
+        })() : undefined,
+      });
+    } catch {
+      result.push({ id, name: null, text: null });
+    }
+  }
+
+  return result;
+}
+
+function buildPersistentContentNameMap() {
+  const types = ['card', 'rite', 'event', 'loot', 'over', 'after_story', 'dt'];
+  const nameMap = {};
+
+  for (const type of types) {
+    for (const entry of listCacheEntriesByType(type)) {
+      if (!entry?.id) continue;
+      nameMap[`${type}:${entry.id}`] = {
+        type,
+        id: String(entry.id),
+        name: entry.name || entry.title || String(entry.id),
+        title: entry.title || null,
+        text: entry.text || null,
+        image: entry.image || null,
+        icon: entry.icon || null,
+        rare: entry.rare ?? null,
+      };
+    }
+  }
+
+  return nameMap;
+}
+
+function readOrBuildContentNameMap(force = false) {
+  if (!force) {
+    const cached = readPersistentJson('contentNameMap', {});
+    if (cached && Object.keys(cached).length > 0) {
+      return cached;
+    }
+  }
+
+  const nextMap = buildPersistentContentNameMap();
+  writePersistentJson('contentNameMap', nextMap);
+  return nextMap;
+}
+
 // ─── 初始化 electron-store ────────────────────────────────────────────────────
 
 /**
@@ -145,7 +298,7 @@ async function initStore() {
   // 使用 appData（而非 userData）下的独立目录，避免被 Electron session Cache 清理
   // userData = C:\Users\...\AppData\Roaming\sultan-reader（Electron 会清理其中的 Cache 目录）
   // 改用 appData\sultan-reader-data\ 作为数据根目录
-  const dataRoot = path.join(app.getPath('appData'), 'sultan-reader-data');
+  const dataRoot = getDataRoot();
   const defaultCacheDir    = path.join(dataRoot, 'cache');
   const defaultResourceDir = path.join(dataRoot, 'resource');
 
@@ -359,6 +512,12 @@ ipcMain.handle('config:rebuildCache', async (event) => {
     console.warn('生成 cards_lite.json 失败:', e.message);
   }
 
+  try {
+    writePersistentJson('contentNameMap', buildPersistentContentNameMap());
+  } catch (e) {
+    console.warn('生成内容名称映射缓存失败:', e.message);
+  }
+
   // 统计总处理文件数
   let total = 0;
   for (const map of Object.values(results)) {
@@ -441,78 +600,11 @@ ipcMain.handle('config:readCache', async (_event, type, id) => {
  * 扫描 <cacheDir>/<type>/ 目录，返回 [{ id, name, text }]
  */
 ipcMain.handle('config:listCache', async (_event, type) => {
-  if (type === 'card') {
-    const cards = readCardsCatalog();
-    return Object.values(cards)
-      .filter((card) => card && card.id != null)
-      .map((card) => ({
-      id: String(card.id),
-      name: card.name || null,
-      text: card.text || null,
-      title: card.title || null,
-      rare: card.rare ?? null,
-      image: Array.isArray(card.resource) ? (card.resource[0] || null) : (card.resource || null),
-      }));
-  }
+  return listCacheEntriesByType(type);
+});
 
-  if (type === 'over') {
-    return readOverEntries().map((entry) => ({
-      id: entry.id,
-      name: entry.name || null,
-      text: entry.text || null,
-      title: entry.title || entry.sub_name || null,
-      icon: entry.icon || null,
-      image: entry.bg || null,
-    }));
-  }
-
-  const cacheDir = getCacheDir();
-  const typeDir  = path.join(cacheDir, type);
-  if (!fs.existsSync(typeDir)) return [];
-
-  const files = fs.readdirSync(typeDir).filter(f => f.endsWith('.json'));
-  const result = [];
-
-  for (const file of files) {
-    const id = path.basename(file, '.json');
-    try {
-      const data = JSON.parse(fs.readFileSync(path.join(typeDir, file), 'utf-8'));
-      let image = null;
-
-      if (type === 'loot') {
-        const cards = readCardsCatalog();
-        const firstCardItem = (Array.isArray(data.item) ? data.item : []).find((item) => item?.type === 'card' && item.id != null);
-        const previewCard = firstCardItem ? cards[String(firstCardItem.id)] : null;
-        image = previewCard
-          ? (Array.isArray(previewCard.resource) ? (previewCard.resource[0] || null) : (previewCard.resource || null))
-          : null;
-      }
-
-      result.push({
-        id,
-        name: data.name || data.dialog_tree_id || null,
-        text: data.text || data.description || null,
-        title: data.title || data.sub_name || null,
-        image,
-        // 仪式：icon 字段
-        icon: type === 'rite' ? (data.icon || null) : undefined,
-        // 后日谈：取第一个 extra 的 pic 作为预览图
-        pic: type === 'after_story' ? (
-          Array.isArray(data.extra) ? (data.extra.find((e) => e?.pic)?.pic || null) : null
-        ) : undefined,
-        // 稀有度（卡牌已在上面单独处理，这里给 loot 的关联卡牌稀有度）
-        rare: type === 'loot' ? (() => {
-          const cards = readCardsCatalog();
-          const firstCardItem = (Array.isArray(data.item) ? data.item : []).find((item) => item?.type === 'card' && item.id != null);
-          return firstCardItem ? (cards[String(firstCardItem.id)]?.rare ?? null) : null;
-        })() : undefined,
-      });
-    } catch {
-      result.push({ id, name: null, text: null });
-    }
-  }
-
-  return result;
+ipcMain.handle('config:getContentNameMap', async (_event, forceRefresh = false) => {
+  return readOrBuildContentNameMap(Boolean(forceRefresh));
 });
 
 /**
@@ -853,6 +945,18 @@ ipcMain.handle('settings:get', async (_event, key) => {
  */
 ipcMain.handle('settings:set', async (_event, key, value) => {
   if (settings) settings.set(key, value);
+});
+
+ipcMain.handle('storage:getJson', async (_event, key) => {
+  return readPersistentJson(key, null);
+});
+
+ipcMain.handle('storage:setJson', async (_event, key, value) => {
+  return writePersistentJson(key, value);
+});
+
+ipcMain.handle('storage:removeJson', async (_event, key) => {
+  return removePersistentJson(key);
 });
 
 // ─── 应用生命周期 ─────────────────────────────────────────────────────────────

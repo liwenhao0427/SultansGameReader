@@ -379,25 +379,10 @@ function resolveStepPopCard(pop, slotOverrideCards, model, slotSelections) {
 }
 
 function StoryPopLine({ pop, card }) {
-  const { url } = useResolvedImage(card?.image)
-
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '56px minmax(0,1fr)', gap: 10, alignItems: 'start' }}>
-      <div style={{
-        width: 56,
-        height: 56,
-        borderRadius: 12,
-        overflow: 'hidden',
-        background: 'rgba(12, 10, 8, 0.42)',
-        border: '1px solid rgba(244, 232, 206, 0.18)',
-      }}>
-        {url ? (
-          <img src={url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top center' }} />
-        ) : (
-          <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ead7b2', fontSize: 11 }}>
-            角色
-          </div>
-        )}
+    <div style={{ display: 'grid', gridTemplateColumns: '48px minmax(0,1fr)', gap: 12, alignItems: 'start' }}>
+      <div style={{ paddingTop: 2 }}>
+        <CardPortrait card={card} compact showName={false} widthOverride={48} />
       </div>
       <div style={{ color: '#f5ecd9', fontSize: 14, lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>
         {pop.text}
@@ -1641,13 +1626,30 @@ export default function StoryInspector({ type, data, onClose }) {
 
     async function loadExecutionTargetNames() {
       const next = {}
+      let contentNameMap = {}
       const actionTargets = executionSteps
         .flatMap((step) => step.actions || [])
         .filter((action) => action?.targetType && action?.targetId && action.targetType !== 'card')
 
+      try {
+        contentNameMap = await window.electronAPI.configGetContentNameMap()
+      } catch {
+        contentNameMap = {}
+      }
+
       for (const action of actionTargets) {
         const key = `${action.targetType}:${action.targetId}`
         if (next[key]) continue
+        const cachedTarget = contentNameMap?.[key]
+
+        if (cachedTarget) {
+          next[key] = {
+            name: cachedTarget.name || cachedTarget.title || String(action.targetId),
+            image: cachedTarget.image || cachedTarget.icon || null,
+          }
+          continue
+        }
+
         try {
           const result = await window.electronAPI.configReadCache(action.targetType, String(action.targetId))
           next[key] = {
@@ -2932,19 +2934,6 @@ const slotTagButtonStyle = {
   fontSize: 10,
   lineHeight: 1.3,
   cursor: 'pointer',
-}
-
-const slotBubbleStyle = {
-  maxWidth: 180,
-  padding: '8px 10px',
-  borderRadius: 14,
-  background: 'rgba(246, 237, 214, 0.96)',
-  color: '#4a3018',
-  fontSize: 12,
-  lineHeight: 1.55,
-  boxShadow: '0 12px 26px rgba(0, 0, 0, 0.24)',
-  border: '1px solid rgba(188, 154, 98, 0.28)',
-  marginBottom: 4,
 }
 
 const metaChipCompactStyle = {

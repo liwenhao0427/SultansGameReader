@@ -49,6 +49,24 @@ function normalizeArray(value) {
   return Array.isArray(value) ? value : [value]
 }
 
+function formatNegatedLabel(label) {
+  return `【不是】${label}`
+}
+
+function formatCommentCondition(key, value, comment) {
+  if (!comment) return null
+
+  if (key === '!is') {
+    return formatNegatedLabel(comment)
+  }
+
+  if (key.startsWith('!')) {
+    return formatNegatedLabel(comment)
+  }
+
+  return comment
+}
+
 function formatComparator(operator, value) {
   switch (operator) {
     case '>=':
@@ -225,9 +243,10 @@ function formatCardMutationKey(key, value, cardsMap) {
  * 解析单个条件。
  */
 export function parseCondition(key, value, comment, cardsMap) {
-  if (comment) return comment
-
   let match
+
+  const commentCondition = formatCommentCondition(key, value, comment)
+  if (commentCondition && key !== '!is') return commentCondition
 
   if ((match = key.match(/^(!)?(table_have|have|hand_have)\.(.+)$/))) {
     const scopeMap = {
@@ -255,8 +274,11 @@ export function parseCondition(key, value, comment, cardsMap) {
   if (key === 'is' || key === '!is') {
     const values = normalizeArray(value)
       .map((item) => resolveCardName(item, cardsMap))
-      .join(' / ')
-    return `${key === '!is' ? '不存在' : '存在'} 卡牌 ${values}`
+      .filter(Boolean)
+    if (key === '!is') {
+      return values.map((item) => formatNegatedLabel(item)).join(' / ') || formatNegatedLabel('指定卡牌')
+    }
+    return `存在 卡牌 ${values.join(' / ')}`
   }
 
   if (key === 'type' || key === '!type') {

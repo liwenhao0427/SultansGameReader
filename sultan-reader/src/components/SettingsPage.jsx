@@ -139,11 +139,12 @@ export default function SettingsPage({ onNavigate }) {
     }
   }
 
-  function handleClearReadingState() {
+  async function handleClearReadingState() {
     if (!window.confirm('确认清空全部已读、未读与收藏状态吗？此操作不会清除缓存。')) return
 
     resetReadingState()
-    useReadingStateStore.persist?.clearStorage?.()
+    await window.electronAPI.storageRemoveJson?.('readingState')
+    await useReadingStateStore.persist?.rehydrate?.()
     alert('阅读状态已清空')
   }
 

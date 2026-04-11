@@ -329,6 +329,7 @@ function buildSlotCandidate(slotId, pop, index, cardsMap, cardsById) {
   const anyCondition = condition.any && typeof condition.any === 'object' ? condition.any : null
   const directIs = normalizeArray(condition.is)
   const anyIs = normalizeArray(anyCondition?.is)
+  const parsedConditionText = parseConditionObject(condition, cardsMap).join(' / ')
 
   let label = `候选 ${index + 1}`
   let cards = []
@@ -352,35 +353,9 @@ function buildSlotCandidate(slotId, pop, index, cardsMap, cardsById) {
       label = cards[0].name
       mode = 'card'
     } else {
-      const positiveLabels = []
-      const negativeLabels = []
-      const negativeIs = normalizeArray(condition['!is'])
-
-      if (negativeIs.length > 0) {
-        negativeLabels.push(summarizeLabel(condition['!is__c'] || '指定卡牌', '非'))
-      }
-
-      for (const [key, value] of Object.entries(condition)) {
-        if (key.endsWith('__c') || key.endsWith('__ca') || key.endsWith('__ci')) continue
-        if (key === 'any' || key === 'all' || key === 'is' || key === '!is') continue
-        if (typeof value !== 'number') continue
-
-        const comment = condition[`${key}__c`] || null
-        const name = comment || key.replace(/^!/, '')
-
-        if (key.startsWith('!')) {
-          negativeLabels.push(summarizeLabel(name, '非'))
-        } else {
-          positiveLabels.push(name)
-        }
-      }
-
-      if (positiveLabels.length > 0) {
-        label = positiveLabels.join(' / ')
+      if (parsedConditionText) {
+        label = parsedConditionText
         mode = 'tag'
-      } else if (negativeLabels.length > 0) {
-        label = negativeLabels.join(' / ')
-        mode = 'fallback'
       }
     }
   }
@@ -391,7 +366,7 @@ function buildSlotCandidate(slotId, pop, index, cardsMap, cardsById) {
     mode,
     cards,
     bubbleText: extractPopBubbleText(pop?.result, slotId),
-    conditionText: parseConditionObject(condition, cardsMap).join(' / '),
+    conditionText: parsedConditionText,
     isEmpty: false,
   }
 }

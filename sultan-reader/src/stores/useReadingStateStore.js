@@ -8,6 +8,8 @@ export const CONTENT_STATE_FILTERS = [
   { key: 'read', label: '已读' },
 ]
 
+const READING_STATE_STORAGE_KEY = 'readingState'
+
 export function makeContentStateKey(type, id) {
   return `${type}:${id}`
 }
@@ -21,6 +23,35 @@ export function matchesContentStateFilter(entryState, filterKey) {
   if (filterKey === 'unread') return !entryState.read
   if (filterKey === 'favorite') return entryState.favorite
   return true
+}
+
+function createReadingStateStorage() {
+  return {
+    getItem: async () => {
+      if (window.electronAPI?.storageGetJson) {
+        const persisted = await window.electronAPI.storageGetJson(READING_STATE_STORAGE_KEY)
+        return persisted == null ? null : JSON.stringify(persisted)
+      }
+
+      return window.localStorage.getItem('sultan-reading-state')
+    },
+    setItem: async (_name, value) => {
+      if (window.electronAPI?.storageSetJson) {
+        return window.electronAPI.storageSetJson(READING_STATE_STORAGE_KEY, JSON.parse(value))
+      }
+
+      window.localStorage.setItem('sultan-reading-state', value)
+      return true
+    },
+    removeItem: async () => {
+      if (window.electronAPI?.storageRemoveJson) {
+        return window.electronAPI.storageRemoveJson(READING_STATE_STORAGE_KEY)
+      }
+
+      window.localStorage.removeItem('sultan-reading-state')
+      return true
+    },
+  }
 }
 
 const useReadingStateStore = create(
@@ -64,7 +95,7 @@ const useReadingStateStore = create(
     }),
     {
       name: 'sultan-reading-state',
-      storage: createJSONStorage(() => localStorage),
+      storage: createJSONStorage(createReadingStateStorage),
     }
   )
 )
