@@ -93,7 +93,7 @@ export const AFTER_STORY_VIEWER_STYLE = {
   },
   modalPanel: {
     width: 'min(1040px, 92vw)',
-    maxHeight: '84vh',
+    height: '84vh',
     borderRadius: 28,
     border: '1px solid rgba(212, 184, 126, 0.14)',
     background: 'linear-gradient(180deg, rgba(26, 21, 16, 0.98), rgba(16, 13, 10, 0.98))',
@@ -161,21 +161,28 @@ export const AFTER_STORY_VIEWER_STYLE = {
     color: 'rgba(241, 232, 213, 0.64)',
     fontSize: 12,
   },
-  conditionList: {
-    display: 'grid',
+  conditionTagList: {
+    display: 'flex',
+    flexWrap: 'wrap',
     gap: 8,
-    marginTop: 14,
+    marginTop: 10,
+    marginBottom: 6,
   },
-  conditionText: {
-    color: '#ead8b6',
-    fontSize: 13,
-    lineHeight: 1.7,
-  },
-  conditionSection: {
-    color: '#cda86a',
+  conditionTag: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    padding: '5px 11px',
+    borderRadius: 999,
     fontSize: 12,
-    letterSpacing: '0.08em',
-    marginTop: 4,
+    lineHeight: 1.4,
+    border: '1px solid rgba(212, 184, 126, 0.12)',
+    background: 'rgba(212, 184, 126, 0.1)',
+    whiteSpace: 'nowrap',
+  },
+  conditionSectionTag: {
+    background: 'rgba(212, 184, 126, 0.06)',
+    borderStyle: 'dashed',
+    letterSpacing: '0.04em',
   },
 }
 
@@ -217,14 +224,60 @@ function VariantText({ item }) {
   )
 }
 
+function normalizeConditionText(text) {
+  return String(text || '')
+    .replace(/[。！？；，、.!?;:\s]/g, '')
+    .trim()
+}
+
+function getToneByFrequency(count, total) {
+  if (!count || total <= 1) return 'p20'
+
+  const ratio = count / total
+  if (ratio >= 1) return 'p100'
+  if (ratio >= 0.8) return 'p80'
+  if (ratio >= 0.6) return 'p60'
+  if (ratio >= 0.4) return 'p40'
+  return 'p20'
+}
+
 export function buildAfterStoryVariantGroup(group, cardsById, overMap = {}) {
+  const analyzedItems = buildAfterStoryVariantAnalysis(group.items).map((item) => ({
+    ...item,
+    conditionLines: parseAfterStoryConditionObject(item.condition, cardsById),
+  }))
+
+  const conditionCountMap = new Map()
+  for (const item of analyzedItems) {
+    const uniqueConditionSet = new Set(
+      (item.conditionLines || [])
+        .filter((line) => line.type === 'condition')
+        .map((line) => normalizeConditionText(line.text))
+        .filter(Boolean)
+    )
+
+    uniqueConditionSet.forEach((normalizedText) => {
+      conditionCountMap.set(normalizedText, (conditionCountMap.get(normalizedText) || 0) + 1)
+    })
+  }
+
   return {
     ...group,
     fallbackImage: resolveAfterStoryFallbackImage(group.afterStoryName, cardsById),
     overName: overMap[group.overId]?.name || group.overName || '',
-    items: buildAfterStoryVariantAnalysis(group.items).map((item) => ({
+    items: analyzedItems.map((item) => ({
       ...item,
-      conditionLines: parseAfterStoryConditionObject(item.condition, cardsById),
+      conditionLines: (item.conditionLines || []).map((line) => {
+        if (line.type !== 'condition') return line
+
+        const normalizedText = normalizeConditionText(line.text)
+        return {
+          ...line,
+          tone: normalizedText
+            ? getToneByFrequency(conditionCountMap.get(normalizedText), analyzedItems.length)
+            : 'p100',
+        }
+      }),
     })),
   }
 }
@@ -364,21 +417,27 @@ export function AfterStoryVariantModal({
                 </div>
 
                 <div style={{ marginTop: 14 }}>
+                  {activeItem?.conditionLines?.length > 0 && (
+                    <div style={AFTER_STORY_VIEWER_STYLE.conditionTagList}>
+                      {activeItem.conditionLines.map((line, index) => (
+                        <span
+                          key={`${line.type}:${index}:${line.text}`}
+                          style={{
+                            ...AFTER_STORY_VIEWER_STYLE.conditionTag,
+                            ...(line.type === 'section' ? AFTER_STORY_VIEWER_STYLE.conditionSectionTag : null),
+                            ...(line.type === 'condition'
+                              ? AFTER_STORY_TONE_STYLE[line.tone] || AFTER_STORY_TONE_STYLE.p100
+                              : AFTER_STORY_TONE_STYLE.p100),
+                          }}
+                        >
+                          {line.text}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
                   <VariantText item={activeItem} />
                 </div>
-
-                {activeItem?.conditionLines?.length > 0 && (
-                  <div style={AFTER_STORY_VIEWER_STYLE.conditionList}>
-                    {activeItem.conditionLines.map((line, index) => (
-                      <div
-                        key={`${line.type}:${index}:${line.text}`}
-                        style={line.type === 'section' ? AFTER_STORY_VIEWER_STYLE.conditionSection : AFTER_STORY_VIEWER_STYLE.conditionText}
-                      >
-                        {line.text}
-                      </div>
-                    ))}
-                  </div>
-                )}
 
                 <div style={AFTER_STORY_VIEWER_STYLE.modalLegend}>
                   <span style={{ ...AFTER_STORY_VIEWER_STYLE.relatedBadge, ...AFTER_STORY_TONE_STYLE.p100 }}>100%</span>
