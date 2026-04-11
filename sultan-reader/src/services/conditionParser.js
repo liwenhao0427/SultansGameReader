@@ -1,129 +1,201 @@
 /**
- * conditionParser.js
- * 将游戏配置中编码在 key 名里的条件表达式转换为人类可读文本
+ * 条件与结果解析工具
+ * 负责把配置里的 key/value 表达式转成更适合阅读的中文文本。
  */
 
-// 需要跳过的注释后缀
-const COMMENT_SUFFIXES = ['__c', '__ca', '__ci'];
+const COMMENT_SUFFIXES = ['__c', '__ca', '__ci']
 
-/**
- * 从 cardsMap 中查找卡牌名称，找不到则返回原始 ID
- * @param {string} id
- * @param {Map<string, string>} cardsMap
- * @returns {string}
- */
 function resolveCardName(id, cardsMap) {
-  return (cardsMap && cardsMap.get(id)) || id;
+  return (cardsMap && cardsMap.get(String(id))) || String(id)
+}
+
+function getComment(source, key) {
+  if (!source || typeof source !== 'object') return null
+  return source[`${key}__c`] || source[`${key}__ca`] || source[`${key}__ci`] || null
+}
+
+function formatHaveTarget(target, cardsMap) {
+  const parts = String(target).split('.').filter(Boolean)
+  if (parts.length <= 1) return resolveCardName(target, cardsMap)
+
+  const [cardId, ...rest] = parts
+  return `${resolveCardName(cardId, cardsMap)}（${rest.join(' / ')}）`
 }
 
 /**
- * 将单个条件 key 解析为人类可读字符串
- * @param {string} key - 条件 key（如 "counter.7000490>="、"!have.妻子"）
- * @param {*} value - 条件值（如 1）
- * @param {string|null} comment - __c 注释文本（优先级最高）
- * @param {Map<string, string>} cardsMap - 卡牌 id → name 映射
- * @returns {string}
+ * 解析单个条件。
  */
 export function parseCondition(key, value, comment, cardsMap) {
-  // 优先使用注释文本
-  if (comment) return comment;
+  if (comment) return comment
 
-  let m;
+  let match
 
-  // 拥有卡牌
-  if ((m = key.match(/^have\.(.+)$/))) {
-    return `拥有 ${resolveCardName(m[1], cardsMap)}`;
+  if ((match = key.match(/^have\.(.+)$/))) {
+    return `拥有 ${formatHaveTarget(match[1], cardsMap)}`
   }
 
-  // 不拥有卡牌
-  if ((m = key.match(/^!have\.(.+)$/))) {
-    return `不拥有 ${resolveCardName(m[1], cardsMap)}`;
+  if ((match = key.match(/^!have\.(.+)$/))) {
+    return `没有 ${formatHaveTarget(match[1], cardsMap)}`
   }
 
-  // 计数器 >=
-  if ((m = key.match(/^counter\.(\d+)>=$/))) {
-    return `计数器 ≥ ${value}`;
+  if ((match = key.match(/^counter\.(\d+)>=$/))) {
+    return `计数器 ${match[1]} ≥ ${value}`
   }
 
-  // 计数器 <
-  if ((m = key.match(/^counter\.(\d+)<$/))) {
-    return `计数器 < ${value}`;
+  if ((match = key.match(/^counter\.(\d+)<$/))) {
+    return Number(value) === 1
+      ? `还没有：计数器 ${match[1]}`
+      : `还没有达到：计数器 ${match[1]} < ${value}`
   }
 
-  // 计数器 =
-  if ((m = key.match(/^counter\.(\d+)=$/))) {
-    return `计数器 = ${value}`;
+  if ((match = key.match(/^counter\.(\d+)=$/))) {
+    return `计数器 ${match[1]} = ${value}`
   }
 
-  // 计数器加法（action 中）
-  if ((m = key.match(/^counter\+(\d+)$/))) {
-    return `计数器 +${value}`;
+  if ((match = key.match(/^table_have\.(.+)\.(.+)$/))) {
+    return `表 ${match[1]} 存在 ${match[2]}`
   }
 
-  // 计数器减法（action 中）
-  if ((m = key.match(/^counter-(\d+)$/))) {
-    return `计数器 -${value}`;
+  if ((match = key.match(/^s(\d+)\.is$/))) {
+    return `S${match[1]} 是 ${resolveCardName(value, cardsMap)}`
   }
 
-  // 表中存在字段
-  if ((m = key.match(/^table_have\.(.+)\.(.+)$/))) {
-    return `表 ${m[1]} 存在 ${m[2]}`;
-  }
-
-  // 卡位是某卡牌
-  if ((m = key.match(/^s(\d+)\.is$/))) {
-    const cardName = resolveCardName(String(value), cardsMap);
-    return `卡位 ${m[1]} 是 ${cardName}`;
-  }
-
-  // 当前作用域内是某卡牌（如仪式槽位条件被裁剪后只剩 is）
   if (key === 'is') {
-    const values = Array.isArray(value) ? value : [value];
-    return `是 ${values.map((item) => resolveCardName(String(item), cardsMap)).join(' / ')}`;
+    const values = Array.isArray(value) ? value : [value]
+    return `是 ${values.map((item) => resolveCardName(item, cardsMap)).join(' / ')}`
   }
 
-  // 当前作用域内不是某卡牌
   if (key === '!is') {
-    const values = Array.isArray(value) ? value : [value];
-    return `不是 ${values.map((item) => resolveCardName(String(item), cardsMap)).join(' / ')}`;
+    const values = Array.isArray(value) ? value : [value]
+    return `不是 ${values.map((item) => resolveCardName(item, cardsMap)).join(' / ')}`
   }
 
-  // 检定属性 >=
-  if ((m = key.match(/^r(\d+):(.+)>=$/))) {
-    return `检定 ${m[2]} ≥ ${value}`;
+  if ((match = key.match(/^r(\d+):(.+)>=$/))) {
+    return `检定 ${match[2]} ≥ ${value}`
   }
 
-  // 未匹配，返回原始 key 名
-  return key;
+  return key
 }
 
 /**
- * 遍历条件对象，将所有条件解析为可读文本数组
- * @param {object} conditionObj - 条件对象
- * @param {Map<string, string>} cardsMap - 卡牌 id → name 映射
- * @returns {string[]}
+ * 解析条件对象。
  */
 export function parseConditionObject(conditionObj, cardsMap) {
-  if (!conditionObj || typeof conditionObj !== 'object') return [];
+  if (!conditionObj || typeof conditionObj !== 'object') return []
 
-  const results = [];
+  const results = []
 
   for (const key of Object.keys(conditionObj)) {
-    // 跳过注释字段
-    if (COMMENT_SUFFIXES.some((s) => key.endsWith(s))) continue;
+    if (COMMENT_SUFFIXES.some((suffix) => key.endsWith(suffix))) continue
 
-    const value = conditionObj[key];
-    // 读取同名 __c 注释
-    const comment = conditionObj[`${key}__c`] || null;
+    const value = conditionObj[key]
+    const comment = getComment(conditionObj, key)
 
-    if (key === 'any') {
-      // 递归解析 any 子对象
-      const subConditions = parseConditionObject(value, cardsMap);
-      results.push(`满足任意一项: ${subConditions.join(', ')}`);
-    } else {
-      results.push(parseCondition(key, value, comment, cardsMap));
+    if (key === 'any' && value && typeof value === 'object') {
+      const anyComment = getComment(conditionObj, 'any')
+      if (anyComment) {
+        results.push(anyComment)
+      } else {
+        const subConditions = parseConditionObject(value, cardsMap)
+        if (subConditions.length > 0) {
+          results.push(`满足任意一项：${subConditions.join('，')}`)
+        }
+      }
+      continue
     }
+
+    if (key === 'all' && value && typeof value === 'object') {
+      const allComment = getComment(conditionObj, 'all')
+      if (allComment) {
+        results.push(allComment)
+      } else {
+        const subConditions = parseConditionObject(value, cardsMap)
+        results.push(...subConditions)
+      }
+      continue
+    }
+
+    results.push(parseCondition(key, value, comment, cardsMap))
   }
 
-  return results;
+  return results.filter(Boolean)
+}
+
+/**
+ * 解析单个结果。
+ */
+export function parseEffect(key, value, comment, cardsMap) {
+  if (comment) return comment
+
+  let match
+
+  if ((match = key.match(/^global_counter\+(\d+)$/))) {
+    return `全局计数器 ${match[1]} + ${value}`
+  }
+
+  if ((match = key.match(/^global_counter=(\d+)$/))) {
+    return `全局计数器 ${match[1]} = ${value}`
+  }
+
+  if ((match = key.match(/^counter\+(\d+)$/))) {
+    return `计数器 ${match[1]} + ${value}`
+  }
+
+  if ((match = key.match(/^counter-(\d+)$/))) {
+    return `计数器 ${match[1]} - ${value}`
+  }
+
+  if ((match = key.match(/^counter=(\d+)$/))) {
+    return `计数器 ${match[1]} = ${value}`
+  }
+
+  if ((match = key.match(/^clean\.(s\d+)$/))) {
+    return `清除卡槽 ${match[1].toUpperCase()}`
+  }
+
+  if ((match = key.match(/^s(\d+)\+(.+)$/))) {
+    return `S${match[1]} ${match[2]} + ${value}`
+  }
+
+  if ((match = key.match(/^s(\d+)-(.+)$/))) {
+    return Number(value) === 1
+      ? `S${match[1]} 移除${match[2]}`
+      : `S${match[1]} ${match[2]} - ${value}`
+  }
+
+  if ((match = key.match(/^s(\d+)=(.+)$/))) {
+    return `S${match[1]} ${match[2]} = ${value}`
+  }
+
+  if ((match = key.match(/^have\.(.+)$/))) {
+    return `获得 ${formatHaveTarget(match[1], cardsMap)}`
+  }
+
+  if ((match = key.match(/^!have\.(.+)$/))) {
+    return `失去 ${formatHaveTarget(match[1], cardsMap)}`
+  }
+
+  return `${key} = ${String(value)}`
+}
+
+/**
+ * 解析结果对象。
+ */
+export function parseEffectObject(effectObj, cardsMap) {
+  if (!effectObj || typeof effectObj !== 'object') return []
+
+  const results = []
+
+  for (const key of Object.keys(effectObj)) {
+    if (COMMENT_SUFFIXES.some((suffix) => key.endsWith(suffix))) continue
+    if (key === 'choose' || key.startsWith('pop.')) continue
+
+    const value = effectObj[key]
+    if (value == null) continue
+
+    const comment = getComment(effectObj, key)
+    results.push(parseEffect(key, value, comment, cardsMap))
+  }
+
+  return results.filter(Boolean)
 }

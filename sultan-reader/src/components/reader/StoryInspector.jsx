@@ -993,7 +993,9 @@ export default function StoryInspector({ type, data, onClose }) {
         phase: '结算条件',
         title: hint.label,
         text: hint.primaryText || '',
-        conditions: hint.conditionText ? [hint.conditionText] : [],
+        conditions: hint.fullConditions?.length > 0
+          ? hint.fullConditions
+          : (hint.fullConditionText ? [hint.fullConditionText] : (hint.conditionText ? [hint.conditionText] : [])),
         options: [],
         actions: [],
         choiceActions: [],
@@ -1007,7 +1009,9 @@ export default function StoryInspector({ type, data, onClose }) {
         phase: '全局条件',
         title: hint.label,
         text: hint.primaryText || '',
-        conditions: hint.conditionText ? [hint.conditionText] : [],
+        conditions: hint.fullConditions?.length > 0
+          ? hint.fullConditions
+          : (hint.fullConditionText ? [hint.fullConditionText] : (hint.conditionText ? [hint.conditionText] : [])),
         options: [],
         actions: [],
         choiceActions: [],

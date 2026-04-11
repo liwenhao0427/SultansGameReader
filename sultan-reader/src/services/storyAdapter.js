@@ -1,4 +1,4 @@
-import { parseConditionObject } from './conditionParser'
+import { parseConditionObject, parseEffect } from './conditionParser'
 import { EVENT_READER_DEFAULTS, FIXED_ITEM_SLOT_ASSETS, FIXED_SUDAN_SLOT_ASSETS, FIXED_TAG_CARD_IDS } from '../resourceConfig'
 
 function normalizeArray(value) {
@@ -334,43 +334,27 @@ function buildResultEffects(result = {}, cardsMap, cardsById) {
       if (cards.length > 0) {
         effects.push({
           type: 'card',
-          label: key === 'link_card' ? '关联卡牌' : '获得卡牌',
+          label: result[`${key}__c`] || result[`${key}__ca`] || (key === 'link_card' ? '关联卡牌' : '获得卡牌'),
           cards,
         })
       }
       continue
     }
 
-    if (key.startsWith('global_counter=')) {
-      effects.push({
-        type: 'achievement',
-        label: `成就 ${key.slice('global_counter='.length)}`,
-        value,
-      })
-      continue
-    }
-
-    if (key.startsWith('counter+') || key.startsWith('counter=')) {
-      effects.push({
-        type: 'counter',
-        label: `计数器 ${key.replace(/^counter[+=]/, '')}`,
-        value,
-      })
-      continue
-    }
-
-    if (key.startsWith('clean.')) {
-      effects.push({
-        type: 'clean',
-        label: `清除卡槽 ${key.slice('clean.'.length).toUpperCase()}`,
-        value,
-      })
-      continue
-    }
-
     effects.push({
-      type: 'raw',
-      label: `${key} = ${String(value)}`,
+      type: key.startsWith('global_counter')
+        ? 'achievement'
+        : key.startsWith('counter')
+          ? 'counter'
+          : key.startsWith('clean.')
+            ? 'clean'
+            : 'raw',
+      label: parseEffect(
+        key,
+        value,
+        result[`${key}__c`] || result[`${key}__ca`] || result[`${key}__ci`] || null,
+        cardsMap
+      ),
       value,
     })
   }
@@ -399,6 +383,8 @@ function buildSettlementSlotHints(slotId, items, cardsMap, cardsById, phaseKey =
         primaryText: item.result_text || '',
         conditionRaw: scopedCondition,
         conditionText: parseConditionObject(scopedCondition, cardsMap).join(' / '),
+        fullConditionText: parseConditionObject(item.condition || {}, cardsMap).join(' / '),
+        fullConditions: parseConditionObject(item.condition || {}, cardsMap),
         effects: buildResultEffects(item.result, cardsMap, cardsById),
       }
     })
@@ -426,6 +412,8 @@ function buildGlobalSettlementHints(items, cardsMap, cardsById, slotIds = [], ph
       primaryText: item.result_text || '',
       conditionRaw: item.condition || {},
       conditionText: parseConditionObject(item.condition, cardsMap).join(' / '),
+      fullConditionText: parseConditionObject(item.condition || {}, cardsMap).join(' / '),
+      fullConditions: parseConditionObject(item.condition || {}, cardsMap),
       effects: buildResultEffects(item.result, cardsMap, cardsById),
     }))
 }
