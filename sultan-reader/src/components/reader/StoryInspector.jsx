@@ -855,6 +855,8 @@ export default function StoryInspector({ type, data, onClose }) {
   const [conditionSelectorOpen, setConditionSelectorOpen] = useState(false)
   const [candidateConditionFilterText, setCandidateConditionFilterText] = useState('')
   const [candidateCardFilterText, setCandidateCardFilterText] = useState('')
+  const [slotConditionSelections, setSlotConditionSelections] = useState({})
+  const [conditionPreviewExpanded, setConditionPreviewExpanded] = useState(false)
   const [executionOpen, setExecutionOpen] = useState(false)
   const [executionMode, setExecutionMode] = useState('normal')
   const [hideReaderUi, setHideReaderUi] = useState(false)
@@ -897,9 +899,11 @@ export default function StoryInspector({ type, data, onClose }) {
     setActiveSlotId(firstSlotId)
     setCandidatePage(1)
     setSelectedConditionId(null)
+    setSlotConditionSelections({})
     setConditionSelectorOpen(false)
     setCandidateConditionFilterText('')
     setCandidateCardFilterText('')
+    setConditionPreviewExpanded(false)
     setRevealedLineCount(type === 'rite' ? initialLines.length : (initialLines.length > 0 ? 1 : 0))
     setRevealedSegmentCount(type === 'rite' ? 9999 : 0)
     setExecutionOpen(false)
@@ -1045,6 +1049,7 @@ export default function StoryInspector({ type, data, onClose }) {
     setConditionSelectorOpen(false)
     setCandidateConditionFilterText('')
     setCandidateCardFilterText('')
+    setConditionPreviewExpanded(false)
   }, [activeSlotId])
 
   useEffect(() => {
@@ -1054,9 +1059,22 @@ export default function StoryInspector({ type, data, onClose }) {
     }
 
     if (!selectedConditionId || !visibleConditionGroups.some((group) => group.id === selectedConditionId)) {
-      setSelectedConditionId(visibleConditionGroups[0].id)
+      const rememberedGroupId = activeSlotId ? slotConditionSelections[activeSlotId] : null
+      const nextGroup = visibleConditionGroups.find((group) => group.id === rememberedGroupId) || visibleConditionGroups[0]
+      setSelectedConditionId(nextGroup.id)
     }
-  }, [selectedConditionId, visibleConditionGroups])
+  }, [activeSlotId, selectedConditionId, slotConditionSelections, visibleConditionGroups])
+
+  useEffect(() => {
+    if (!activeSlotId || !activeConditionGroup?.id) return
+    setSlotConditionSelections((current) => {
+      if (current[activeSlotId] === activeConditionGroup.id) return current
+      return {
+        ...current,
+        [activeSlotId]: activeConditionGroup.id,
+      }
+    })
+  }, [activeConditionGroup?.id, activeSlotId])
 
   useEffect(() => {
     if (!selectedSlot || !activeConditionGroup) return
@@ -1400,10 +1418,11 @@ export default function StoryInspector({ type, data, onClose }) {
     setActiveSlotId(slotId)
     setConditionFilterText('')
     setCandidatePage(1)
-    setSelectedConditionId(null)
+    setSelectedConditionId(slotConditionSelections[slotId] || null)
     setConditionSelectorOpen(false)
     setCandidateConditionFilterText('')
     setCandidateCardFilterText('')
+    setConditionPreviewExpanded(false)
     resetFlow(slotId)
   }
 
@@ -2009,7 +2028,17 @@ export default function StoryInspector({ type, data, onClose }) {
                     </div>
                   </div>
                   {activeConditionGroup?.label && (
-                    <div style={translucentTextBlockStyle}>
+                    <div
+                      style={{
+                        ...translucentTextBlockStyle,
+                        overflow: 'hidden',
+                        whiteSpace: conditionPreviewExpanded ? 'normal' : 'nowrap',
+                        textOverflow: conditionPreviewExpanded ? 'clip' : 'ellipsis',
+                      }}
+                      title={activeConditionGroup.label}
+                      onMouseEnter={() => setConditionPreviewExpanded(true)}
+                      onMouseLeave={() => setConditionPreviewExpanded(false)}
+                    >
                       {activeConditionGroup.label}
                     </div>
                   )}
