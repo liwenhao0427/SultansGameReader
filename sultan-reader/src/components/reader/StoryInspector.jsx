@@ -457,7 +457,7 @@ function ExecutionActionBadge({ action, targetData }) {
   )
 }
 
-function SlotButton({ slot, active, candidate, tags, onClick, slotBgKey, bubbleText }) {
+function SlotButton({ slot, active, candidate, tags, onClick, slotBgKey }) {
   const { url: slotBgUrl } = useResolvedImage(slotBgKey)
   const previewCard = candidate?.cards?.[0] || slot.defaultCards?.[0] || null
   const slotCaption = candidate?.label || slot.defaultCards?.[0]?.name || slot.title
@@ -480,11 +480,6 @@ function SlotButton({ slot, active, candidate, tags, onClick, slotBgKey, bubbleT
           position: 'relative',
         }}
       >
-        {bubbleText && (
-          <div style={slotBubbleStyle}>
-            {bubbleText}
-          </div>
-        )}
         <div style={{
           width: READER_CHROME.assets.slotFrame.width,
           minHeight: READER_CHROME.assets.slotFrame.minHeight,
@@ -874,7 +869,7 @@ export default function StoryInspector({ type, data, onClose }) {
   const [selectedConditionId, setSelectedConditionId] = useState(null)
   const [conditionSelectorOpen, setConditionSelectorOpen] = useState(false)
   const [candidateConditionFilterText, setCandidateConditionFilterText] = useState('')
-  const [slotBubbleTexts, setSlotBubbleTexts] = useState({})
+  const [candidateCardFilterText, setCandidateCardFilterText] = useState('')
   const [executionOpen, setExecutionOpen] = useState(false)
   const [executionMode, setExecutionMode] = useState('normal')
   const [hideReaderUi, setHideReaderUi] = useState(false)
@@ -883,7 +878,6 @@ export default function StoryInspector({ type, data, onClose }) {
   const [eventChoicePath, setEventChoicePath] = useState([])
   const executionBodyRef = useRef(null)
   const readerBodyRef = useRef(null)
-  const bubbleTimersRef = useRef({})
   const autoMountedEventIdRef = useRef(null)
   const executedActionKeyRef = useRef(new Set())
   const { url: templateBgUrl } = useResolvedImage(templateData?.bg || READER_RESOURCE_ASSETS.defaultRiteBackground)
@@ -915,12 +909,12 @@ export default function StoryInspector({ type, data, onClose }) {
     setSlotSelections(defaults)
     setSettlementSelections(hintDefaults)
     setGlobalSettlementSelection(pickDefaultHintId(model.globalSettlementHints || []))
-    setSlotBubbleTexts({})
     setActiveSlotId(firstSlotId)
     setCandidatePage(1)
     setSelectedConditionId(null)
     setConditionSelectorOpen(false)
     setCandidateConditionFilterText('')
+    setCandidateCardFilterText('')
     setRevealedLineCount(type === 'rite' ? initialLines.length : (initialLines.length > 0 ? 1 : 0))
     setRevealedSegmentCount(type === 'rite' ? 9999 : 0)
     setExecutionOpen(false)
@@ -1023,14 +1017,24 @@ export default function StoryInspector({ type, data, onClose }) {
     return activeConditionGroup?.candidates || selectedSlotCandidates
   }, [activeConditionGroup?.candidates, selectedSlotCandidates, visibleConditionGroups.length])
 
+  const visibleCandidateCards = useMemo(() => {
+    const keyword = candidateCardFilterText.trim().toLowerCase()
+    if (!keyword) return activeConditionCandidates
+    return activeConditionCandidates.filter((candidate) => {
+      const cardNames = (candidate.cards || []).map((card) => `${card.name || ''} ${card.title || ''}`).join(' ')
+      const candidateText = `${candidate.label || ''} ${cardNames}`.toLowerCase()
+      return candidateText.includes(keyword)
+    })
+  }, [activeConditionCandidates, candidateCardFilterText])
+
   const selectedSlotPageCount = useMemo(() => (
-    Math.max(1, Math.ceil(activeConditionCandidates.length / RITE_CANDIDATE_PAGE_SIZE))
-  ), [RITE_CANDIDATE_PAGE_SIZE, activeConditionCandidates.length])
+    Math.max(1, Math.ceil(visibleCandidateCards.length / RITE_CANDIDATE_PAGE_SIZE))
+  ), [RITE_CANDIDATE_PAGE_SIZE, visibleCandidateCards.length])
 
   const pagedSelectedSlotCandidates = useMemo(() => {
     const start = (candidatePage - 1) * RITE_CANDIDATE_PAGE_SIZE
-    return activeConditionCandidates.slice(start, start + RITE_CANDIDATE_PAGE_SIZE)
-  }, [RITE_CANDIDATE_PAGE_SIZE, activeConditionCandidates, candidatePage])
+    return visibleCandidateCards.slice(start, start + RITE_CANDIDATE_PAGE_SIZE)
+  }, [RITE_CANDIDATE_PAGE_SIZE, visibleCandidateCards, candidatePage])
 
   const selectedCandidate = useMemo(() => {
     if (!selectedSlot) return null
@@ -1055,6 +1059,7 @@ export default function StoryInspector({ type, data, onClose }) {
     setCandidatePage(1)
     setConditionSelectorOpen(false)
     setCandidateConditionFilterText('')
+    setCandidateCardFilterText('')
   }, [activeSlotId])
 
   useEffect(() => {
@@ -1413,6 +1418,7 @@ export default function StoryInspector({ type, data, onClose }) {
     setSelectedConditionId(null)
     setConditionSelectorOpen(false)
     setCandidateConditionFilterText('')
+    setCandidateCardFilterText('')
     resetFlow(slotId)
   }
 
@@ -1426,22 +1432,6 @@ export default function StoryInspector({ type, data, onClose }) {
 
     setSlotSelections(nextSelections)
     setCandidatePage(1)
-    const nextCandidate = selectedSlot.candidates?.find((candidate) => candidate.id === candidateId) || null
-    if (nextCandidate?.bubbleText) {
-      const bubbleText = nextCandidate.bubbleText
-      setSlotBubbleTexts((current) => ({ ...current, [selectedSlot.id]: bubbleText }))
-      if (bubbleTimersRef.current[selectedSlot.id]) {
-        window.clearTimeout(bubbleTimersRef.current[selectedSlot.id])
-      }
-      bubbleTimersRef.current[selectedSlot.id] = window.setTimeout(() => {
-        setSlotBubbleTexts((current) => {
-          const next = { ...current }
-          delete next[selectedSlot.id]
-          return next
-        })
-        delete bubbleTimersRef.current[selectedSlot.id]
-      }, 2200)
-    }
     const nextLines = buildDialogueLines(selectedSlot.id, nextSelections, settlementSelections, globalSettlementSelection)
     setRevealedLineCount(nextLines.length > 0 ? 1 : 0)
     setRevealedSegmentCount(0)
@@ -1544,7 +1534,6 @@ export default function StoryInspector({ type, data, onClose }) {
     setGlobalSettlementSelection(pickDefaultHintId(model.globalSettlementHints || []))
     setConditionFilterText('')
     setCandidatePage(1)
-    setSlotBubbleTexts({})
     setActiveSlotId(model.slots?.[0]?.id || null)
     const nextLines = splitIntro(model.intro)
     setRevealedLineCount(type === 'rite' ? nextLines.length : (nextLines.length > 0 ? 1 : 0))
@@ -1557,11 +1546,6 @@ export default function StoryInspector({ type, data, onClose }) {
     executedActionKeyRef.current = new Set()
     setEventChoicePath([])
   }
-
-  useEffect(() => () => {
-    Object.values(bubbleTimersRef.current).forEach((timerId) => window.clearTimeout(timerId))
-    bubbleTimersRef.current = {}
-  }, [])
 
   useEffect(() => {
     if (!readerBodyRef.current) return
@@ -1947,7 +1931,6 @@ export default function StoryInspector({ type, data, onClose }) {
                           slotBgKey={slotBackgroundMap?.[slot.id]?.slot_bg || templateData?.nomal_slot_bg || READER_CHROME.assets.slotFrame.asset}
                           active={activeSlotId === slot.id}
                           candidate={displayCandidate}
-                          bubbleText={slotBubbleTexts[slot.id]}
                           tags={activeTags}
                           onClick={() => handleSelectSlot(slot.id)}
                         />
@@ -1967,13 +1950,6 @@ export default function StoryInspector({ type, data, onClose }) {
                       </div>
                     </div>
                     <div style={candidateToolbarStyle}>
-                      <input
-                        type="text"
-                        value={candidateConditionFilterText}
-                        onChange={(event) => setCandidateConditionFilterText(event.target.value)}
-                        placeholder="搜索条件"
-                        style={readerFilterInputStyle}
-                      />
                       <div style={candidateToolbarGroupStyle}>
                         <button
                           type="button"
@@ -2003,6 +1979,13 @@ export default function StoryInspector({ type, data, onClose }) {
                         </button>
                       </div>
                       <div style={candidateToolbarGroupStyle}>
+                        <input
+                          type="text"
+                          value={candidateCardFilterText}
+                          onChange={(event) => setCandidateCardFilterText(event.target.value)}
+                          placeholder="搜索卡牌"
+                          style={candidateSearchInputStyle}
+                        />
                         <button
                           type="button"
                           style={secondaryButtonStyle}
@@ -3368,7 +3351,13 @@ const candidateToolbarGroupStyle = {
   display: 'flex',
   flexWrap: 'wrap',
   justifyContent: 'flex-end',
+  alignItems: 'center',
   gap: 8,
+}
+
+const candidateSearchInputStyle = {
+  ...readerFilterInputStyle,
+  width: 220,
 }
 
 const riteHiddenBackdropStyle = {
