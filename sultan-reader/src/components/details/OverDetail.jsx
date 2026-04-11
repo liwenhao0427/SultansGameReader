@@ -56,7 +56,7 @@ function OverImage({ pic }) {
 
   return (
     <div style={S.imageWrap}>
-      {loading && <div style={S.imagePlaceholder}>加载结局配图中…</div>}
+      {loading && <div style={S.imagePlaceholder}>加载结局配图中...</div>}
       {!loading && !url && <div style={S.imagePlaceholder}>暂无结局配图</div>}
       {!loading && url && <img src={url} alt="" style={S.image} />}
     </div>
@@ -84,6 +84,7 @@ export default function OverDetail({ data }) {
     }
 
     loadRelations()
+
     return () => {
       cancelled = true
     }
@@ -99,7 +100,7 @@ export default function OverDetail({ data }) {
     [cardsById, data?.id, data?.name, relatedAfterStories]
   )
 
-  const activeGroup = analyzedGroups.find((group) => group.groupId === activeState.groupId)
+  const activeGroup = analyzedGroups.find((group) => group.groupId === activeState.groupId) || null
 
   if (!data) return null
 

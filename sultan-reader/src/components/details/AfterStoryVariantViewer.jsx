@@ -196,7 +196,7 @@ function VariantImage({ pic, style, height = 120 }) {
 
   return (
     <div style={{ ...style.imageWrap, height }}>
-      {loading && <div style={{ ...style.imagePlaceholder, height }}>加载中…</div>}
+      {loading && <div style={{ ...style.imagePlaceholder, height }}>加载中...</div>}
       {!loading && !url && <div style={{ ...style.imagePlaceholder, height }}>后日谈配图</div>}
       {!loading && url && <img src={url} alt="" style={style.image} />}
     </div>
@@ -290,6 +290,7 @@ export function AfterStoryVariantModal({
 
   function moveVariant(step) {
     if (!group) return
+
     const nextIndex = currentIndex + step
     if (nextIndex >= 0 && nextIndex < group.items.length) {
       setCurrentIndex(nextIndex)
@@ -301,6 +302,7 @@ export function AfterStoryVariantModal({
 
   function moveGroup(step) {
     if (!group) return
+
     const currentGroupIndex = groups.findIndex((item) => item.groupId === group.groupId)
     const nextGroupIndex = currentGroupIndex + step
     if (nextGroupIndex < 0 || nextGroupIndex >= groups.length) return
@@ -311,6 +313,7 @@ export function AfterStoryVariantModal({
 
   async function handleViewRaw() {
     if (!rawSourcePath) return
+
     try {
       const content = await window.electronAPI.fileReadRaw(rawSourcePath)
       setRawContent(content)
@@ -328,7 +331,7 @@ export function AfterStoryVariantModal({
               <div style={AFTER_STORY_VIEWER_STYLE.modalTitle}>{group.afterStoryName}</div>
               <div style={AFTER_STORY_VIEWER_STYLE.modalSubTitle}>
                 {group.overName ? `${group.overName} 对应的角色后日谈。` : '角色后日谈阅读。'}
-                左右切换查看当前结局下不同条件的文本差异；切换结局按钮会直接跳到前后结局。
+                左右切换查看当前结局下不同条件的文本差异，结局按钮会直接跳到上个结局或下个结局。
               </div>
             </div>
             <div style={AFTER_STORY_VIEWER_STYLE.modalActions}>

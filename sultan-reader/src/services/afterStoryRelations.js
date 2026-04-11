@@ -1,6 +1,7 @@
 const COMMENT_FIELDS = ['__ca', 'key__c']
 
 let relationsPromise = null
+
 const ENDING_NAME_ALIASES = {
   无尽长夜: '无尽夜',
 }
@@ -18,7 +19,7 @@ export function normalizeEndingName(text) {
     .replace(/的总结后日谈$/, '')
     .replace(/后日谈$/, '')
     .replace(/（[^）]*）|\([^)]*\)/g, '')
-    .replace(/[「」『』〔〕【】《》、，。！？：；\s]/g, '')
+    .replace(/[「」『』—【】《》〈〉，。！？：；\s]/g, '')
     .trim()
 
   return ENDING_NAME_ALIASES[normalized] || normalized
@@ -65,6 +66,7 @@ function buildOverIndex(overEntries) {
     if (!idsByName.has(normalizedName)) {
       idsByName.set(normalizedName, new Set())
     }
+
     idsByName.get(normalizedName).add(id)
   }
 
@@ -78,7 +80,9 @@ function resolveOverIdsFromComments(comments, overIndex) {
     const { ids, names } = extractEndingHintsFromComment(text)
 
     ids.forEach((id) => {
-      if (overIndex.byId.has(id)) matchedIds.add(id)
+      if (overIndex.byId.has(id)) {
+        matchedIds.add(id)
+      }
     })
 
     names.forEach((name) => {
@@ -244,7 +248,11 @@ export async function getAfterStoryRelations() {
             }))
             : []
 
-          return { ...data, extra, id: String(entry.id) }
+          return {
+            ...data,
+            extra,
+            id: String(entry.id),
+          }
         })
       )
 

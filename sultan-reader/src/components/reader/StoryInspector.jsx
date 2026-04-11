@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+﻿import { useEffect, useMemo, useRef, useState } from 'react'
 import useConfigStore from '../../stores/useConfigStore'
 import { useResolvedImage } from '../../services/imageResolver'
 import { adaptStoryData } from '../../services/storyAdapter'
@@ -41,9 +41,9 @@ function splitIntro(text) {
 function CardPortrait({ card, compact = false, showName = true }) {
   const { url } = useResolvedImage(card?.image)
   const { url: rareFrameUrl } = useResolvedImage(getCardRarityFrameAsset(card?.rare))
-  const width = compact ? 50 : 66
+  const width = compact ? 54 : 66
   const height = getCardFrameHeight(width)
-  const artInset = compact ? '3px 4px 16px' : '4px 5px 20px'
+  const artInset = compact ? '1px 2px 9px' : '4px 5px 20px'
 
   return (
     <div style={{
@@ -166,6 +166,34 @@ function PreviewImage({ pic, maxHeight = 320 }) {
       )}
       {!loading && !url && <div style={imageFallbackStyle}>暂无对应图片</div>}
     </div>
+  )
+}
+
+function TemplateBackgroundLayer({ pic, titleX }) {
+  const [naturalWidth, setNaturalWidth] = useState(null)
+  const cropWidth = Number(titleX) > 0 ? Number(titleX) * 0.75 : null
+  const widthPercent = naturalWidth && cropWidth
+    ? `${(naturalWidth / cropWidth) * 100}%`
+    : '100%'
+
+  if (!pic) return null
+
+  return (
+    <img
+      src={pic}
+      alt=""
+      onLoad={(event) => setNaturalWidth(event.currentTarget.naturalWidth || null)}
+      style={{
+        position: 'absolute',
+        inset: 0,
+        width: widthPercent,
+        height: '100%',
+        objectFit: 'fill',
+        objectPosition: 'left top',
+        pointerEvents: 'none',
+        userSelect: 'none',
+      }}
+    />
   )
 }
 
@@ -334,7 +362,7 @@ function SlotButton({ slot, active, candidate, tags, onClick, slotBgKey, bubbleT
             {slot.title}
           </div>
           {previewCard ? (
-            <div style={{ position: 'absolute', inset: '6px 7px 10px' }}>
+            <div style={{ position: 'absolute', inset: '3px 4px 7px' }}>
               <CardPortrait card={previewCard} compact showName={false} />
             </div>
           ) : (
@@ -418,7 +446,7 @@ function ExecutionSlot({ slot, previewCard, slotCaption, slotBgKey }) {
         {slot.title}
       </div>
       {previewCard ? (
-        <div style={{ position: 'absolute', inset: '6px 7px 10px' }}>
+        <div style={{ position: 'absolute', inset: '3px 4px 7px' }}>
           <CardPortrait card={previewCard} compact showName={false} />
         </div>
       ) : (
@@ -551,7 +579,7 @@ function CandidateHandItem({ candidate, active, onSelect }) {
 }
 
 function SettlementHintItem({ hint, active, onToggle }) {
-  const previewCard = hint.cards?.[0] || null
+  const conditionText = hint.conditionText || '无额外条件'
 
   return (
     <button
@@ -566,32 +594,72 @@ function SettlementHintItem({ hint, active, onToggle }) {
         color: '#f1e8d5',
         cursor: 'pointer',
         textAlign: 'left',
-        display: 'flex',
-        gap: 10,
-        alignItems: 'flex-start',
+        display: 'block',
       }}
     >
-      {previewCard && (
-        <div style={{ flexShrink: 0 }}>
-          <CardPortrait card={previewCard} compact showName={false} />
-        </div>
-      )}
-      <div style={{ minWidth: 0, flex: 1 }}>
-        <div
-          title={hint.label}
-          style={{
-            fontSize: 14,
-            fontWeight: 800,
-            lineHeight: 1.4,
-            color: '#fff0d3',
-          }}
-        >
-          {hint.label}
-        </div>
-        <ConditionPreview text={hint.conditionText} />
-        <EffectSummary effects={hint.effects} compact />
+      <div
+        title={conditionText}
+        style={{
+          fontSize: 14,
+          lineHeight: 1.75,
+          color: active ? '#fff3dd' : '#e5d4b1',
+          whiteSpace: 'pre-wrap',
+        }}
+      >
+        {conditionText}
       </div>
     </button>
+  )
+}
+
+function SettlementHintGroup({
+  title,
+  description,
+  hints,
+  selectedCount,
+  filterText,
+  onFilterChange,
+  selectedHintId,
+  onToggle,
+}) {
+  if (!hints.length) return null
+
+  return (
+    <div style={settlementPanelStyle}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
+        <div>
+          <div style={sectionTitleStyle}>{title}</div>
+          <div style={{ ...smallLineStyle, marginTop: 6 }}>
+            {description}
+          </div>
+        </div>
+        <div style={settlementCountStyle}>
+          已选 {selectedCount}
+        </div>
+      </div>
+      <input
+        type="text"
+        value={filterText}
+        onChange={(event) => onFilterChange(event.target.value)}
+        placeholder="筛选条件..."
+        style={{ ...readerFilterInputStyle, marginTop: 14 }}
+      />
+      <div style={{
+        marginTop: 14,
+        display: 'grid',
+        gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+        gap: 10,
+      }}>
+        {hints.map((hint) => (
+          <SettlementHintItem
+            key={hint.id}
+            hint={hint}
+            active={selectedHintId === hint.id}
+            onToggle={() => onToggle(hint.id)}
+          />
+        ))}
+      </div>
+    </div>
   )
 }
 
@@ -1503,44 +1571,83 @@ export default function StoryInspector({ type, data, onClose }) {
             )}
           </div>
 
-          {selectedSlot?.candidates?.length > 0 ? (
-            <div style={{
-              marginTop: 16,
-              minHeight: 0,
-              display: 'grid',
-              gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-              gap: 14,
-              overflowY: 'auto',
-              paddingRight: 4,
-            }}>
-              {selectedSlot.candidates.map((candidate) => (
-                <CandidateHandItem
-                  key={candidate.id}
-                  candidate={candidate}
-                  active={slotSelections[selectedSlot.id] === candidate.id}
-                  onSelect={() => handleChangeCandidate(candidate.id)}
-                />
-              ))}
-            </div>
-          ) : (
-            <div style={emptyCandidateStyle}>
-              <div style={{ fontSize: 18, fontWeight: 700, color: '#f5e5c4' }}>
-                当前槽位没有显式候选
+          <div style={{
+            marginTop: 16,
+            minHeight: 0,
+            overflowY: 'auto',
+            paddingRight: 4,
+            display: 'grid',
+            gap: 18,
+            alignContent: 'start',
+          }}>
+            {selectedSlot?.candidates?.length > 0 ? (
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+                gap: 14,
+              }}>
+                {selectedSlot.candidates.map((candidate) => (
+                  <CandidateHandItem
+                    key={candidate.id}
+                    candidate={candidate}
+                    active={slotSelections[selectedSlot.id] === candidate.id}
+                    onSelect={() => handleChangeCandidate(candidate.id)}
+                  />
+                ))}
               </div>
-              <div style={{ ...smallLineStyle, marginTop: 10, textAlign: 'center' }}>
-                这个槽位没有直接给出 `pops` 候选卡牌。
-                <br />
-                目前先按槽位说明与后续结算文本继续阅读。
-              </div>
-              {selectedSlot?.conditions?.length > 0 && (
-                <div style={{ ...smallLineStyle, marginTop: 12, textAlign: 'center' }}>
-                  <span title={selectedSlot.conditions.join('，')}>
-                    条件：{selectedSlot.conditions.join('，')}
-                  </span>
+            ) : (
+              <div style={emptyCandidateStyle}>
+                <div style={{ fontSize: 18, fontWeight: 700, color: '#f5e5c4' }}>
+                  当前槽位没有显式候选
                 </div>
-              )}
-            </div>
-          )}
+                <div style={{ ...smallLineStyle, marginTop: 10, textAlign: 'center' }}>
+                  这个槽位没有直接给出 `pops` 候选卡牌。
+                  <br />
+                  目前先按槽位说明与后续结算文本继续阅读。
+                </div>
+                {selectedSlot?.conditions?.length > 0 && (
+                  <div style={{ ...smallLineStyle, marginTop: 12, textAlign: 'center' }}>
+                    <span title={selectedSlot.conditions.join('；')}>
+                      条件：{selectedSlot.conditions.join('；')}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <SettlementHintGroup
+              title="结算条件"
+              description="这里改为单选结算分支，默认采用最后一项优先级最高的结算。"
+              hints={(selectedSlot?.settlementHints || [])
+                .filter((hint) => matchesSlotOccupancyCondition(hint.conditionRaw, slotSelectionState))
+                .filter((hint) => {
+                  const keyword = conditionFilterText.trim().toLowerCase()
+                  if (!keyword) return true
+                  return [hint.label, hint.conditionText, hint.primaryText].filter(Boolean).join(' ').toLowerCase().includes(keyword)
+                })}
+              selectedCount={selectedSettlementHints.length > 0 ? 1 : 0}
+              filterText={conditionFilterText}
+              onFilterChange={setConditionFilterText}
+              selectedHintId={settlementSelections[selectedSlot?.id]}
+              onToggle={handleSelectSettlementHint}
+            />
+
+            <SettlementHintGroup
+              title="全局条件"
+              description="这些分支同样只允许选择一个，默认采用最后一项。"
+              hints={visibleGlobalSettlementHints
+                .filter((hint) => {
+                  const keyword = conditionFilterText.trim().toLowerCase()
+                  if (!keyword) return true
+                  return [hint.label, hint.conditionText, hint.primaryText].filter(Boolean).join(' ').toLowerCase().includes(keyword)
+                })}
+              selectedCount={globalSettlementSelection ? 1 : 0}
+              filterText={conditionFilterText}
+              onFilterChange={setConditionFilterText}
+              selectedHintId={globalSettlementSelection}
+              onToggle={handleSelectGlobalSettlementHint}
+            />
+          </div>
         </div>
 
         <div style={{
@@ -1568,99 +1675,6 @@ export default function StoryInspector({ type, data, onClose }) {
               display: 'grid',
               gap: 18,
             }} ref={readerBodyRef}>
-              {(visibleSettlementHintsBySlot[selectedSlot?.id] || []).length > 0 && (
-                <div style={settlementPanelStyle}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
-                    <div>
-                      <div style={sectionTitleStyle}>结算条件</div>
-                      <div style={{ ...smallLineStyle, marginTop: 6 }}>
-                        这里改为单选结算分支，默认采用最后一项优先级最高的结算。
-                      </div>
-                    </div>
-                    <div style={settlementCountStyle}>
-                      已选 {selectedSettlementHints.length > 0 ? 1 : 0}
-                    </div>
-                  </div>
-                  <input
-                    type="text"
-                    value={conditionFilterText}
-                    onChange={(event) => setConditionFilterText(event.target.value)}
-                    placeholder="筛选标题 / 条件…"
-                    style={{ ...readerFilterInputStyle, marginTop: 14 }}
-                  />
-                  <div style={{
-                    marginTop: 14,
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-                    gap: 10,
-                    maxHeight: 320,
-                    overflowY: 'auto',
-                  }}>
-                    {selectedSlot.settlementHints
-                      .filter((hint) => matchesSlotOccupancyCondition(hint.conditionRaw, slotSelectionState))
-                      .filter((hint) => {
-                        const keyword = conditionFilterText.trim().toLowerCase()
-                        if (!keyword) return true
-                        return [hint.label, hint.conditionText, hint.primaryText].filter(Boolean).join(' ').toLowerCase().includes(keyword)
-                      })
-                      .map((hint) => (
-                      <SettlementHintItem
-                        key={hint.id}
-                        hint={hint}
-                        active={settlementSelections[selectedSlot.id] === hint.id}
-                        onToggle={() => handleSelectSettlementHint(hint.id)}
-                      />
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {visibleGlobalSettlementHints.length > 0 && (
-                <div style={settlementPanelStyle}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
-                    <div>
-                      <div style={sectionTitleStyle}>全局条件</div>
-                      <div style={{ ...smallLineStyle, marginTop: 6 }}>
-                        这些分支同样只允许选择一个，默认采用最后一项。
-                      </div>
-                    </div>
-                    <div style={settlementCountStyle}>
-                      已选 {globalSettlementSelection ? 1 : 0}
-                    </div>
-                  </div>
-                  <input
-                    type="text"
-                    value={conditionFilterText}
-                    onChange={(event) => setConditionFilterText(event.target.value)}
-                    placeholder="筛选标题 / 条件…"
-                    style={{ ...readerFilterInputStyle, marginTop: 14 }}
-                  />
-                  <div style={{
-                    marginTop: 14,
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-                    gap: 10,
-                    maxHeight: 320,
-                    overflowY: 'auto',
-                  }}>
-                    {visibleGlobalSettlementHints
-                      .filter((hint) => {
-                        const keyword = conditionFilterText.trim().toLowerCase()
-                        if (!keyword) return true
-                        return [hint.label, hint.conditionText, hint.primaryText].filter(Boolean).join(' ').toLowerCase().includes(keyword)
-                      })
-                      .map((hint) => (
-                      <SettlementHintItem
-                        key={hint.id}
-                        hint={hint}
-                        active={globalSettlementSelection === hint.id}
-                        onToggle={() => handleSelectGlobalSettlementHint(hint.id)}
-                      />
-                    ))}
-                  </div>
-                </div>
-              )}
-
               {model.image && (
                 <PreviewImage pic={model.image} maxHeight={260} />
               )}
@@ -1850,67 +1864,59 @@ export default function StoryInspector({ type, data, onClose }) {
                 <div style={{
                   ...executionCanvasStyle,
                   position: 'relative',
-                  backgroundImage: templateBgUrl
-                    ? `url("${templateBgUrl}")`
+                  background: templateBgUrl
+                    ? 'rgba(19, 15, 11, 0.96)'
                     : 'linear-gradient(180deg, rgba(244, 236, 220, 0.98), rgba(221, 206, 180, 0.96))',
-                  // 裁剪：只显示背景图左侧 title_pos.x * 0.75 的部分
-                  // 额外截取 3/4 防止显示原背景文本框区域
-                  backgroundSize: (() => {
-                    const titleX = templateData?.title_pos?.x
-                    if (!titleX || !templateBgUrl) return 'cover'
-                    const cropX = titleX * 0.75
-                    const scale = 1748 / cropX
-                    return `${scale * 100}% auto`
-                  })(),
-                  backgroundPosition: 'left center',
-                  backgroundRepeat: 'no-repeat',
                 }}>
-                  {/* 背景图预览浮层（绝对定位，不影响布局高度） */}
-                  {bgPreviewOpen && templateBgUrl && (() => {
-                    const titleX = templateData?.title_pos?.x
-                    const canvasW = 1748
-                    const usedPct = titleX ? Math.min(100, (titleX * 0.75 / canvasW) * 100) : 100
-                    return (
-                      <div style={{
-                        position: 'absolute',
-                        top: 8, left: 8, right: 8,
-                        zIndex: 10,
-                        borderRadius: 10,
-                        overflow: 'hidden',
-                        border: '1px solid rgba(212,184,126,0.3)',
-                        boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
-                      }}>
-                        <img
-                          src={templateBgUrl}
-                          alt="背景全图"
-                          style={{ width: '100%', display: 'block', maxHeight: 160, objectFit: 'cover', objectPosition: 'left top' }}
-                        />
-                        {titleX && (
-                          <div style={{
+                  {templateBgUrl && (
+                    <TemplateBackgroundLayer pic={templateBgUrl} titleX={templateData?.title_pos?.x} />
+                  )}
+
+                  {bgPreviewOpen && templateBgUrl && (
+                    <div style={{
+                      position: 'absolute',
+                      top: 8,
+                      left: 8,
+                      right: 8,
+                      zIndex: 10,
+                      borderRadius: 10,
+                      overflow: 'hidden',
+                      border: '1px solid rgba(212,184,126,0.3)',
+                      boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+                      background: 'rgba(12, 10, 8, 0.92)',
+                    }}>
+                      <img
+                        src={templateBgUrl}
+                        alt="背景全图"
+                        style={{ width: '100%', display: 'block', maxHeight: 160, objectFit: 'cover', objectPosition: 'left top' }}
+                      />
+                      {templateData?.title_pos?.x && (
+                        <div style={{
+                          position: 'absolute',
+                          top: 0,
+                          left: 0,
+                          width: `${Math.min(100, ((Number(templateData.title_pos.x) * 0.75) / 2732) * 100)}%`,
+                          height: '100%',
+                          border: '2px solid rgba(212, 184, 126, 0.9)',
+                          boxSizing: 'border-box',
+                          pointerEvents: 'none',
+                        }}>
+                          <span style={{
                             position: 'absolute',
-                            top: 0, left: 0,
-                            width: `${usedPct}%`,
-                            height: '100%',
-                            border: '2px solid rgba(212, 184, 126, 0.9)',
-                            boxSizing: 'border-box',
-                            pointerEvents: 'none',
+                            bottom: 4,
+                            left: 6,
+                            fontSize: 10,
+                            color: '#f3e3c1',
+                            background: 'rgba(0,0,0,0.6)',
+                            padding: '1px 5px',
+                            borderRadius: 3,
                           }}>
-                            <span style={{
-                              position: 'absolute',
-                              bottom: 4, left: 6,
-                              fontSize: 10,
-                              color: '#f3e3c1',
-                              background: 'rgba(0,0,0,0.6)',
-                              padding: '1px 5px',
-                              borderRadius: 3,
-                            }}>
-                              实际使用区域（x &lt; {Math.round(titleX * 0.75)}）
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                    )
-                  })()}
+                            实际使用区域：x &lt; {Math.round(Number(templateData.title_pos.x) * 0.75)}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
                   {templateFgUrl && (
                     <img
                       src={templateFgUrl}

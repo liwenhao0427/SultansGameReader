@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import useConfigStore from '../stores/useConfigStore'
 import useCanvasStore from '../stores/useCanvasStore'
+import useReadingStateStore, {
+  CONTENT_STATE_FILTERS,
+  getContentState,
+  matchesContentStateFilter,
+} from '../stores/useReadingStateStore'
 import Canvas from './Canvas'
 import DetailPanel from './DetailPanel'
 import { mountNodeOnCanvas } from '../services/graphNavigation'
@@ -27,28 +32,13 @@ function CatalogPreview({ item, activeType, cardsById }) {
   let pic = item.image || null
   let rare = null
 
-  if (!pic && activeType === 'rite') {
-    // 仪式用 icon 字段
-    pic = item.icon || null
-  }
-
-  if (!pic && activeType === 'after_story') {
-    pic = item.pic || null
-  }
+  if (!pic && activeType === 'rite') pic = item.icon || null
+  if (!pic && activeType === 'after_story') pic = item.pic || null
 
   if (!pic && activeType === 'card') {
     const card = cardsById?.[String(item.id)]
     pic = Array.isArray(card?.resource) ? (card.resource[0] || null) : (card?.resource || null)
     rare = card?.rare ?? null
-  }
-
-  if (activeType === 'loot') {
-    const firstCardItem = Array.isArray(item?.item) ? item.item.find((entry) => entry?.type === 'card') : null
-    const card = firstCardItem ? cardsById?.[String(firstCardItem.id)] : null
-    if (card) {
-      pic = Array.isArray(card.resource) ? (card.resource[0] || null) : (card?.resource || null)
-      rare = card?.rare ?? null
-    }
   }
 
   const { url } = useResolvedImage(pic)
@@ -61,13 +51,7 @@ function CatalogPreview({ item, activeType, cardsById }) {
       width: isCardLike ? 40 : 58,
       height: isCardLike ? 87 : 82,
     }}>
-      {rareFrameUrl && (
-        <img
-          src={rareFrameUrl}
-          alt=""
-          style={listPreviewFrameStyle}
-        />
-      )}
+      {rareFrameUrl && <img src={rareFrameUrl} alt="" style={listPreviewFrameStyle} />}
       {url ? (
         <img
           src={url}
@@ -88,14 +72,16 @@ function CatalogPreview({ item, activeType, cardsById }) {
 }
 
 export default function MainLayout({ onNavigate }) {
-  const isLoaded = useConfigStore((s) => s.isLoaded)
-  const initialize = useConfigStore((s) => s.initialize)
-  const indexStats = useConfigStore((s) => s.indexStats)
-  const cardsById = useConfigStore((s) => s.cardsById)
-  const nodeIdSet = useCanvasStore((s) => s.nodeIdSet)
-  const clearCanvas = useCanvasStore((s) => s.clearCanvas)
+  const isLoaded = useConfigStore((state) => state.isLoaded)
+  const initialize = useConfigStore((state) => state.initialize)
+  const indexStats = useConfigStore((state) => state.indexStats)
+  const cardsById = useConfigStore((state) => state.cardsById)
+  const nodeIdSet = useCanvasStore((state) => state.nodeIdSet)
+  const clearCanvas = useCanvasStore((state) => state.clearCanvas)
+  const contentStates = useReadingStateStore((state) => state.contentStates)
 
   const [activeType, setActiveType] = useState('rite')
+  const [activeStateFilter, setActiveStateFilter] = useState('all')
   const [items, setItems] = useState([])
   const [filterText, setFilterText] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
@@ -116,22 +102,15 @@ export default function MainLayout({ onNavigate }) {
       setCurrentPage(1)
       try {
         const result = await window.electronAPI.configListCache(activeType)
-        if (!cancelled) {
-          setItems(result || [])
-        }
+        if (!cancelled) setItems(result || [])
       } catch {
-        if (!cancelled) {
-          setItems([])
-        }
+        if (!cancelled) setItems([])
       } finally {
-        if (!cancelled) {
-          setLoadingItems(false)
-        }
+        if (!cancelled) setLoadingItems(false)
       }
     }
 
     loadItems()
-
     return () => {
       cancelled = true
     }
@@ -139,7 +118,7 @@ export default function MainLayout({ onNavigate }) {
 
   useEffect(() => {
     setCurrentPage(1)
-  }, [filterText])
+  }, [filterText, activeStateFilter])
 
   useEffect(() => {
     if (!isLoaded || bootstrapped || nodeIdSet.size > 0) return
@@ -151,10 +130,7 @@ export default function MainLayout({ onNavigate }) {
         const rites = await window.electronAPI.configListCache('rite')
         if (!rites?.length || cancelled) return
 
-        const randomRites = [...rites]
-          .sort(() => Math.random() - 0.5)
-          .slice(0, 4)
-
+        const randomRites = [...rites].sort(() => Math.random() - 0.5).slice(0, 4)
         const positions = [
           { x: 80, y: 70 },
           { x: 420, y: 60 },
@@ -162,22 +138,17 @@ export default function MainLayout({ onNavigate }) {
           { x: 520, y: 300 },
         ]
 
-        for (let i = 0; i < randomRites.length; i++) {
+        for (let i = 0; i < randomRites.length; i += 1) {
           await mountNodeOnCanvas(randomRites[i], positions[i] || { x: 140 + i * 180, y: 120 + i * 110 }, { autoSelect: i === 0 })
         }
 
-        if (!cancelled) {
-          setBootstrapped(true)
-        }
+        if (!cancelled) setBootstrapped(true)
       } catch {
-        if (!cancelled) {
-          setBootstrapped(true)
-        }
+        if (!cancelled) setBootstrapped(true)
       }
     }
 
     bootstrapRites()
-
     return () => {
       cancelled = true
     }
@@ -185,9 +156,13 @@ export default function MainLayout({ onNavigate }) {
 
   const filteredItems = useMemo(() => {
     const keyword = filterText.trim().toLowerCase()
-    if (!keyword) return items
 
     return items.filter((item) => {
+      const entryState = getContentState(contentStates, activeType, item.id)
+      if (!matchesContentStateFilter(entryState, activeStateFilter)) return false
+
+      if (!keyword) return true
+
       const haystack = [
         item.id,
         item.name,
@@ -200,7 +175,7 @@ export default function MainLayout({ onNavigate }) {
 
       return haystack.includes(keyword)
     })
-  }, [filterText, items])
+  }, [activeStateFilter, activeType, contentStates, filterText, items])
 
   const totalPages = Math.max(1, Math.ceil(filteredItems.length / PAGE_SIZE))
   const visibleItems = useMemo(() => {
@@ -209,18 +184,14 @@ export default function MainLayout({ onNavigate }) {
   }, [currentPage, filteredItems])
 
   if (!isLoaded) {
-    return (
-      <div style={loadingScreenStyle}>
-        正在整理剧情索引与阅读资源…
-      </div>
-    )
+    return <div style={loadingScreenStyle}>正在整理剧情索引与阅读资源…</div>
   }
 
   return (
     <div style={shellStyle}>
       <div style={heroBarStyle}>
         <div>
-          <div style={eyebrowStyle}>Sultan's Game Reader</div>
+          <div style={eyebrowStyle}>Sultan&apos;s Game Reader</div>
           <div style={titleStyle}>仪式优先的剧情阅读工作台</div>
           <div style={subTitleStyle}>
             默认加载几个仪式到画布，画布负责导航，选中节点后直接进入阅读。
@@ -230,18 +201,14 @@ export default function MainLayout({ onNavigate }) {
           <button
             type="button"
             style={secondaryActionStyle}
-            onClick={async () => {
+            onClick={() => {
               clearCanvas()
               setBootstrapped(false)
             }}
           >
             换一组仪式
           </button>
-          <button
-            type="button"
-            style={secondaryActionStyle}
-            onClick={() => onNavigate('settings')}
-          >
+          <button type="button" style={secondaryActionStyle} onClick={() => onNavigate('settings')}>
             设置
           </button>
         </div>
@@ -274,6 +241,22 @@ export default function MainLayout({ onNavigate }) {
             ))}
           </div>
 
+          <div style={subTabRowStyle}>
+            {CONTENT_STATE_FILTERS.map((tab) => (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => setActiveStateFilter(tab.key)}
+                style={{
+                  ...subTabStyle,
+                  ...(activeStateFilter === tab.key ? activeSubTabStyle : null),
+                }}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
           <div style={filterBarStyle}>
             <input
               type="text"
@@ -288,18 +271,26 @@ export default function MainLayout({ onNavigate }) {
             {loadingItems && <div style={listHintStyle}>正在读取 {TYPE_TABS.find((tab) => tab.key === activeType)?.label}…</div>}
             {!loadingItems && visibleItems.length === 0 && (
               <div style={listHintStyle}>
-                {filterText.trim() ? '没有匹配当前筛选条件的条目。' : '该类型下暂无可读条目。'}
+                {filterText.trim() || activeStateFilter !== 'all'
+                  ? '没有匹配当前筛选条件的条目。'
+                  : '该类型下暂无可读条目。'}
               </div>
             )}
 
             {!loadingItems && visibleItems.map((item, index) => {
               const nodeKey = `${activeType}:${item.id}`
               const inCanvas = nodeIdSet.has(nodeKey)
+              const entryState = getContentState(contentStates, activeType, item.id)
+
               return (
                 <button
                   key={nodeKey}
                   type="button"
-                  onClick={() => mountNodeOnCanvas({ ...item, type: activeType }, { x: 120 + (index % 3) * 180, y: 120 + index * 24 }, { autoSelect: true })}
+                  onClick={() => mountNodeOnCanvas(
+                    { ...item, type: activeType },
+                    { x: 120 + (index % 3) * 180, y: 120 + index * 24 },
+                    { autoSelect: true }
+                  )}
                   style={{
                     ...listItemStyle,
                     ...(inCanvas ? mountedItemStyle : null),
@@ -308,11 +299,15 @@ export default function MainLayout({ onNavigate }) {
                   <div style={listItemInnerStyle}>
                     <CatalogPreview item={item} activeType={activeType} cardsById={cardsById} />
                     <div style={{ minWidth: 0 }}>
-                      <div style={listItemIdStyle}>{item.id}</div>
+                      <div style={listItemMetaRowStyle}>
+                        <div style={listItemIdStyle}>{item.id}</div>
+                        <div style={listItemBadgeRowStyle}>
+                          {entryState.favorite && <span style={favoriteBadgeStyle}>收藏</span>}
+                          {entryState.read ? <span style={readBadgeStyle}>已读</span> : <span style={unreadBadgeStyle}>未读</span>}
+                        </div>
+                      </div>
                       <div style={listItemTitleStyle}>{chunkSummary(item)}</div>
-                      {item.title && (
-                        <div style={listItemSubTitleStyle}>{item.title}</div>
-                      )}
+                      {item.title && <div style={listItemSubTitleStyle}>{item.title}</div>}
                     </div>
                   </div>
                 </button>
@@ -329,9 +324,7 @@ export default function MainLayout({ onNavigate }) {
             >
               上一页
             </button>
-            <span style={{ color: '#cdb589', fontSize: 12 }}>
-              {currentPage} / {totalPages}
-            </span>
+            <span style={{ color: '#cdb589', fontSize: 12 }}>{currentPage} / {totalPages}</span>
             <button
               type="button"
               style={pagerBtnStyle}
@@ -354,7 +347,6 @@ export default function MainLayout({ onNavigate }) {
             <Canvas />
           </div>
         </section>
-
       </div>
 
       <DetailPanel />
@@ -445,7 +437,7 @@ const panelBaseStyle = {
 const leftRailStyle = {
   ...panelBaseStyle,
   display: 'grid',
-  gridTemplateRows: 'auto auto 1fr auto',
+  gridTemplateRows: 'auto auto auto 1fr auto',
 }
 
 const canvasStageStyle = {
@@ -472,6 +464,13 @@ const railMetaStyle = {
 
 const tabRowStyle = {
   padding: '14px 14px 8px',
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: 8,
+}
+
+const subTabRowStyle = {
+  padding: '0 14px 10px',
   display: 'flex',
   flexWrap: 'wrap',
   gap: 8,
@@ -506,6 +505,22 @@ const activeTabStyle = {
   background: 'rgba(212, 184, 126, 0.18)',
   color: '#fff3dd',
   border: '1px solid rgba(212, 184, 126, 0.28)',
+}
+
+const subTabStyle = {
+  padding: '6px 10px',
+  borderRadius: 999,
+  border: '1px solid rgba(212, 184, 126, 0.1)',
+  background: 'rgba(212, 184, 126, 0.03)',
+  color: '#cdb589',
+  cursor: 'pointer',
+  fontSize: 12,
+}
+
+const activeSubTabStyle = {
+  background: 'rgba(133, 170, 117, 0.14)',
+  border: '1px solid rgba(133, 170, 117, 0.28)',
+  color: '#edf7dc',
 }
 
 const listWrapStyle = {
@@ -545,6 +560,20 @@ const mountedItemStyle = {
   border: '1px solid rgba(133, 170, 117, 0.22)',
 }
 
+const listItemMetaRowStyle = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: 8,
+}
+
+const listItemBadgeRowStyle = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 6,
+  flexWrap: 'wrap',
+}
+
 const listItemIdStyle = {
   fontFamily: 'Consolas, monospace',
   fontSize: 11,
@@ -562,6 +591,30 @@ const listItemSubTitleStyle = {
   fontSize: 11,
   lineHeight: 1.5,
   color: 'rgba(241, 232, 213, 0.58)',
+}
+
+const favoriteBadgeStyle = {
+  padding: '2px 8px',
+  borderRadius: 999,
+  fontSize: 10,
+  color: '#fff0d3',
+  background: 'rgba(212, 184, 126, 0.18)',
+}
+
+const readBadgeStyle = {
+  padding: '2px 8px',
+  borderRadius: 999,
+  fontSize: 10,
+  color: '#d7ebc3',
+  background: 'rgba(133, 170, 117, 0.16)',
+}
+
+const unreadBadgeStyle = {
+  padding: '2px 8px',
+  borderRadius: 999,
+  fontSize: 10,
+  color: '#f7e2b8',
+  background: 'rgba(212, 184, 126, 0.12)',
 }
 
 const listPreviewStyle = {

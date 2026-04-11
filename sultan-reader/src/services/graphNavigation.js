@@ -1,7 +1,7 @@
 import useCanvasStore from '../stores/useCanvasStore'
 
 const EDGE_COLORS = { success: '#8fbf77', failed: '#c35b5b', default: '#927453' }
-const CANVAS_NODE_TYPES = new Set(['rite', 'event', 'loot', 'over'])
+const CANVAS_NODE_TYPES = new Set(['rite', 'event', 'loot'])
 
 function summarize(item, data) {
   return item.name || item.text || data?.name || data?.text || item.id

@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import useCanvasStore from '../stores/useCanvasStore'
+import useReadingStateStore, { getContentState } from '../stores/useReadingStateStore'
 import RawFileView from './RawFileView'
 import StoryInspector from './reader/StoryInspector'
 import CardDetail from './details/CardDetail'
@@ -12,7 +13,6 @@ import OverDetail from './details/OverDetail'
 
 const FULLSCREEN_TYPES = new Set(['rite'])
 
-// 面板整体样式
 const panelStyle = {
   position: 'fixed',
   top: 18,
@@ -38,20 +38,18 @@ const errorStyle = {
   padding: '8px 0',
 }
 
-/**
- * DetailPanel — 右侧详情面板容器
- * 监听 selectedNodeId，加载对应缓存数据，分发到子组件
- */
 export default function DetailPanel() {
-  const selectedNodeId = useCanvasStore(s => s.selectedNodeId)
-  const selectedOpenMode = useCanvasStore(s => s.selectedOpenMode)
-  const setSelectedNode = useCanvasStore(s => s.setSelectedNode)
+  const selectedNodeId = useCanvasStore((state) => state.selectedNodeId)
+  const selectedOpenMode = useCanvasStore((state) => state.selectedOpenMode)
+  const setSelectedNode = useCanvasStore((state) => state.setSelectedNode)
+  const contentStates = useReadingStateStore((state) => state.contentStates)
+  const toggleRead = useReadingStateStore((state) => state.toggleRead)
+  const toggleFavorite = useReadingStateStore((state) => state.toggleFavorite)
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [rawContent, setRawContent] = useState(null)
 
-  // 当选中节点变化时加载数据
   useEffect(() => {
     if (!selectedNodeId) {
       setData(null)
@@ -59,7 +57,6 @@ export default function DetailPanel() {
       return
     }
 
-    // 解析 "{type}:{id}" 格式
     const colonIdx = selectedNodeId.indexOf(':')
     if (colonIdx === -1) return
     const type = selectedNodeId.slice(0, colonIdx)
@@ -70,33 +67,32 @@ export default function DetailPanel() {
     setData(null)
 
     window.electronAPI.configReadCache(type, id)
-      .then(result => {
+      .then((result) => {
         setData(result)
         setLoading(false)
       })
-      .catch(err => {
+      .catch((err) => {
         setError(err?.message || '加载失败')
         setLoading(false)
       })
   }, [selectedNodeId])
 
-  // 查看原始文件
   async function handleViewRaw() {
     if (!data?._source_path) return
     try {
       const content = await window.electronAPI.fileReadRaw(data._source_path)
       setRawContent(content)
     } catch (e) {
-      setRawContent(`读取失败：${e?.message}`)
+      setRawContent(`读取失败：${e?.message || '未知错误'}`)
     }
   }
 
   const colonIdx = selectedNodeId?.indexOf(':') ?? -1
   const type = colonIdx !== -1 ? selectedNodeId.slice(0, colonIdx) : ''
+  const id = colonIdx !== -1 ? selectedNodeId.slice(colonIdx + 1) : ''
+  const entryState = getContentState(contentStates, type, id)
 
-  if (!selectedNodeId) {
-    return null
-  }
+  if (!selectedNodeId) return null
 
   if (FULLSCREEN_TYPES.has(type) && selectedOpenMode === 'fullscreen') {
     return !loading && !error && data
@@ -106,13 +102,12 @@ export default function DetailPanel() {
 
   return (
     <div data-detail-panel="true" style={panelStyle}>
-      {/* 加载状态 */}
       {loading && (
         <div style={{ color: '#a6adc8', fontSize: 12, padding: '8px 0' }}>加载中…</div>
       )}
 
-      {/* 错误状态 */}
       {error && <div style={errorStyle}>错误：{error}</div>}
+
       {!loading && !error && data && (
         <div style={{ flex: 1, display: 'grid', gridTemplateRows: 'auto 1fr', minHeight: 0 }}>
           <div style={{
@@ -125,9 +120,29 @@ export default function DetailPanel() {
             <div style={{ color: 'rgba(241, 232, 213, 0.62)', fontSize: 12 }}>
               {selectedNodeId}
             </div>
-            <div style={{ display: 'flex', gap: 10 }}>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                onClick={() => toggleRead(type, id)}
+                style={{
+                  ...actionButtonStyle,
+                  ...(entryState.read ? activeActionButtonStyle : null),
+                }}
+              >
+                {entryState.read ? '标记未读' : '标记已读'}
+              </button>
+              <button
+                type="button"
+                onClick={() => toggleFavorite(type, id)}
+                style={{
+                  ...actionButtonStyle,
+                  ...(entryState.favorite ? activeActionButtonStyle : null),
+                }}
+              >
+                {entryState.favorite ? '取消收藏' : '加入收藏'}
+              </button>
               {data?._source_path && (
-                <button type="button" onClick={handleViewRaw} style={actionButtonStyle}>查看原始文件</button>
+                <button type="button" onClick={handleViewRaw} style={actionButtonStyle}>查看原文件</button>
               )}
               <button type="button" onClick={() => setSelectedNode(null)} style={actionButtonStyle}>关闭</button>
             </div>
@@ -161,4 +176,10 @@ const actionButtonStyle = {
   background: 'rgba(212, 184, 126, 0.08)',
   color: '#f1e8d5',
   cursor: 'pointer',
+}
+
+const activeActionButtonStyle = {
+  background: 'rgba(212, 184, 126, 0.2)',
+  border: '1px solid rgba(212, 184, 126, 0.34)',
+  color: '#fff2d6',
 }

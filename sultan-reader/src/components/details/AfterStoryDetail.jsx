@@ -21,7 +21,12 @@ const S = {
     background: 'rgba(22, 18, 13, 0.88)',
     marginBottom: 14,
   },
-  image: { width: '100%', display: 'block', objectFit: 'contain', objectPosition: 'top center' },
+  image: {
+    width: '100%',
+    display: 'block',
+    objectFit: 'contain',
+    objectPosition: 'top center',
+  },
   imagePlaceholder: {
     height: 220,
     display: 'flex',
@@ -30,7 +35,12 @@ const S = {
     color: 'rgba(241, 232, 213, 0.42)',
     fontSize: 12,
   },
-  desc: { color: 'rgba(241, 232, 213, 0.68)', fontSize: 13, lineHeight: 1.75, marginBottom: 14 },
+  desc: {
+    color: 'rgba(241, 232, 213, 0.68)',
+    fontSize: 13,
+    lineHeight: 1.75,
+    marginBottom: 14,
+  },
   groupList: { display: 'grid', gap: 10 },
   groupButton: {
     width: '100%',
@@ -61,7 +71,7 @@ function HeaderImage({ pic }) {
 
   return (
     <div style={S.imageWrap}>
-      {loading && <div style={S.imagePlaceholder}>加载中…</div>}
+      {loading && <div style={S.imagePlaceholder}>加载中...</div>}
       {!loading && !url && <div style={S.imagePlaceholder}>暂无配图</div>}
       {!loading && url && <img src={url} alt="" style={S.image} />}
     </div>
@@ -71,13 +81,17 @@ function HeaderImage({ pic }) {
 export default function AfterStoryDetail({ data }) {
   const [activeState, setActiveState] = useState({ groupId: null, index: 0 })
   const cardsById = useConfigStore((state) => state.cardsById)
-  const [relations, setRelations] = useState({ afterStoryToOvers: {} })
+  const [relations, setRelations] = useState({ afterStoryToOvers: {}, overToAfterStories: {} })
 
   useEffect(() => {
     let cancelled = false
+
     getAfterStoryRelations().then((result) => {
-      if (!cancelled) setRelations(result)
+      if (!cancelled) {
+        setRelations(result)
+      }
     })
+
     return () => {
       cancelled = true
     }
@@ -85,40 +99,20 @@ export default function AfterStoryDetail({ data }) {
 
   const linkedOvers = relations.afterStoryToOvers?.[String(data?.id)] || []
 
-  const viewerGroups = useMemo(
-    () => linkedOvers.length > 0
-      ? linkedOvers.map((over) => buildAfterStoryVariantGroup({
-        groupId: `${over.overId}:${data?.id}`,
-        overId: over.overId,
-        overName: over.overName,
-        afterStoryId: String(data?.id),
-        afterStoryName: data?.name || String(data?.id),
-        afterStoryImage: Array.isArray(data?.extra) ? (data.extra.find((item) => item?.pic)?.pic || null) : null,
-        items: (Array.isArray(data?.extra) ? data.extra : [])
-          .filter((item) => item?.result_text || item?.pic)
-          .filter((item) => {
-            const relationGroup = (relations.overToAfterStories?.[over.overId] || [])
-              .find((group) => group.afterStoryId === String(data?.id))
-            if (!relationGroup) return true
-            const allowed = new Set(relationGroup.items.map((entry) => entry.key))
-            return allowed.has(item.key)
-          })
-          .map((item, index) => ({
-            key: item.key || `${data?.id}:${index}`,
-            text: item.result_text || '',
-            pic: item.pic || null,
-            note: item.key__c || '',
-            condition: item.condition || null,
-          })),
-      }, cardsById))
-      : [buildAfterStoryVariantGroup({
+  const viewerGroups = useMemo(() => {
+    const extras = Array.isArray(data?.extra) ? data.extra : []
+    const defaultImage = extras.find((item) => item?.pic)?.pic || null
+
+    if (linkedOvers.length === 0) {
+      return [buildAfterStoryVariantGroup({
         groupId: `all:${data?.id}`,
         overId: '',
         overName: '',
         afterStoryId: String(data?.id),
         afterStoryName: data?.name || String(data?.id),
-        afterStoryImage: Array.isArray(data?.extra) ? (data.extra.find((item) => item?.pic)?.pic || null) : null,
-        items: (Array.isArray(data?.extra) ? data.extra : [])
+        afterStoryImage: defaultImage,
+        afterStorySourcePath: data?._source_path || null,
+        items: extras
           .filter((item) => item?.result_text || item?.pic)
           .map((item, index) => ({
             key: item.key || `${data?.id}:${index}`,
@@ -127,11 +121,41 @@ export default function AfterStoryDetail({ data }) {
             note: item.key__c || '',
             condition: item.condition || null,
           })),
-      }, cardsById)],
-    [cardsById, data, linkedOvers, relations.overToAfterStories]
-  )
+      }, cardsById)]
+    }
 
-  const defaultImage = Array.isArray(data?.extra) ? (data.extra.find((item) => item?.pic)?.pic || null) : null
+    return linkedOvers.map((over) => {
+      const relationGroup = (relations.overToAfterStories?.[over.overId] || [])
+        .find((group) => group.afterStoryId === String(data?.id))
+      const allowedKeys = relationGroup
+        ? new Set(relationGroup.items.map((entry) => entry.key))
+        : null
+
+      return buildAfterStoryVariantGroup({
+        groupId: `${over.overId}:${data?.id}`,
+        overId: over.overId,
+        overName: over.overName,
+        afterStoryId: String(data?.id),
+        afterStoryName: data?.name || String(data?.id),
+        afterStoryImage: defaultImage,
+        afterStorySourcePath: data?._source_path || null,
+        items: extras
+          .filter((item) => item?.result_text || item?.pic)
+          .filter((item) => (allowedKeys ? allowedKeys.has(item.key) : true))
+          .map((item, index) => ({
+            key: item.key || `${data?.id}:${index}`,
+            text: item.result_text || '',
+            pic: item.pic || null,
+            note: item.key__c || '',
+            condition: item.condition || null,
+          })),
+      }, cardsById)
+    })
+  }, [cardsById, data, linkedOvers, relations.overToAfterStories])
+
+  const defaultImage = Array.isArray(data?.extra)
+    ? (data.extra.find((item) => item?.pic)?.pic || null)
+    : null
   const activeGroup = viewerGroups.find((group) => group.groupId === activeState.groupId) || null
 
   if (!data) return null
@@ -152,8 +176,10 @@ export default function AfterStoryDetail({ data }) {
       <HeaderImage pic={defaultImage} />
 
       <div style={S.desc}>
-        当前后日谈支持弹窗分支阅读。
-        {linkedOvers.length > 0 ? ' 你可以按结局区分查看，也可以在弹窗里切到跨结局连续翻看。' : ' 当前未匹配到明确结局时，将按全部文本连续阅读。'}
+        当前后日谈支持按结局分组阅读。
+        {linkedOvers.length > 0
+          ? ' 你可以先按结局进入，也可以在弹窗里继续切换到上个结局或下个结局。'
+          : ' 当前没有匹配到明确结局，将按该角色全部后日谈连续查看。'}
       </div>
 
       <div style={S.groupList}>
