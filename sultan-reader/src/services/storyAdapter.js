@@ -817,7 +817,7 @@ export function adaptStoryData(type, data, cardsMap, cardsById = {}) {
         randomText: data.random_text || {},
         randomTextUp: data.random_text_up || {},
         tipsText: data.tips_text || '',
-        waitingRoundEnd: data.waiting_round_end_action
+        waitingRoundEnd: data.waiting_round_end_action && Object.keys(data.waiting_round_end_action).length > 0
           ? {
             effects: buildResultEffects(data.waiting_round_end_action, cardsMap, cardsById),
             actions: extractActionTargets(data.waiting_round_end_action),

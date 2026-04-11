@@ -624,26 +624,21 @@ function ExecutionSlot({ slot, previewCard, slotCaption, slotBgKey }) {
 
 function CandidateHandItem({ candidate, active, onSelect }) {
   const previewCard = candidate.cards?.[0] || null
-  const secondaryText = previewCard?.title || candidate.conditionText || ''
 
   return (
     <button
       type="button"
       onClick={onSelect}
       style={{
-        width: '100%',
-        minWidth: 0,
+        width: 118,
+        minWidth: 118,
         height: 184,
-        padding: 12,
+        padding: 0,
         borderRadius: 20,
-        border: active
-          ? '1px solid rgba(239, 215, 169, 0.62)'
-          : '1px solid rgba(244, 232, 206, 0.18)',
-        backgroundColor: active ? 'rgba(212, 184, 126, 0.14)' : 'rgba(18, 15, 11, 0.66)',
+        border: 'none',
+        backgroundColor: 'transparent',
         color: '#f3ebda',
-        boxShadow: active
-          ? '0 0 0 2px rgba(212, 184, 126, 0.12), 0 12px 24px rgba(0,0,0,0.12)'
-          : 'none',
+        boxShadow: 'none',
         cursor: 'pointer',
         textAlign: 'left',
         boxSizing: 'border-box',
@@ -654,14 +649,19 @@ function CandidateHandItem({ candidate, active, onSelect }) {
         borderRadius: 18,
         overflow: 'hidden',
         position: 'relative',
-        background: 'linear-gradient(180deg, rgba(41, 33, 24, 0.96), rgba(24, 18, 13, 0.96))',
+        background: active
+          ? 'linear-gradient(180deg, rgba(69, 55, 35, 0.98), rgba(24, 18, 13, 0.98))'
+          : 'linear-gradient(180deg, rgba(41, 33, 24, 0.96), rgba(24, 18, 13, 0.96))',
+        boxShadow: active
+          ? '0 0 0 1px rgba(239, 215, 169, 0.52), 0 10px 18px rgba(0,0,0,0.16)'
+          : 'none',
       }}>
         {candidate.cards.length > 1 ? (
           <div style={{ position: 'absolute', inset: '10px 12px 12px' }}>
             <CardStack cards={candidate.cards} />
           </div>
         ) : previewCard ? (
-          <div style={{ position: 'absolute', inset: '8px 10px 10px' }}>
+          <div style={{ position: 'absolute', inset: '8px 8px 10px' }}>
             <CardPortrait card={previewCard} showName={false} />
           </div>
         ) : null}
@@ -680,7 +680,7 @@ function CandidateHandItem({ candidate, active, onSelect }) {
           <div
             title={candidate.label}
             style={{
-              fontSize: 16,
+              fontSize: 15,
               fontWeight: 800,
               lineHeight: 1.3,
               color: '#fff2d7',
@@ -692,12 +692,6 @@ function CandidateHandItem({ candidate, active, onSelect }) {
           >
             {candidate.label}
           </div>
-          <ConditionPreview text={candidate.conditionText} color="#e1cfad" />
-          {secondaryText && (
-            <div style={{ marginTop: 6, color: '#d7c6a4', fontSize: 12, lineHeight: 1.5 }}>
-              {secondaryText}
-            </div>
-          )}
         </div>
         {!previewCard && candidate.cards.length <= 1 && (
           <div style={{
@@ -878,7 +872,7 @@ function matchesSlotOccupancyCondition(conditionRaw = {}, slotState = {}) {
 }
 
 export default function StoryInspector({ type, data, onClose }) {
-  const RITE_CANDIDATE_PAGE_SIZE = 8
+  const RITE_CANDIDATE_PAGE_SIZE = 7
   const cardsLite = useConfigStore((s) => s.cardsLite)
   const cardsById = useConfigStore((s) => s.cardsById)
   const model = adaptStoryData(type, data, cardsLite, cardsById)
@@ -895,9 +889,11 @@ export default function StoryInspector({ type, data, onClose }) {
   const [autoAdvance, setAutoAdvance] = useState(false)
   const [conditionFilterText, setConditionFilterText] = useState('')
   const [candidatePage, setCandidatePage] = useState(1)
+  const [selectedConditionId, setSelectedConditionId] = useState(null)
   const [slotBubbleTexts, setSlotBubbleTexts] = useState({})
   const [executionOpen, setExecutionOpen] = useState(false)
   const [executionMode, setExecutionMode] = useState('normal')
+  const [hideReaderUi, setHideReaderUi] = useState(false)
   const [executionStepIndex, setExecutionStepIndex] = useState(0)
   const [executionAutoAdvance, setExecutionAutoAdvance] = useState(false)
   const [eventChoicePath, setEventChoicePath] = useState([])
@@ -938,10 +934,12 @@ export default function StoryInspector({ type, data, onClose }) {
     setSlotBubbleTexts({})
     setActiveSlotId(firstSlotId)
     setCandidatePage(1)
+    setSelectedConditionId(null)
     setRevealedLineCount(type === 'rite' ? initialLines.length : (initialLines.length > 0 ? 1 : 0))
     setRevealedSegmentCount(type === 'rite' ? 9999 : 0)
     setExecutionOpen(false)
     setExecutionMode('normal')
+    setHideReaderUi(false)
     setExecutionStepIndex(0)
     setEventChoicePath([])
     autoMountedEventIdRef.current = null
@@ -998,14 +996,46 @@ export default function StoryInspector({ type, data, onClose }) {
     return selectedSlot.candidates || []
   }, [selectedSlot])
 
+  const selectedSlotConditionGroups = useMemo(() => {
+    if (!selectedSlotCandidates.length) return []
+
+    const groups = []
+    const groupMap = new Map()
+
+    selectedSlotCandidates.forEach((candidate, index) => {
+      const rawLabel = candidate.conditionText || candidate.label || `条件 ${index + 1}`
+      if (!groupMap.has(rawLabel)) {
+        const group = {
+          id: `${selectedSlot?.id || 'slot'}:condition:${groups.length}`,
+          label: rawLabel,
+          candidates: [],
+        }
+        groupMap.set(rawLabel, group)
+        groups.push(group)
+      }
+      groupMap.get(rawLabel).candidates.push(candidate)
+    })
+
+    return groups
+  }, [selectedSlot?.id, selectedSlotCandidates])
+
+  const activeConditionGroup = useMemo(() => {
+    if (selectedSlotConditionGroups.length === 0) return null
+    return selectedSlotConditionGroups.find((group) => group.id === selectedConditionId) || selectedSlotConditionGroups[0]
+  }, [selectedConditionId, selectedSlotConditionGroups])
+
+  const activeConditionCandidates = useMemo(() => (
+    activeConditionGroup?.candidates || selectedSlotCandidates
+  ), [activeConditionGroup?.candidates, selectedSlotCandidates])
+
   const selectedSlotPageCount = useMemo(() => (
-    Math.max(1, Math.ceil(selectedSlotCandidates.length / RITE_CANDIDATE_PAGE_SIZE))
-  ), [RITE_CANDIDATE_PAGE_SIZE, selectedSlotCandidates.length])
+    Math.max(1, Math.ceil(activeConditionCandidates.length / RITE_CANDIDATE_PAGE_SIZE))
+  ), [RITE_CANDIDATE_PAGE_SIZE, activeConditionCandidates.length])
 
   const pagedSelectedSlotCandidates = useMemo(() => {
     const start = (candidatePage - 1) * RITE_CANDIDATE_PAGE_SIZE
-    return selectedSlotCandidates.slice(start, start + RITE_CANDIDATE_PAGE_SIZE)
-  }, [RITE_CANDIDATE_PAGE_SIZE, candidatePage, selectedSlotCandidates])
+    return activeConditionCandidates.slice(start, start + RITE_CANDIDATE_PAGE_SIZE)
+  }, [RITE_CANDIDATE_PAGE_SIZE, activeConditionCandidates, candidatePage])
 
   const selectedCandidate = useMemo(() => {
     if (!selectedSlot) return null
@@ -1015,6 +1045,32 @@ export default function StoryInspector({ type, data, onClose }) {
   useEffect(() => {
     setCandidatePage(1)
   }, [activeSlotId])
+
+  useEffect(() => {
+    if (selectedSlotConditionGroups.length === 0) {
+      setSelectedConditionId(null)
+      return
+    }
+
+    if (!selectedConditionId || !selectedSlotConditionGroups.some((group) => group.id === selectedConditionId)) {
+      setSelectedConditionId(selectedSlotConditionGroups[0].id)
+    }
+  }, [selectedConditionId, selectedSlotConditionGroups])
+
+  useEffect(() => {
+    if (!selectedSlot || !activeConditionGroup) return
+    const currentCandidateId = slotSelections[selectedSlot.id]
+    const groupHasSelected = activeConditionGroup.candidates.some((candidate) => candidate.id === currentCandidateId)
+    if (!groupHasSelected) {
+      const fallbackCandidate = activeConditionGroup.candidates[0] || null
+      if (fallbackCandidate) {
+        setSlotSelections((current) => ({
+          ...current,
+          [selectedSlot.id]: fallbackCandidate.id,
+        }))
+      }
+    }
+  }, [activeConditionGroup, selectedSlot, slotSelections])
 
   useEffect(() => {
     if (candidatePage > selectedSlotPageCount) {
@@ -1343,6 +1399,7 @@ export default function StoryInspector({ type, data, onClose }) {
     setActiveSlotId(slotId)
     setConditionFilterText('')
     setCandidatePage(1)
+    setSelectedConditionId(null)
     resetFlow(slotId)
   }
 
@@ -1416,6 +1473,25 @@ export default function StoryInspector({ type, data, onClose }) {
     setExecutionStepIndex(0)
     setExecutionAutoAdvance(false)
     setExecutionOpen(true)
+  }
+
+  function handleSelectConditionGroup(conditionId) {
+    if (!selectedSlot) return
+    const nextGroup = selectedSlotConditionGroups.find((group) => group.id === conditionId)
+    if (!nextGroup) return
+
+    setSelectedConditionId(conditionId)
+    setCandidatePage(1)
+
+    const fallbackCandidate = nextGroup.candidates[0] || null
+    if (fallbackCandidate) {
+      const nextSelections = {
+        ...slotSelections,
+        [selectedSlot.id]: fallbackCandidate.id,
+      }
+      setSlotSelections(nextSelections)
+      resetFlow(selectedSlot.id, nextSelections, settlementSelections, globalSettlementSelection)
+    }
   }
 
   function handleOpenWaitingRoundExecution() {
@@ -1641,6 +1717,21 @@ export default function StoryInspector({ type, data, onClose }) {
             {model.title}
           </div>
         </div>
+        <div style={storyHeaderActionsStyle}>
+          {type === 'rite' && (
+            <button
+              type="button"
+              onClick={() => setHideReaderUi((value) => !value)}
+              style={secondaryButtonStyle}
+            >
+              {hideReaderUi ? '显示内容' : '隐藏内容'}
+            </button>
+          )}
+          {data?._source_path && (
+            <button type="button" onClick={handleViewRaw} style={secondaryButtonStyle}>查看原始文件</button>
+          )}
+          <button type="button" onClick={onClose} style={closeButtonStyle}>关闭</button>
+        </div>
       </div>
     </div>
   )
@@ -1787,6 +1878,9 @@ export default function StoryInspector({ type, data, onClose }) {
         overflow: 'hidden',
       }}>
         {type === 'rite' ? (
+          hideReaderUi ? (
+            <div style={riteHiddenBackdropStyle} />
+          ) : (
           <>
             <div style={{
               height: '100%',
@@ -1847,20 +1941,52 @@ export default function StoryInspector({ type, data, onClose }) {
 
               <div style={candidateStageStyle}>
                 <div>
-                  <div style={sectionTitleStyle}>卡牌候选</div>
-                  <div style={{ ...smallLineStyle, marginTop: 8 }}>
-                    当前槽位：{selectedSlot?.title || '未选择槽位'}
-                  </div>
-                  {selectedSlot?.text && (
-                    <div style={translucentTextBlockStyle}>
-                      {selectedSlot.text}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+                    <div>
+                      <div style={sectionTitleStyle}>卡牌候选</div>
+                      <div style={{ ...smallLineStyle, marginTop: 8 }}>
+                        当前槽位：{selectedSlot?.title || '未选择槽位'}
+                      </div>
                     </div>
-                  )}
-                  {selectedSlot?.conditions?.length > 0 && (
-                    <div style={{ ...smallLineStyle, marginTop: 8 }}>
-                      <span title={selectedSlot.conditions.join('；')}>
-                        可放入条件：{selectedSlot.conditions.join('；')}
-                      </span>
+                    <div style={candidateToolbarStyle}>
+                      <div style={candidateToolbarGroupStyle}>
+                        {(selectedSlotConditionGroups.length > 0 ? selectedSlotConditionGroups : [{ id: 'default', label: '默认条件' }]).map((group) => (
+                          <button
+                            key={group.id}
+                            type="button"
+                            style={selectedConditionId === group.id || (!selectedConditionId && activeConditionGroup?.id === group.id)
+                              ? activeToggleButtonStyle
+                              : secondaryButtonStyle}
+                            onClick={() => handleSelectConditionGroup(group.id)}
+                          >
+                            {group.label}
+                          </button>
+                        ))}
+                      </div>
+                      <div style={candidateToolbarGroupStyle}>
+                        <button
+                          type="button"
+                          style={secondaryButtonStyle}
+                          onClick={() => setCandidatePage((page) => Math.max(1, page - 1))}
+                          disabled={candidatePage === 1}
+                        >
+                          上一页
+                        </button>
+                        <span style={smallLineStyle}>{candidatePage} / {selectedSlotPageCount}</span>
+                        <button
+                          type="button"
+                          style={secondaryButtonStyle}
+                          onClick={() => setCandidatePage((page) => Math.min(selectedSlotPageCount, page + 1))}
+                          disabled={candidatePage === selectedSlotPageCount}
+                        >
+                          下一页
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  {activeConditionGroup?.label && (
+                    <div style={translucentTextBlockStyle}>
+                      {activeConditionGroup.label}
                     </div>
                   )}
                 </div>
@@ -1874,7 +2000,7 @@ export default function StoryInspector({ type, data, onClose }) {
                   gap: 18,
                   alignContent: 'start',
                 }}>
-                  {selectedSlotCandidates.length > 0 ? (
+                  {activeConditionCandidates.length > 0 ? (
                     <>
                       <div style={riteCandidateGridStyle}>
                         {pagedSelectedSlotCandidates.map((candidate) => (
@@ -1886,29 +2012,6 @@ export default function StoryInspector({ type, data, onClose }) {
                           />
                         ))}
                       </div>
-                      {selectedSlotPageCount > 1 && (
-                        <div style={ritePaginationStyle}>
-                          <button
-                            type="button"
-                            style={secondaryButtonStyle}
-                            onClick={() => setCandidatePage((page) => Math.max(1, page - 1))}
-                            disabled={candidatePage === 1}
-                          >
-                            上一页
-                          </button>
-                          <span style={smallLineStyle}>
-                            {candidatePage} / {selectedSlotPageCount}
-                          </span>
-                          <button
-                            type="button"
-                            style={secondaryButtonStyle}
-                            onClick={() => setCandidatePage((page) => Math.min(selectedSlotPageCount, page + 1))}
-                            disabled={candidatePage === selectedSlotPageCount}
-                          >
-                            下一页
-                          </button>
-                        </div>
-                      )}
                     </>
                   ) : (
                     <div style={emptyCandidateStyle}>
@@ -1939,18 +2042,18 @@ export default function StoryInspector({ type, data, onClose }) {
                   display: 'grid',
                   gap: 18,
                 }} ref={readerBodyRef}>
-                  {model.image && (
+                  {model.image && !hideReaderUi && (
                     <PreviewImage pic={model.image} maxHeight={240} />
                   )}
 
-                  {model.tipsText && (
+                  {model.tipsText && !hideReaderUi && (
                     <div>
                       <div style={sectionTitleStyle}>准备提示</div>
                       <div style={translucentTextBlockStyle}>{model.tipsText}</div>
                     </div>
                   )}
 
-                  {model.tags?.length > 0 && (
+                  {model.tags?.length > 0 && !hideReaderUi && (
                     <div>
                       <div style={sectionTitleStyle}>标签提示</div>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
@@ -1961,95 +2064,14 @@ export default function StoryInspector({ type, data, onClose }) {
                     </div>
                   )}
 
-                  {visibleLines.length > 0 && (
+                  {model.intro && !hideReaderUi && (
                     <div style={{ display: 'grid', gap: 12 }}>
                       <div style={sectionTitleStyle}>仪式正文</div>
-                      {visibleLines.map((line, index) => (
-                        <div key={`${line}-${index}`} style={translucentTextBlockStyle}>
-                          <div style={{ fontSize: 16, lineHeight: 1.9, color: '#f7edd8', whiteSpace: 'pre-wrap' }}>
-                            {line}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {selectedSlot && (
-                    <div>
-                      <div style={sectionTitleStyle}>当前槽位说明</div>
                       <div style={translucentTextBlockStyle}>
-                        <div style={{ fontWeight: 700, color: '#fff0d0' }}>{selectedSlot.title}</div>
-                        {selectedSlot.text && <div style={{ marginTop: 8 }}>{selectedSlot.text}</div>}
-                        {selectedSlot.conditions?.length > 0 && (
-                          <div style={{ marginTop: 8, color: '#dcc9a6' }}>
-                            条件：{selectedSlot.conditions.join('；')}
-                          </div>
-                        )}
-                        <div style={{ marginTop: 8, color: '#dcc9a6' }}>
-                          {selectedSlot.canBeEmpty ? '该槽位允许空置。' : '该槽位不可为空。'}
+                        <div style={{ fontSize: 16, lineHeight: 1.9, color: '#f7edd8', whiteSpace: 'pre-wrap' }}>
+                          {model.intro}
                         </div>
                       </div>
-                    </div>
-                  )}
-
-                  {selectedSlot && (
-                    <SettlementHintGroup
-                      title="槽位条件"
-                      description="点击切换当前槽位的结算条件。"
-                      hints={(visibleSettlementHintsBySlot[selectedSlot.id] || []).filter((hint) => {
-                        const keyword = conditionFilterText.trim().toLowerCase()
-                        if (!keyword) return true
-                        return [hint.label, hint.conditionText, hint.primaryText].filter(Boolean).join(' ').toLowerCase().includes(keyword)
-                      })}
-                      selectedCount={selectedSettlementHints.length > 0 ? 1 : 0}
-                      filterText={conditionFilterText}
-                      onFilterChange={setConditionFilterText}
-                      selectedHintId={settlementSelections[selectedSlot?.id]}
-                      onToggle={handleSelectSettlementHint}
-                    />
-                  )}
-
-                  <SettlementHintGroup
-                    title="全局条件"
-                    description="这些条件会影响整个仪式的结算展示。"
-                    hints={visibleGlobalSettlementHints.filter((hint) => {
-                      const keyword = conditionFilterText.trim().toLowerCase()
-                      if (!keyword) return true
-                      return [hint.label, hint.conditionText, hint.primaryText].filter(Boolean).join(' ').toLowerCase().includes(keyword)
-                    })}
-                    selectedCount={globalSettlementSelection ? 1 : 0}
-                    filterText={conditionFilterText}
-                    onFilterChange={setConditionFilterText}
-                    selectedHintId={globalSettlementSelection}
-                    onToggle={handleSelectGlobalSettlementHint}
-                  />
-
-                  {visibleSegments.length > 0 && (
-                    <div style={{ display: 'grid', gap: 14 }}>
-                      <div style={sectionTitleStyle}>可见结算片段</div>
-                      {visibleSegments.map((segment, index) => (
-                        <div key={`${segment.phase}-${index}`} style={segmentCardStyle}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 14 }}>
-                            <div>
-                              <div style={sectionTitleStyle}>{segment.phase}</div>
-                              {segment.title && (
-                                <div style={{ marginTop: 8, fontSize: 18, fontWeight: 700 }}>{segment.title}</div>
-                              )}
-                            </div>
-                            {segment.conditions.length > 0 && (
-                              <div style={{ ...smallLineStyle, maxWidth: 200, textAlign: 'right' }}>
-                                {segment.conditions.join(' / ')}
-                              </div>
-                            )}
-                          </div>
-                          {segment.text && (
-                            <div style={{ marginTop: 12, fontSize: 15, lineHeight: 1.85, whiteSpace: 'pre-wrap' }}>
-                              {segment.text}
-                            </div>
-                          )}
-                          <EffectSummary effects={segment.effects} onOpenCard={handleOpenCard} />
-                        </div>
-                      ))}
                     </div>
                   )}
                 </div>
@@ -2077,6 +2099,7 @@ export default function StoryInspector({ type, data, onClose }) {
               </div>
             </div>
           </>
+          )
         ) : (
         <div style={{
           height: '100%',
@@ -2268,15 +2291,7 @@ export default function StoryInspector({ type, data, onClose }) {
     <div style={overlayShellStyle}>
       <div style={overlayCardStyle}>
         <div style={overlayHeaderStyle}>
-          <div style={overlayHeaderLeftStyle}>
-            {headerBlock}
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            {data?._source_path && (
-              <button type="button" onClick={handleViewRaw} style={secondaryButtonStyle}>查看原始文件</button>
-            )}
-            <button type="button" onClick={onClose} style={closeButtonStyle}>关闭</button>
-          </div>
+          <div style={overlayHeaderLeftStyle}>{headerBlock}</div>
         </div>
         <div style={{ height: '100%', minHeight: 0, overflow: 'hidden', padding: 24 }}>
           {content}
@@ -2723,8 +2738,9 @@ const eventTriggerMetaStyle = {
 
 const storyHeaderShellStyle = {
   display: 'flex',
-  justifyContent: 'flex-start',
+  justifyContent: 'stretch',
   minWidth: 0,
+  width: '100%',
 }
 
 const storyHeaderCardStyle = {
@@ -2755,6 +2771,19 @@ const storyHeaderTitleRowStyle = {
   display: 'flex',
   alignItems: 'center',
   gap: 12,
+  paddingRight: 320,
+}
+
+const storyHeaderActionsStyle = {
+  position: 'absolute',
+  top: 50,
+  right: 16,
+  display: 'flex',
+  alignItems: 'center',
+  gap: 10,
+  flexWrap: 'wrap',
+  justifyContent: 'flex-end',
+  maxWidth: '45%',
 }
 
 const storyHeaderTitleStyle = {
@@ -3168,16 +3197,10 @@ const riteSlotScrollerStyle = {
 }
 
 const riteCandidateGridStyle = {
-  display: 'grid',
-  gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
-  gap: 14,
-}
-
-const ritePaginationStyle = {
   display: 'flex',
-  justifyContent: 'space-between',
-  alignItems: 'center',
-  gap: 12,
+  gap: 6,
+  overflow: 'hidden',
+  alignItems: 'stretch',
 }
 
 const ritePreparationInfoPanelStyle = {
@@ -3211,6 +3234,27 @@ const translucentTextBlockStyle = {
   fontSize: 14,
   lineHeight: 1.8,
   whiteSpace: 'pre-wrap',
+}
+
+const candidateToolbarStyle = {
+  display: 'grid',
+  gap: 8,
+  justifyItems: 'end',
+}
+
+const candidateToolbarGroupStyle = {
+  display: 'flex',
+  flexWrap: 'wrap',
+  justifyContent: 'flex-end',
+  gap: 8,
+}
+
+const riteHiddenBackdropStyle = {
+  height: '100%',
+  minHeight: 0,
+  gridColumn: '1 / -1',
+  borderRadius: 32,
+  background: 'rgba(7, 6, 5, 0.12)',
 }
 
 const branchSuccessButtonStyle = {
@@ -3248,17 +3292,12 @@ const overlayCardStyle = {
 }
 
 const overlayHeaderStyle = {
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'space-between',
-  gap: 16,
   padding: '16px 24px 12px',
   borderBottom: '1px solid rgba(212, 184, 126, 0.12)',
 }
 
 const overlayHeaderLeftStyle = {
-  flex: 1,
-  minWidth: 0,
+  width: '100%',
 }
 
 const closeButtonStyle = {
