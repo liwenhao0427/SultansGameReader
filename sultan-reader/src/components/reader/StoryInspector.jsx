@@ -1963,15 +1963,15 @@ export default function StoryInspector({ type, data, onClose }) {
 
               <div style={candidateStageStyle}>
                 <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
-                    <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
+                    <div style={{ minWidth: 0, flex: '1 1 280px' }}>
                       <div style={sectionTitleStyle}>卡牌候选</div>
                       <div style={{ ...smallLineStyle, marginTop: 8 }}>
                         当前槽位：{selectedSlot?.title || '未选择槽位'}
                       </div>
                     </div>
                     <div style={candidateToolbarStyle}>
-                      <div style={candidateToolbarGroupStyle}>
+                      <div style={{ ...candidateToolbarGroupStyle, flexWrap: 'nowrap', minWidth: 0 }}>
                         <button
                           type="button"
                           style={secondaryButtonStyle}
@@ -1982,11 +1982,11 @@ export default function StoryInspector({ type, data, onClose }) {
                         </button>
                         <button
                           type="button"
-                          style={activeToggleButtonStyle}
+                          style={{ ...activeToggleButtonStyle, minWidth: 0, maxWidth: '100%' }}
                           onClick={() => setConditionSelectorOpen(true)}
                           title={activeConditionGroup?.label || '默认条件'}
                         >
-                          <span style={conditionSummaryTextStyle}>
+                          <span style={{ ...conditionSummaryTextStyle, maxWidth: '100%' }}>
                             {activeConditionGroup?.label || '默认条件'}
                           </span>
                         </button>
@@ -2028,7 +2028,7 @@ export default function StoryInspector({ type, data, onClose }) {
                     </div>
                   </div>
                   {activeConditionGroup?.label && (
-                    <div style={{ marginTop: 12, position: 'relative', zIndex: 1 }}>
+                    <div style={{ marginTop: 12, position: 'relative', zIndex: 1, minWidth: 0 }}>
                       <div
                         style={{
                           ...translucentTextBlockStyle,
@@ -3237,6 +3237,7 @@ const candidateStageStyle = {
   backgroundColor: 'rgba(16, 14, 11, 0.72)',
   boxShadow: '0 12px 26px rgba(0, 0, 0, 0.1)',
   padding: '20px 18px 18px',
+  minWidth: 0,
   minHeight: 0,
   display: 'grid',
   gridTemplateRows: 'auto minmax(0, 1fr)',
@@ -3364,6 +3365,9 @@ const candidateToolbarStyle = {
   display: 'flex',
   flexDirection: 'column',
   gap: 8,
+  flex: '1 1 520px',
+  minWidth: 0,
+  maxWidth: '100%',
   justifyItems: 'end',
   alignItems: 'flex-end',
 }
@@ -3371,6 +3375,8 @@ const candidateToolbarStyle = {
 const candidateToolbarGroupStyle = {
   display: 'flex',
   flexWrap: 'wrap',
+  minWidth: 0,
+  maxWidth: '100%',
   justifyContent: 'flex-end',
   alignItems: 'center',
   gap: 8,
@@ -3378,7 +3384,7 @@ const candidateToolbarGroupStyle = {
 
 const candidateSearchInputStyle = {
   ...readerFilterInputStyle,
-  width: 220,
+  width: 'min(220px, 100%)',
 }
 
 const riteHiddenBackdropStyle = {
