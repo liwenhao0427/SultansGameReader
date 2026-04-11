@@ -1963,15 +1963,15 @@ export default function StoryInspector({ type, data, onClose }) {
 
               <div style={candidateStageStyle}>
                 <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
-                    <div style={{ minWidth: 0, flex: '1 1 280px' }}>
+                  <div style={candidateHeaderTopStyle}>
+                    <div style={candidateHeaderInfoStyle}>
                       <div style={sectionTitleStyle}>卡牌候选</div>
                       <div style={{ ...smallLineStyle, marginTop: 8 }}>
                         当前槽位：{selectedSlot?.title || '未选择槽位'}
                       </div>
                     </div>
                     <div style={candidateToolbarStyle}>
-                      <div style={{ ...candidateToolbarGroupStyle, flexWrap: 'nowrap', minWidth: 0 }}>
+                      <div style={{ ...candidateToolbarGroupStyle, flexWrap: 'nowrap' }}>
                         <button
                           type="button"
                           style={secondaryButtonStyle}
@@ -1982,11 +1982,11 @@ export default function StoryInspector({ type, data, onClose }) {
                         </button>
                         <button
                           type="button"
-                          style={{ ...activeToggleButtonStyle, minWidth: 0, maxWidth: '100%' }}
+                          style={candidateConditionButtonStyle}
                           onClick={() => setConditionSelectorOpen(true)}
                           title={activeConditionGroup?.label || '默认条件'}
                         >
-                          <span style={{ ...conditionSummaryTextStyle, maxWidth: '100%' }}>
+                          <span style={conditionSummaryTextStyle}>
                             {activeConditionGroup?.label || '默认条件'}
                           </span>
                         </button>
@@ -2033,9 +2033,14 @@ export default function StoryInspector({ type, data, onClose }) {
                         style={{
                           ...translucentTextBlockStyle,
                           marginTop: 0,
+                          width: '100%',
+                          maxWidth: '100%',
+                          minWidth: 0,
+                          boxSizing: 'border-box',
                           overflow: 'hidden',
                           whiteSpace: conditionPreviewExpanded ? 'normal' : 'nowrap',
                           textOverflow: conditionPreviewExpanded ? 'clip' : 'ellipsis',
+                          wordBreak: conditionPreviewExpanded ? 'break-word' : 'normal',
                         }}
                         title={activeConditionGroup.label}
                         onMouseEnter={() => setConditionPreviewExpanded(true)}
@@ -3362,12 +3367,12 @@ const translucentTextBlockStyle = {
 }
 
 const candidateToolbarStyle = {
+  position: 'absolute',
+  top: 0,
+  right: 0,
   display: 'flex',
   flexDirection: 'column',
   gap: 8,
-  flex: '1 1 520px',
-  minWidth: 0,
-  maxWidth: '100%',
   justifyItems: 'end',
   alignItems: 'flex-end',
 }
@@ -3375,11 +3380,25 @@ const candidateToolbarStyle = {
 const candidateToolbarGroupStyle = {
   display: 'flex',
   flexWrap: 'wrap',
-  minWidth: 0,
-  maxWidth: '100%',
   justifyContent: 'flex-end',
   alignItems: 'center',
   gap: 8,
+}
+
+const candidateHeaderTopStyle = {
+  position: 'relative',
+  minHeight: 84,
+  paddingRight: 'min(52%, 520px)',
+}
+
+const candidateHeaderInfoStyle = {
+  minWidth: 0,
+}
+
+const candidateConditionButtonStyle = {
+  ...activeToggleButtonStyle,
+  minWidth: 0,
+  maxWidth: 260,
 }
 
 const candidateSearchInputStyle = {
