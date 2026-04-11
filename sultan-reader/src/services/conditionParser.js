@@ -9,6 +9,28 @@ function resolveCardName(id, cardsMap) {
   return (cardsMap && cardsMap.get(String(id))) || String(id)
 }
 
+function resolveCardDisplayByValue(value, cardsMap) {
+  const raw = String(value ?? '').trim()
+  // 仅把长数字尝试按卡牌 id 解析，避免把 +1/-1 等普通数值误判成卡牌
+  if (!/^\d{6,}$/.test(raw)) return null
+  if (!cardsMap?.has(raw)) return null
+  return `${cardsMap.get(raw)}（${raw}）`
+}
+
+function formatEffectValue(value, cardsMap) {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => {
+        const resolved = resolveCardDisplayByValue(item, cardsMap)
+        return resolved || String(item)
+      })
+      .join(' / ')
+  }
+
+  const resolved = resolveCardDisplayByValue(value, cardsMap)
+  return resolved || String(value)
+}
+
 function getComment(source, key) {
   if (!source || typeof source !== 'object') return null
   return source[`${key}__c`] || source[`${key}__ca`] || source[`${key}__ci`] || null
@@ -130,23 +152,23 @@ export function parseEffect(key, value, comment, cardsMap) {
   let match
 
   if ((match = key.match(/^global_counter\+(\d+)$/))) {
-    return `全局计数器 ${match[1]} + ${value}`
+    return `全局计数器 ${match[1]} + ${formatEffectValue(value, cardsMap)}`
   }
 
   if ((match = key.match(/^global_counter=(\d+)$/))) {
-    return `全局计数器 ${match[1]} = ${value}`
+    return `全局计数器 ${match[1]} = ${formatEffectValue(value, cardsMap)}`
   }
 
   if ((match = key.match(/^counter\+(\d+)$/))) {
-    return `计数器 ${match[1]} + ${value}`
+    return `计数器 ${match[1]} + ${formatEffectValue(value, cardsMap)}`
   }
 
   if ((match = key.match(/^counter-(\d+)$/))) {
-    return `计数器 ${match[1]} - ${value}`
+    return `计数器 ${match[1]} - ${formatEffectValue(value, cardsMap)}`
   }
 
   if ((match = key.match(/^counter=(\d+)$/))) {
-    return `计数器 ${match[1]} = ${value}`
+    return `计数器 ${match[1]} = ${formatEffectValue(value, cardsMap)}`
   }
 
   if ((match = key.match(/^clean\.(s\d+)$/))) {
@@ -154,17 +176,17 @@ export function parseEffect(key, value, comment, cardsMap) {
   }
 
   if ((match = key.match(/^s(\d+)\+(.+)$/))) {
-    return `S${match[1]} ${match[2]} + ${value}`
+    return `S${match[1]} ${match[2]} + ${formatEffectValue(value, cardsMap)}`
   }
 
   if ((match = key.match(/^s(\d+)-(.+)$/))) {
     return Number(value) === 1
       ? `S${match[1]} 移除${match[2]}`
-      : `S${match[1]} ${match[2]} - ${value}`
+      : `S${match[1]} ${match[2]} - ${formatEffectValue(value, cardsMap)}`
   }
 
   if ((match = key.match(/^s(\d+)=(.+)$/))) {
-    return `S${match[1]} ${match[2]} = ${value}`
+    return `S${match[1]} ${match[2]} = ${formatEffectValue(value, cardsMap)}`
   }
 
   if ((match = key.match(/^have\.(.+)$/))) {
@@ -175,7 +197,7 @@ export function parseEffect(key, value, comment, cardsMap) {
     return `失去 ${formatHaveTarget(match[1], cardsMap)}`
   }
 
-  return `${key} = ${String(value)}`
+  return `${key} = ${formatEffectValue(value, cardsMap)}`
 }
 
 /**

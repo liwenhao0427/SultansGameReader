@@ -8,6 +8,7 @@ import { linkNodesOnCanvas, mountNodeOnCanvas } from '../../services/graphNaviga
 import RawFileView from '../RawFileView'
 
 const FULLSCREEN_TYPES = new Set(['rite', 'event', 'dt', 'over', 'after_story'])
+const AUTO_FOLLOWUP_TARGET_TYPES = new Set(['event', 'rite', 'loot', 'over'])
 
 function normalizeTextContent(text) {
   if (text == null) return ''
@@ -281,7 +282,7 @@ function ConditionPreview({ text, color = '#dcc8a3', maxLines = 2 }) {
   )
 }
 
-function EffectSummary({ effects, compact = false }) {
+function EffectSummary({ effects, compact = false, onOpenCard = null }) {
   if (!effects?.length) return null
 
   return (
@@ -297,11 +298,47 @@ function EffectSummary({ effects, compact = false }) {
           title={effect.cards?.length > 0 ? `${effect.label}：${effect.cards.map((card) => card.name).join(' / ')}` : effect.label}
           style={effectChipStyle}
         >
-          {effect.label}
+          <span>{effect.label}</span>
           {effect.cards?.length > 0 && (
-            <span style={{ opacity: 0.92 }}>：{effect.cards.map((card) => card.name).join(' / ')}</span>
+            <span style={{ opacity: 0.92, display: 'inline-flex', flexWrap: 'wrap', gap: 6 }}>
+              <span>：</span>
+              {effect.cards.map((card) => (
+                <button
+                  key={`${effect.type}:${index}:${card.id}`}
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    onOpenCard?.(card)
+                  }}
+                  style={effectCardLinkStyle}
+                >
+                  {card.name}
+                </button>
+              ))}
+            </span>
           )}
         </div>
+      ))}
+    </div>
+  )
+}
+
+function ActionSummary({ actions, onOpenAction }) {
+  if (!actions?.length) return null
+
+  return (
+    <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+      {actions.map((action, index) => (
+        <button
+          key={`${action.key}:${action.targetType || ''}:${action.targetId || ''}:${index}`}
+          type="button"
+          style={actionButtonStyle}
+          onClick={() => onOpenAction?.(action, index)}
+        >
+          {action.targetType && action.targetId
+            ? `动作：${action.key} -> ${action.targetType} ${action.targetId}`
+            : `动作：${action.text || action.key}`}
+        </button>
       ))}
     </div>
   )
@@ -751,6 +788,7 @@ export default function StoryInspector({ type, data, onClose }) {
   const readerBodyRef = useRef(null)
   const bubbleTimersRef = useRef({})
   const autoMountedEventIdRef = useRef(null)
+  const executedActionKeyRef = useRef(new Set())
   const { url: templateBgUrl } = useResolvedImage(templateData?.bg || READER_RESOURCE_ASSETS.defaultRiteBackground)
   const { url: templateFgUrl } = useResolvedImage(templateData?.fg || null)
 
@@ -1042,6 +1080,7 @@ export default function StoryInspector({ type, data, onClose }) {
       title: '',
       text: line,
       effects: [],
+      actions: [],
     }))
 
     const segmentSteps = availableSegments.map((segment, index) => ({
@@ -1050,6 +1089,7 @@ export default function StoryInspector({ type, data, onClose }) {
       title: segment.title,
       text: segment.text,
       effects: segment.effects || [],
+      actions: (segment.actions || []).filter((action) => action?.targetType && action?.targetId),
       conditions: segment.conditions || [],
     }))
 
@@ -1100,6 +1140,19 @@ export default function StoryInspector({ type, data, onClose }) {
         action.text
       )
     }
+  }
+
+  async function handleOpenCard(card, offsetIndex = 0) {
+    if (!card?.id) return
+    await mountNodeOnCanvas(
+      {
+        id: String(card.id),
+        type: 'card',
+        name: card.name,
+      },
+      { x: 560 + offsetIndex * 32, y: 220 + offsetIndex * 24 },
+      { autoSelect: true, expandRelations: false }
+    )
   }
 
   function branchActions(segment, branch) {
@@ -1197,6 +1250,7 @@ export default function StoryInspector({ type, data, onClose }) {
   }
 
   function handleOpenExecution() {
+    executedActionKeyRef.current = new Set()
     setExecutionStepIndex(0)
     setExecutionAutoAdvance(false)
     setExecutionOpen(true)
@@ -1230,6 +1284,7 @@ export default function StoryInspector({ type, data, onClose }) {
     setExecutionOpen(false)
     setExecutionStepIndex(0)
     setExecutionAutoAdvance(false)
+    executedActionKeyRef.current = new Set()
     setEventChoicePath([])
   }
 
@@ -1314,6 +1369,21 @@ export default function StoryInspector({ type, data, onClose }) {
 
   const currentExecutionStep = executionSteps[executionStepIndex] || null
 
+  useEffect(() => {
+    if (!executionOpen) return
+    const actions = (currentExecutionStep?.actions || []).filter((action) => (
+      AUTO_FOLLOWUP_TARGET_TYPES.has(action.targetType)
+    ))
+    if (actions.length === 0) return
+
+    actions.forEach((action, index) => {
+      const actionKey = `${currentExecutionStep.id}:${action.targetType}:${action.targetId}:${index}`
+      if (executedActionKeyRef.current.has(actionKey)) return
+      executedActionKeyRef.current.add(actionKey)
+      void handleOpenAction(action, index, { autoSelect: false })
+    })
+  }, [currentExecutionStep, executionOpen])
+
   const headerBlock = (
     <div style={storyHeaderShellStyle}>
       <div style={storyHeaderCardStyle}>
@@ -1371,7 +1441,7 @@ export default function StoryInspector({ type, data, onClose }) {
                 {eventResultEffects.length > 0 && (
                   <div style={eventResultBlockStyle}>
                     <div style={sectionTitleStyle}>触发结果</div>
-                    <EffectSummary effects={eventResultEffects} />
+                    <EffectSummary effects={eventResultEffects} onOpenCard={handleOpenCard} />
                   </div>
                 )}
 
@@ -1386,7 +1456,7 @@ export default function StoryInspector({ type, data, onClose }) {
                           style={actionButtonStyle}
                           onClick={() => handleOpenAction(action, actionIndex)}
                         >
-                          打开{action.targetType === 'rite' ? '仪式' : action.targetType === 'event' ? '事件' : '结局'} {action.targetId}
+                          打开{action.targetType === 'rite' ? '仪式' : action.targetType === 'event' ? '事件' : action.targetType === 'loot' ? '掉落物' : '结局'} {action.targetId}
                         </button>
                       ))}
                     </div>
@@ -1444,7 +1514,7 @@ export default function StoryInspector({ type, data, onClose }) {
             {eventResultEffects.length > 0 && (
               <div style={{ marginTop: 18 }}>
                 <div style={sectionTitleStyle}>触发结果</div>
-                <EffectSummary effects={eventResultEffects} />
+                <EffectSummary effects={eventResultEffects} onOpenCard={handleOpenCard} />
               </div>
             )}
             {eventResultActions.length > 0 && (
@@ -1461,7 +1531,7 @@ export default function StoryInspector({ type, data, onClose }) {
                       style={actionButtonStyle}
                       onClick={() => handleOpenAction(action, actionIndex)}
                     >
-                      打开{action.targetType === 'rite' ? '仪式' : action.targetType === 'event' ? '事件' : '结局'} {action.targetId}
+                      打开{action.targetType === 'rite' ? '仪式' : action.targetType === 'event' ? '事件' : action.targetType === 'loot' ? '掉落物' : '结局'} {action.targetId}
                     </button>
                   ))}
                 </div>
@@ -1731,7 +1801,7 @@ export default function StoryInspector({ type, data, onClose }) {
                         </div>
                       )}
 
-                      <EffectSummary effects={segment.effects} />
+                      <EffectSummary effects={segment.effects} onOpenCard={handleOpenCard} />
 
                       {segment.image && (
                         <div style={{ marginTop: 14 }}>
@@ -1758,7 +1828,7 @@ export default function StoryInspector({ type, data, onClose }) {
                               style={actionButtonStyle}
                               onClick={() => handleOpenAction(action, actionIndex)}
                             >
-                              打开{action.targetType === 'rite' ? '仪式' : action.targetType === 'event' ? '事件' : '结局'} {action.targetId}
+                              打开{action.targetType === 'rite' ? '仪式' : action.targetType === 'event' ? '事件' : action.targetType === 'loot' ? '掉落物' : '结局'} {action.targetId}
                             </button>
                           ))}
                         </div>
@@ -2003,7 +2073,8 @@ export default function StoryInspector({ type, data, onClose }) {
                             {step.text}
                           </div>
                         ) : null}
-                        <EffectSummary effects={step.effects} />
+                        <EffectSummary effects={step.effects} onOpenCard={handleOpenCard} />
+                        <ActionSummary actions={step.actions} onOpenAction={handleOpenAction} />
                       </div>
                     ))}
                   </div>
@@ -2349,6 +2420,17 @@ const effectChipStyle = {
   color: '#ead7b2',
   fontSize: 12,
   lineHeight: 1.5,
+}
+
+const effectCardLinkStyle = {
+  padding: '2px 8px',
+  borderRadius: 999,
+  border: '1px solid rgba(212, 184, 126, 0.28)',
+  background: 'rgba(212, 184, 126, 0.14)',
+  color: '#ffefcc',
+  fontSize: 12,
+  lineHeight: 1.4,
+  cursor: 'pointer',
 }
 
 const executionOverlayStyle = {

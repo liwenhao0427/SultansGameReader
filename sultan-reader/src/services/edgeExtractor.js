@@ -10,6 +10,7 @@ const FIELD_TYPE_MAP = {
   rite: 'rite',
   loot: 'loot',
   rite_end: 'event',
+  over: 'over',
   card: 'card',
   link_card: 'card',
 };

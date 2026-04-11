@@ -2,9 +2,9 @@ import useCanvasStore from '../stores/useCanvasStore'
 import { extractEdges } from './edgeExtractor'
 
 const EDGE_COLORS = { success: '#8fbf77', failed: '#c35b5b', default: '#927453' }
-const CANVAS_NODE_TYPES = new Set(['rite', 'event', 'loot'])
+const CANVAS_NODE_TYPES = new Set(['rite', 'event', 'loot', 'over'])
 const AUTO_EXPAND_SOURCE_TYPES = new Set(['event'])
-const AUTO_EXPAND_TARGET_TYPES = new Set(['event', 'loot', 'rite'])
+const AUTO_EXPAND_TARGET_TYPES = new Set(['event', 'loot', 'rite', 'over'])
 
 function summarize(item, data) {
   return item.name || item.text || data?.name || data?.text || item.id

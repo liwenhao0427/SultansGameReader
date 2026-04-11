@@ -130,6 +130,21 @@ function buildCardSummary(id, cardsMap, cardsById) {
   }
 }
 
+function isCardLikeId(value) {
+  return /^\d{6,}$/.test(String(value ?? ''))
+}
+
+function collectCardsFromEffectValue(value, cardsMap, cardsById) {
+  const values = normalizeArray(value)
+  const cards = values
+    .filter((item) => isCardLikeId(item))
+    .filter((item) => cardsById?.[String(item)] || cardsMap?.get(String(item)))
+    .map((item) => buildCardSummary(item, cardsMap, cardsById))
+
+  const unique = new Map(cards.map((card) => [card.id, card]))
+  return Array.from(unique.values())
+}
+
 function buildFixedSudanCard(condition = {}) {
   const sudanKey = Object.keys(FIXED_SUDAN_SLOT_ASSETS).find((key) => Number(condition[key]) > 0)
   if (!sudanKey) return null
@@ -330,17 +345,23 @@ function buildResultEffects(result = {}, cardsMap, cardsById) {
     if (value == null) continue
 
     if (key === 'card' || key === 'link_card') {
-      const cards = normalizeArray(value).map((id) => buildCardSummary(id, cardsMap, cardsById))
+      const sourceValues = normalizeArray(value)
+      const cards = sourceValues
+        .filter((item) => isCardLikeId(item))
+        .map((id) => buildCardSummary(id, cardsMap, cardsById))
+      const extraTokens = sourceValues.filter((item) => !isCardLikeId(item)).map((item) => String(item)).filter(Boolean)
       if (cards.length > 0) {
+        const baseLabel = result[`${key}__c`] || result[`${key}__ca`] || (key === 'link_card' ? '关联卡牌' : '获得卡牌')
         effects.push({
           type: 'card',
-          label: result[`${key}__c`] || result[`${key}__ca`] || (key === 'link_card' ? '关联卡牌' : '获得卡牌'),
+          label: extraTokens.length > 0 ? `${baseLabel}（${extraTokens.join(' / ')}）` : baseLabel,
           cards,
         })
       }
       continue
     }
 
+    const parsedCards = collectCardsFromEffectValue(value, cardsMap, cardsById)
     effects.push({
       type: key.startsWith('global_counter')
         ? 'achievement'
@@ -356,6 +377,7 @@ function buildResultEffects(result = {}, cardsMap, cardsById) {
         cardsMap
       ),
       value,
+      cards: parsedCards,
     })
   }
 
@@ -567,6 +589,7 @@ function buildEventActionNode(action = {}, cardsMap, cardsById, nodeId = 'event-
     choices,
     actions: extractActionTargets(action).filter((entry) => (
       entry.targetType === 'rite' ||
+      entry.targetType === 'loot' ||
       entry.targetType === 'over' ||
       (entry.targetType === 'event' && entry.key !== 'event_off')
     )),
