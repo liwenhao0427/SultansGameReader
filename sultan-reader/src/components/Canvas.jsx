@@ -365,8 +365,13 @@ function CanvasInner() {
     const sourceRawId = sourceNodeId.slice(colonIndex + 1)
 
     try {
+      // 仪式节点的关联选择优先剧情链，过滤掉卡牌目标，避免噪音过高
+      const shouldHideCardRelations = sourceType === 'rite'
       const relations = extractEdges(sourceType, sourceRawId, sourceNode.data.rawData)
-        .filter((relation) => !nodeIdSet.has(relation.target))
+        .filter((relation) => (
+          !nodeIdSet.has(relation.target) &&
+          (!shouldHideCardRelations || !relation.target.startsWith('card:'))
+        ))
 
       const optionMap = new Map()
       for (let index = 0; index < relations.length; index += 1) {

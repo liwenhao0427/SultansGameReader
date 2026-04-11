@@ -1,19 +1,25 @@
 import useCanvasStore from '../stores/useCanvasStore'
+import { extractEdges } from './edgeExtractor'
 
 const EDGE_COLORS = { success: '#8fbf77', failed: '#c35b5b', default: '#927453' }
 const CANVAS_NODE_TYPES = new Set(['rite', 'event', 'loot'])
+const AUTO_EXPAND_SOURCE_TYPES = new Set(['event'])
+const AUTO_EXPAND_TARGET_TYPES = new Set(['event', 'loot', 'rite'])
 
 function summarize(item, data) {
   return item.name || item.text || data?.name || data?.text || item.id
 }
 
-function hasRelatedRite(data) {
-  return Array.isArray(data?.item) && data.item.some((entry) => entry?.type === 'rite')
+function hasRelatedCanvasTarget(data) {
+  return Array.isArray(data?.item) && data.item.some((entry) => (
+    CANVAS_NODE_TYPES.has(entry?.type)
+  ))
 }
 
 export async function mountNodeOnCanvas(item, position, options = {}) {
   const {
     autoSelect = true,
+    expandRelations = AUTO_EXPAND_SOURCE_TYPES.has(item.type),
   } = options
 
   const store = useCanvasStore.getState()
@@ -36,7 +42,7 @@ export async function mountNodeOnCanvas(item, position, options = {}) {
   const data = await window.electronAPI.configReadCache(item.type, item.id)
   if (!data) return null
 
-  if (item.type === 'loot' && !hasRelatedRite(data)) {
+  if (item.type === 'loot' && !hasRelatedCanvasTarget(data)) {
     if (autoSelect) {
       store.setSelectedNode(nodeKey, 'panel')
     }
@@ -53,6 +59,37 @@ export async function mountNodeOnCanvas(item, position, options = {}) {
 
   if (autoSelect) {
     store.setSelectedNode(nodeKey)
+  }
+
+  if (expandRelations) {
+    const relations = extractEdges(item.type, item.id, rawData)
+      .filter((relation) => {
+        const [targetType] = relation.target.split(':')
+        return AUTO_EXPAND_TARGET_TYPES.has(targetType)
+      })
+
+    for (let index = 0; index < relations.length; index += 1) {
+      const relation = relations[index]
+      const [targetType, targetId] = relation.target.split(':')
+      if (!targetType || !targetId) continue
+
+      await mountNodeOnCanvas(
+        { id: targetId, type: targetType },
+        {
+          x: position.x + 220 + (index % 2) * 180,
+          y: position.y + 40 + Math.floor(index / 2) * 140,
+        },
+        { autoSelect: false, expandRelations: false }
+      )
+
+      linkNodesOnCanvas(
+        nodeKey,
+        targetType,
+        targetId,
+        relation.branchType || 'default',
+        relation.conditionText || relation.resultTitle || relation.resultText || ''
+      )
+    }
   }
 
   return nodeKey

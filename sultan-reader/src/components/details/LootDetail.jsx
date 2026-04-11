@@ -72,7 +72,7 @@ function LootItemPoster({ pic, rare }) {
 export default function LootDetail({ data }) {
   const cardsById = useConfigStore((s) => s.cardsById)
   const selectedNodeId = useCanvasStore((s) => s.selectedNodeId)
-  const [riteNames, setRiteNames] = useState({})
+  const [targetNames, setTargetNames] = useState({})
   if (!data) return null
 
   const items = Array.isArray(data.item) ? data.item : []
@@ -85,56 +85,56 @@ export default function LootDetail({ data }) {
       type: item?.type,
       num: item?.num,
       weight: item?.weight,
-      name: card?.name || riteNames[String(item?.id)] || `${item?.type || '未知类型'} ${item?.id || ''}`.trim(),
+      name: card?.name || targetNames[`${item?.type}:${String(item?.id)}`] || `${item?.type || '未知类型'} ${item?.id || ''}`.trim(),
       text: card?.text || '',
       pic,
       rare: card?.rare ?? null,
     }
-  }), [cardsById, items, riteNames])
+  }), [cardsById, items, targetNames])
 
-  const riteItems = useMemo(
-    () => enrichedItems.filter((item) => item.type === 'rite' && item.id != null),
+  const relatedCanvasItems = useMemo(
+    () => enrichedItems.filter((item) => (item.type === 'rite' || item.type === 'event') && item.id != null),
     [enrichedItems]
   )
 
   useEffect(() => {
     let cancelled = false
 
-    async function loadRiteNames() {
+    async function loadTargetNames() {
       const next = {}
       for (const item of items) {
-        if (item?.type !== 'rite' || item.id == null) continue
+        if ((item?.type !== 'rite' && item?.type !== 'event') || item.id == null) continue
         try {
-          const rite = await window.electronAPI.configReadCache('rite', String(item.id))
-          if (rite?.name) {
-            next[String(item.id)] = rite.name
+          const targetData = await window.electronAPI.configReadCache(item.type, String(item.id))
+          if (targetData?.name || targetData?.text) {
+            next[`${item.type}:${String(item.id)}`] = targetData.name || targetData.text
           }
         } catch {}
       }
 
       if (!cancelled) {
-        setRiteNames(next)
+        setTargetNames(next)
       }
     }
 
-    void loadRiteNames()
+    void loadTargetNames()
     return () => { cancelled = true }
   }, [items])
 
   useEffect(() => {
-    if (!selectedNodeId || riteItems.length === 0) return
+    if (!selectedNodeId || relatedCanvasItems.length === 0) return
 
-    riteItems.forEach((item, index) => {
+    relatedCanvasItems.forEach((item, index) => {
       void mountNodeOnCanvas(
-        { id: String(item.id), type: 'rite', name: item.name },
+        { id: String(item.id), type: item.type, name: item.name },
         { x: 460 + index * 60, y: 180 + index * 50 },
         { autoSelect: false, expandRelations: false }
       ).then((targetNodeKey) => {
         if (!targetNodeKey) return
-        linkNodesOnCanvas(selectedNodeId, 'rite', String(item.id), 'default', item.name || `rite:${item.id}`)
+        linkNodesOnCanvas(selectedNodeId, item.type, String(item.id), 'default', item.name || `${item.type}:${item.id}`)
       })
     })
-  }, [riteItems, selectedNodeId])
+  }, [relatedCanvasItems, selectedNodeId])
 
   return (
     <div style={S.shell}>
@@ -159,8 +159,8 @@ export default function LootDetail({ data }) {
                 <div style={{ minWidth: 0 }}>
                   <div style={S.name}>{item.name}</div>
                   <div style={S.meta}>{item.type}:{item.id}</div>
-                  {item.type === 'rite' && (
-                    <div style={S.stat}>关联仪式：{item.name}</div>
+                  {(item.type === 'rite' || item.type === 'event') && (
+                    <div style={S.stat}>{item.type === 'rite' ? `关联仪式：${item.name}` : `关联事件：${item.name}`}</div>
                   )}
                   <div style={S.stat}>数量：{item.num ?? '-'} / 权重：{item.weight ?? '-'}</div>
                   {item.text && <div title={item.text} style={S.text}>{item.text}</div>}

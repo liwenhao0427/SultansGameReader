@@ -79,6 +79,7 @@ export default function MainLayout({ onNavigate }) {
   const nodeIdSet = useCanvasStore((state) => state.nodeIdSet)
   const clearCanvas = useCanvasStore((state) => state.clearCanvas)
   const contentStates = useReadingStateStore((state) => state.contentStates)
+  const toggleRead = useReadingStateStore((state) => state.toggleRead)
 
   const [activeType, setActiveType] = useState('rite')
   const [activeStateFilter, setActiveStateFilter] = useState('all')
@@ -282,15 +283,24 @@ export default function MainLayout({ onNavigate }) {
               const inCanvas = nodeIdSet.has(nodeKey)
               const entryState = getContentState(contentStates, activeType, item.id)
 
+              const handleMount = () => mountNodeOnCanvas(
+                { ...item, type: activeType },
+                { x: 120 + (index % 3) * 180, y: 120 + index * 24 },
+                { autoSelect: true }
+              )
+
               return (
-                <button
+                <div
                   key={nodeKey}
-                  type="button"
-                  onClick={() => mountNodeOnCanvas(
-                    { ...item, type: activeType },
-                    { x: 120 + (index % 3) * 180, y: 120 + index * 24 },
-                    { autoSelect: true }
-                  )}
+                  role="button"
+                  tabIndex={0}
+                  onClick={handleMount}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault()
+                      handleMount()
+                    }
+                  }}
                   style={{
                     ...listItemStyle,
                     ...(inCanvas ? mountedItemStyle : null),
@@ -301,16 +311,25 @@ export default function MainLayout({ onNavigate }) {
                     <div style={{ minWidth: 0 }}>
                       <div style={listItemMetaRowStyle}>
                         <div style={listItemIdStyle}>{item.id}</div>
-                        <div style={listItemBadgeRowStyle}>
-                          {entryState.favorite && <span style={favoriteBadgeStyle}>收藏</span>}
-                          {entryState.read ? <span style={readBadgeStyle}>已读</span> : <span style={unreadBadgeStyle}>未读</span>}
-                        </div>
+                        <button
+                          type="button"
+                          style={{
+                            ...quickReadActionStyle,
+                            ...(entryState.read ? quickReadActionReadStyle : null),
+                          }}
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            toggleRead(activeType, item.id)
+                          }}
+                        >
+                          {entryState.read ? '标未读' : '标已读'}
+                        </button>
                       </div>
                       <div style={listItemTitleStyle}>{chunkSummary(item)}</div>
                       {item.title && <div style={listItemSubTitleStyle}>{item.title}</div>}
                     </div>
                   </div>
-                </button>
+                </div>
               )
             })}
           </div>
@@ -567,13 +586,6 @@ const listItemMetaRowStyle = {
   gap: 8,
 }
 
-const listItemBadgeRowStyle = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: 6,
-  flexWrap: 'wrap',
-}
-
 const listItemIdStyle = {
   fontFamily: 'Consolas, monospace',
   fontSize: 11,
@@ -593,28 +605,21 @@ const listItemSubTitleStyle = {
   color: 'rgba(241, 232, 213, 0.58)',
 }
 
-const favoriteBadgeStyle = {
-  padding: '2px 8px',
+const quickReadActionStyle = {
+  marginTop: 8,
+  padding: '3px 9px',
   borderRadius: 999,
+  border: '1px solid rgba(212, 184, 126, 0.24)',
+  background: 'rgba(212, 184, 126, 0.07)',
+  color: '#e8d3ad',
   fontSize: 10,
-  color: '#fff0d3',
-  background: 'rgba(212, 184, 126, 0.18)',
+  cursor: 'pointer',
 }
 
-const readBadgeStyle = {
-  padding: '2px 8px',
-  borderRadius: 999,
-  fontSize: 10,
-  color: '#d7ebc3',
-  background: 'rgba(133, 170, 117, 0.16)',
-}
-
-const unreadBadgeStyle = {
-  padding: '2px 8px',
-  borderRadius: 999,
-  fontSize: 10,
-  color: '#f7e2b8',
-  background: 'rgba(212, 184, 126, 0.12)',
+const quickReadActionReadStyle = {
+  border: '1px solid rgba(133, 170, 117, 0.36)',
+  background: 'rgba(133, 170, 117, 0.12)',
+  color: '#dff1cc',
 }
 
 const listPreviewStyle = {

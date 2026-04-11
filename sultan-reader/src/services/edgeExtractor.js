@@ -158,5 +158,30 @@ export function extractEdges(nodeType, nodeId, data) {
     }
   }
 
+  // loot 结构中，item 里的 { type, id } 同样表示可跳转目标
+  if (nodeType === 'loot' && Array.isArray(data.item)) {
+    data.item.forEach((entry, idx) => {
+      const targetType = typeof entry?.type === 'string' ? entry.type : null;
+      const targetId = entry?.id != null ? String(entry.id) : null;
+      if (!targetType || !targetId) return;
+
+      const target = `${targetType}:${targetId}`;
+      const path = `item[${idx}]`;
+      const edgeId = `${source}->${target}:${path}`;
+      if (edgeMap.has(edgeId)) return;
+
+      edgeMap.set(edgeId, {
+        source,
+        target,
+        path,
+        branchType: 'default',
+        conditionText: null,
+        conditionObj: entry?.condition || null,
+        resultTitle: '',
+        resultText: entry?.weight != null ? `weight: ${entry.weight}` : '',
+      });
+    });
+  }
+
   return Array.from(edgeMap.values());
 }
