@@ -545,6 +545,7 @@ function buildPhaseItem(item, cardsMap, cardsById, phase, slotIds = []) {
 
   return {
     guid: item.guid || null,
+    raw: item,
     phase,
     title: item.result_title || '',
     text: item.result_text || item.tips_text || '',
@@ -869,6 +870,26 @@ export function adaptStoryData(type, data, cardsMap, cardsById = {}) {
             raw: data.waiting_round_end_action,
           }
           : null,
+        rawPhases: [
+          ...normalizeArray(data.settlement_prior).map((item, index) => ({
+            phaseKey: 'settlement_prior',
+            phaseLabel: '前置结算',
+            index,
+            ...buildPhaseItem(item, cardsMap, cardsById, '前置结算', riteSlotIds),
+          })),
+          ...normalizeArray(data.settlement).map((item, index) => ({
+            phaseKey: 'settlement',
+            phaseLabel: '主结算',
+            index,
+            ...buildPhaseItem(item, cardsMap, cardsById, '主结算', riteSlotIds),
+          })),
+          ...normalizeArray(data.settlement_extre).map((item, index) => ({
+            phaseKey: 'settlement_extre',
+            phaseLabel: '额外结算',
+            index,
+            ...buildPhaseItem(item, cardsMap, cardsById, '额外结算', riteSlotIds),
+          })),
+        ],
         segments: [
           ...normalizeArray(data.settlement_prior).map((item) => buildPhaseItem(item, cardsMap, cardsById, '前置结算', riteSlotIds)),
           ...normalizeArray(data.settlement).map((item) => buildPhaseItem(item, cardsMap, cardsById, '主结算', riteSlotIds)),

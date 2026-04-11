@@ -2,6 +2,7 @@
 import useConfigStore from '../../stores/useConfigStore'
 import { useResolvedImage } from '../../services/imageResolver'
 import { adaptStoryData } from '../../services/storyAdapter'
+import { parseConditionObject } from '../../services/conditionParser'
 import { READER_CHROME } from '../../readerChromeConfig'
 import { CARD_RENDER_CONFIG, getCardFrameHeight, getCardRarityFrameAsset, READER_RESOURCE_ASSETS, RITE_TEMPLATE_DEFAULTS } from '../../resourceConfig'
 import { linkNodesOnCanvas, mountNodeOnCanvas } from '../../services/graphNavigation'
@@ -33,10 +34,7 @@ function splitIntro(text) {
   const normalized = normalizeTextContent(text)
   if (!normalized) return []
 
-  return normalized
-    .split(/(?<=[。！？\n])/)
-    .map((chunk) => chunk.trim())
-    .filter(Boolean)
+  return [normalized.trim()].filter(Boolean)
 }
 
 function truncateDisplayText(text, maxLength = 120) {
@@ -44,6 +42,62 @@ function truncateDisplayText(text, maxLength = 120) {
   if (!content) return ''
   if (content.length <= maxLength) return content
   return `${content.slice(0, maxLength)}...`
+}
+
+function normalizeArray(value) {
+  if (value == null) return []
+  return Array.isArray(value) ? value : [value]
+}
+
+function isPlainObject(value) {
+  return value && typeof value === 'object' && !Array.isArray(value)
+}
+
+function parseOperator(rawKey) {
+  const match = String(rawKey).match(/^(.*?)(>=|<=|>|<|=)?$/)
+  return {
+    target: match?.[1] || String(rawKey),
+    operator: match?.[2] || '>=',
+  }
+}
+
+function normalizeLookupKey(value) {
+  return String(value ?? '')
+    .normalize('NFKC')
+    .replace(/\s+/g, '')
+    .trim()
+}
+
+function compareByOperator(actualValue, expectedValue, operator = '>=') {
+  const actual = Number(actualValue || 0)
+  const expected = Number(expectedValue || 0)
+
+  switch (operator) {
+    case '=':
+      return actual === expected
+    case '>':
+      return actual > expected
+    case '<':
+      return actual < expected
+    case '<=':
+      return actual <= expected
+    case '>=':
+    default:
+      return actual >= expected
+  }
+}
+
+function readCardMetric(card, target) {
+  if (!card || !target) return 0
+
+  const normalizedTarget = normalizeLookupKey(target)
+  const tagMatch = Object.entries(card.tag || {}).find(([key]) => normalizeLookupKey(key) === normalizedTarget)
+  if (tagMatch) return Number(tagMatch[1] || 0)
+
+  const directMatch = Object.entries(card || {}).find(([key]) => normalizeLookupKey(key) === normalizedTarget)
+  if (directMatch) return Number(directMatch[1] || 0)
+
+  return 0
 }
 
 const CONDITION_BUTTON_MAX_LENGTH = 26
@@ -781,6 +835,38 @@ function SettlementHintGroup({
   )
 }
 
+function ExecutionConditionGroup({ group, selectedId, onSelect }) {
+  if (!group?.options?.length) return null
+
+  return (
+    <div style={executionConditionGroupStyle}>
+      <div style={{ display: 'grid', gap: 4 }}>
+        <div style={sectionTitleStyle}>{group.title}</div>
+        <div style={{ ...smallLineStyle, color: '#dbc7a1' }}>{group.description}</div>
+      </div>
+      <div style={executionConditionOptionListStyle}>
+        {group.options.map((option) => (
+          <button
+            key={option.id}
+            type="button"
+            onClick={() => onSelect(group.id, option.id === selectedId ? null : option.id)}
+            style={option.id === selectedId ? executionConditionOptionActiveStyle : executionConditionOptionStyle}
+          >
+            <div style={{ fontSize: 14, lineHeight: 1.7, color: '#fff4de', whiteSpace: 'pre-wrap' }}>
+              {option.label}
+            </div>
+            {option.detail ? (
+              <div style={{ marginTop: 6, fontSize: 12, lineHeight: 1.6, color: '#d8c5a0', whiteSpace: 'pre-wrap' }}>
+                {option.detail}
+              </div>
+            ) : null}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 /**
  * 默认选中规则：选最后一个无条件（conditionText 为空）的项，否则不选（返回 null）
  * 这样避免强制选中有条件限制的结算分支
@@ -843,6 +929,227 @@ function matchesSlotOccupancyCondition(conditionRaw = {}, slotState = {}) {
   })
 }
 
+function resolveSelectedSlotCard(model, slotId, slotSelections, settlementSelections, cardsById) {
+  const slot = model?.slots?.find((entry) => entry.id === slotId)
+  if (!slot) return null
+
+  const overrideHintId = settlementSelections?.[slotId]
+  const overrideHint = (slot.settlementHints || []).find((hint) => hint.id === overrideHintId)
+  const overrideCard = overrideHint?.cards?.[0]
+  if (overrideCard?.id) {
+    return cardsById?.[String(overrideCard.id)] || overrideCard
+  }
+
+  const candidate = slot.candidates?.find((entry) => entry.id === slotSelections?.[slotId]) || slot.candidates?.[0] || null
+  const candidateCard = candidate?.cards?.[0] || slot.defaultCards?.[0] || null
+  if (!candidateCard?.id) return candidateCard
+  return cardsById?.[String(candidateCard.id)] || candidateCard
+}
+
+function evaluateSlotCondition(card, selector, expectedValue) {
+  if (!selector) return Boolean(card)
+
+  if (selector === 'is') {
+    return normalizeArray(expectedValue).map(String).includes(String(card?.id ?? ''))
+  }
+  if (selector === 'type') {
+    return String(card?.type || '') === String(expectedValue)
+  }
+
+  const { target, operator } = parseOperator(selector)
+  const actualValue = readCardMetric(card, target)
+  return compareByOperator(actualValue, expectedValue, operator)
+}
+
+function buildConditionOptionId(groupId, key, value) {
+  return `${groupId}::${key}::${JSON.stringify(value)}`
+}
+
+function evaluateExecutionCondition(condition, context) {
+  if (!condition || typeof condition !== 'object') return true
+
+  return Object.entries(condition).every(([key, value]) => {
+    if (key.endsWith('__c') || key.endsWith('__ca') || key.endsWith('__ci')) return true
+
+    if (key === 'any') {
+      const items = Array.isArray(value)
+        ? value
+        : (isPlainObject(value) ? Object.entries(value).map(([subKey, subValue]) => ({ [subKey]: subValue })) : [])
+      if (items.length === 0) return true
+      return items.some((item) => evaluateExecutionCondition(item, context))
+    }
+
+    if (key === 'all') {
+      const items = Array.isArray(value)
+        ? value
+        : (isPlainObject(value) ? Object.entries(value).map(([subKey, subValue]) => ({ [subKey]: subValue })) : [])
+      if (items.length === 0) return true
+      return items.every((item) => evaluateExecutionCondition(item, context))
+    }
+
+    const rMatch = String(key).match(/^(r\d+):(.*)$/i)
+    if (rMatch) {
+      const stageId = rMatch[1].toLowerCase()
+      const optionId = buildConditionOptionId(stageId, key, value)
+      return context.branchSelections?.[stageId] === optionId
+    }
+
+    const slotMatch = String(key).match(/^(!)?(s\d+)(?:\.(.+))?$/i)
+    if (slotMatch) {
+      const negate = Boolean(slotMatch[1])
+      const slotId = slotMatch[2].toLowerCase()
+      const selector = slotMatch[3] || ''
+      const card = context.slotCards?.[slotId] || null
+
+      if (!selector) {
+        const occupied = Boolean(card)
+        return negate ? !occupied : occupied
+      }
+
+      const groupId = slotId
+      const optionId = buildConditionOptionId(groupId, key, value)
+      if (context.branchSelections?.[groupId]) {
+        return context.branchSelections[groupId] === optionId
+      }
+
+      const matched = evaluateSlotCondition(card, selector, value)
+      return negate ? !matched : matched
+    }
+
+    return true
+  })
+}
+
+function collectAtomicConditions(condition, collector = []) {
+  if (!condition || typeof condition !== 'object') return collector
+
+  Object.entries(condition).forEach(([key, value]) => {
+    if (key.endsWith('__c') || key.endsWith('__ca') || key.endsWith('__ci')) return
+    if (key === 'any' || key === 'all') {
+      if (Array.isArray(value)) {
+        value.forEach((item) => collectAtomicConditions(item, collector))
+      } else if (isPlainObject(value)) {
+        collectAtomicConditions(value, collector)
+      }
+      return
+    }
+    collector.push({ key, value })
+  })
+
+  return collector
+}
+
+function buildExecutionConditionGroups(model, cardsMap, slotCards) {
+  const groups = new Map()
+
+  ;(model?.rawPhases || []).forEach((phase) => {
+    collectAtomicConditions(phase.raw?.condition || {}).forEach(({ key, value }) => {
+      const rMatch = String(key).match(/^(r\d+):(.*)$/i)
+      if (rMatch) {
+        const stageId = rMatch[1].toLowerCase()
+        const groupId = stageId
+        const group = groups.get(groupId) || {
+          id: groupId,
+          title: `骰子分支 ${stageId.toUpperCase()}`,
+          description: model?.randomText?.[stageId] || '请选择这次骰子检定的结果分支。',
+          options: [],
+          isDice: true,
+          stageId,
+        }
+        const optionId = buildConditionOptionId(groupId, key, value)
+        if (!group.options.some((option) => option.id === optionId)) {
+          group.options.push({
+            id: optionId,
+            label: parseConditionObject({ [key]: value }, cardsMap)[0] || key,
+            detail: model?.randomTextUp?.[stageId]?.text || '',
+          })
+        }
+        groups.set(groupId, group)
+        return
+      }
+
+      const slotMatch = String(key).match(/^!?((s\d+))(?:\.(.+))?$/i)
+      if (!slotMatch || !slotMatch[3]) return
+
+      const slotId = slotMatch[2].toLowerCase()
+      const groupId = slotId
+      const selectedCard = slotCards?.[slotId]
+      const group = groups.get(groupId) || {
+        id: groupId,
+        title: `${slotId.toUpperCase()} 条件`,
+        description: selectedCard?.name ? `当前带入：${selectedCard.name}` : '可手动调整当前卡槽对应条件。',
+        options: [],
+        isDice: false,
+      }
+
+      const optionId = buildConditionOptionId(groupId, key, value)
+      if (!group.options.some((option) => option.id === optionId)) {
+        group.options.push({
+          id: optionId,
+          label: parseConditionObject({ [key]: value }, cardsMap)[0] || key,
+          detail: '',
+        })
+      }
+      groups.set(groupId, group)
+    })
+  })
+
+  return Array.from(groups.values())
+}
+
+function buildExecutionSteps(model, context) {
+  const steps = []
+  const promptedDiceStages = new Set()
+
+  for (const phase of (model?.rawPhases || [])) {
+    const rawCondition = phase.raw?.condition || {}
+    const stageKeys = phase.rStageKeys || []
+    const nonDiceConditions = Object.fromEntries(
+      Object.entries(rawCondition).filter(([key]) => !String(key).match(/^r\d+:/i))
+    )
+
+    if (!evaluateExecutionCondition(nonDiceConditions, context)) {
+      continue
+    }
+
+    for (const stageId of stageKeys) {
+      if (promptedDiceStages.has(stageId)) continue
+      promptedDiceStages.add(stageId)
+      const stageMeta = model?.randomTextUp?.[stageId] || {}
+      steps.push({
+        id: `dice:${stageId}`,
+        kind: 'dice',
+        stageId,
+        phase: '结算骰子',
+        title: model?.randomText?.[stageId] || stageId.toUpperCase(),
+        text: stageMeta.text || '',
+        tips: [stageMeta.type_tips, stageMeta.low_target_tips].filter(Boolean),
+        conditions: [],
+        effects: [],
+        actions: [],
+        popItems: [],
+      })
+    }
+
+    if (!evaluateExecutionCondition(rawCondition, context)) {
+      continue
+    }
+
+    steps.push({
+      ...phase,
+      id: `${phase.phaseKey}:${phase.index}`,
+      kind: 'result',
+      tips: [],
+    })
+
+    if (phase.raw?.result && Object.keys(phase.raw.result).some((key) => !String(key).endsWith('__c') && !String(key).endsWith('__ca') && !String(key).endsWith('__ci'))) {
+      break
+    }
+  }
+
+  return steps
+}
+
 export default function StoryInspector({ type, data, onClose }) {
   const RITE_CANDIDATE_PAGE_SIZE = 7
   const cardsLite = useConfigStore((s) => s.cardsLite)
@@ -869,6 +1176,7 @@ export default function StoryInspector({ type, data, onClose }) {
   const [conditionPreviewExpanded, setConditionPreviewExpanded] = useState(false)
   const [executionOpen, setExecutionOpen] = useState(false)
   const [executionMode, setExecutionMode] = useState('normal')
+  const [executionConditionSelections, setExecutionConditionSelections] = useState({})
   const [hideReaderUi, setHideReaderUi] = useState(false)
   const [executionStepIndex, setExecutionStepIndex] = useState(0)
   const [executionAutoAdvance, setExecutionAutoAdvance] = useState(false)
@@ -918,6 +1226,7 @@ export default function StoryInspector({ type, data, onClose }) {
     setRevealedSegmentCount(type === 'rite' ? 9999 : 0)
     setExecutionOpen(false)
     setExecutionMode('normal')
+    setExecutionConditionSelections({})
     setHideReaderUi(false)
     setExecutionStepIndex(0)
     setEventChoicePath([])
@@ -1304,6 +1613,15 @@ export default function StoryInspector({ type, data, onClose }) {
 
   const visibleLines = dialogueLines.slice(0, revealedLineCount)
   const visibleSegments = availableSegments.slice(0, revealedSegmentCount)
+  const executionSlotCards = useMemo(() => {
+    return Object.fromEntries((model?.slots || []).map((slot) => [
+      slot.id,
+      resolveSelectedSlotCard(model, slot.id, slotSelections, settlementSelections, cardsById),
+    ]))
+  }, [cardsById, model, settlementSelections, slotSelections])
+  const executionConditionGroups = useMemo(() => (
+    buildExecutionConditionGroups(model, cardsLite, executionSlotCards)
+  ), [cardsLite, executionSlotCards, model])
   const executionSteps = useMemo(() => {
     if (executionMode === 'waiting_round_end') {
       if (!model?.waitingRoundEnd) return []
@@ -1315,30 +1633,49 @@ export default function StoryInspector({ type, data, onClose }) {
         effects: model.waitingRoundEnd.effects || [],
         actions: (model.waitingRoundEnd.actions || []).filter((action) => action?.targetType && action?.targetId),
         conditions: [],
+        popItems: [],
+        tips: [],
       }]
     }
 
-    const introSteps = dialogueLines.map((line, index) => ({
-      id: `line:${index}`,
-      phase: '仪式正文',
-      title: '',
-      text: line,
-      effects: [],
-      actions: [],
-    }))
+    return buildExecutionSteps(model, {
+      branchSelections: executionConditionSelections,
+      slotCards: executionSlotCards,
+    })
+  }, [executionConditionSelections, executionMode, executionSlotCards, model])
+  useEffect(() => {
+    if (executionMode !== 'normal' || executionConditionGroups.length === 0) return
 
-    const segmentSteps = availableSegments.map((segment, index) => ({
-      id: `segment:${segment.guid || index}`,
-      phase: segment.phase,
-      title: segment.title,
-      text: segment.text,
-      effects: segment.effects || [],
-      actions: (segment.actions || []).filter((action) => action?.targetType && action?.targetId),
-      conditions: segment.conditions || [],
-    }))
+    setExecutionConditionSelections((current) => {
+      let changed = false
+      const next = { ...current }
 
-    return [...introSteps, ...segmentSteps]
-  }, [availableSegments, dialogueLines, executionMode, model?.waitingRoundEnd])
+      executionConditionGroups.forEach((group) => {
+        if (group.isDice) return
+        if (next[group.id]) return
+
+        const selectedCard = executionSlotCards[group.id]
+        const matched = group.options.find((option) => {
+          const [, rawKey, rawValue] = option.id.split('::')
+          try {
+            return evaluateExecutionCondition({ [rawKey]: JSON.parse(rawValue) }, {
+              branchSelections: {},
+              slotCards: { [group.id]: selectedCard },
+            })
+          } catch {
+            return false
+          }
+        })
+
+        if (matched) {
+          next[group.id] = matched.id
+          changed = true
+        }
+      })
+
+      return changed ? next : current
+    })
+  }, [executionConditionGroups, executionMode, executionSlotCards])
   const currentGateSegment = visibleSegments.find((segment) => segment.options?.length > 0)
   const canRevealLine = revealedLineCount < dialogueLines.length
   const canRevealSegment = !canRevealLine && !currentGateSegment && revealedSegmentCount < availableSegments.length
@@ -1474,6 +1811,14 @@ export default function StoryInspector({ type, data, onClose }) {
     resetFlow(activeSlotId, slotSelections, settlementSelections, nextId)
   }
 
+  function handleSelectExecutionCondition(groupId, optionId) {
+    setExecutionConditionSelections((current) => ({
+      ...current,
+      [groupId]: optionId,
+    }))
+    setExecutionStepIndex(0)
+  }
+
   function handleSelectEventChoice(choiceTag, depth) {
     setEventChoicePath((current) => {
       const prefix = current.slice(0, depth)
@@ -1487,6 +1832,7 @@ export default function StoryInspector({ type, data, onClose }) {
   function handleOpenExecution() {
     executedActionKeyRef.current = new Set()
     setExecutionMode('normal')
+    setExecutionConditionSelections({})
     setExecutionStepIndex(0)
     setExecutionAutoAdvance(false)
     setExecutionOpen(true)
@@ -1523,6 +1869,7 @@ export default function StoryInspector({ type, data, onClose }) {
   function handleOpenWaitingRoundExecution() {
     executedActionKeyRef.current = new Set()
     setExecutionMode('waiting_round_end')
+    setExecutionConditionSelections({})
     setExecutionStepIndex(0)
     setExecutionAutoAdvance(false)
     setExecutionOpen(true)
@@ -1555,6 +1902,7 @@ export default function StoryInspector({ type, data, onClose }) {
     setAutoAdvance(false)
     setExecutionOpen(false)
     setExecutionMode('normal')
+    setExecutionConditionSelections({})
     setExecutionStepIndex(0)
     setExecutionAutoAdvance(false)
     executedActionKeyRef.current = new Set()
@@ -2403,6 +2751,7 @@ export default function StoryInspector({ type, data, onClose }) {
                     setExecutionOpen(false)
                     setExecutionAutoAdvance(false)
                     setExecutionMode('normal')
+                    setExecutionConditionSelections({})
                   }}
                 >
                   关闭结算
@@ -2413,7 +2762,7 @@ export default function StoryInspector({ type, data, onClose }) {
                 <div style={{
                   ...executionCanvasStyle,
                   position: 'relative',
-                  background: 'rgba(19, 15, 11, 0.96)',
+                  background: 'rgba(8, 6, 5, 0.96)',
                 }}>
                   {settlementBgUrl && (
                     <img
@@ -2424,8 +2773,8 @@ export default function StoryInspector({ type, data, onClose }) {
                         inset: 0,
                         width: '100%',
                         height: '100%',
-                        objectFit: 'contain',
-                        objectPosition: 'center',
+                        objectFit: 'cover',
+                        objectPosition: 'center top',
                         pointerEvents: 'none',
                       }}
                     />
@@ -2440,12 +2789,24 @@ export default function StoryInspector({ type, data, onClose }) {
                         top: '6%',
                         width: '43%',
                         height: '88%',
-                        objectFit: 'contain',
+                        objectFit: 'cover',
                         objectPosition: 'left center',
                         pointerEvents: 'none',
                       }}
                     />
                   )}
+                  <div style={executionSlotPreviewWrapStyle}>
+                    {(model.slots || []).map((slot) => {
+                      const card = executionSlotCards[slot.id]
+                      return (
+                        <div key={slot.id} style={executionSlotCardStyle}>
+                          <div style={executionSlotLabelStyle}>{slot.id.toUpperCase()}</div>
+                          {card ? <CardPortrait card={card} compact={false} widthOverride={84} /> : <div style={executionEmptySlotStyle}>空槽</div>}
+                          <div style={executionSlotNameStyle}>{card?.name || slot.text || slot.title}</div>
+                        </div>
+                      )
+                    })}
+                  </div>
                   <div style={executionSummaryPanelStyle}>
                     <div style={sectionTitleStyle}>结算获取</div>
 
@@ -2500,7 +2861,7 @@ export default function StoryInspector({ type, data, onClose }) {
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
                       <button
                         type="button"
-                        onClick={() => { setExecutionOpen(false); setExecutionAutoAdvance(false) }}
+                        onClick={() => { setExecutionOpen(false); setExecutionAutoAdvance(false); setExecutionConditionSelections({}) }}
                         style={executionCloseButtonStyle}
                       >
                         关闭
@@ -2509,66 +2870,33 @@ export default function StoryInspector({ type, data, onClose }) {
                   </div>
 
                   <div style={{ display: 'grid', gap: 12 }}>
-                    <SettlementHintGroup
-                      title="结算条件"
-                      description="把分支选择挪到结算阶段，这里再决定当前槽位的检定与结果。"
-                      hints={(selectedSlot?.settlementHints || [])
-                        .filter((hint) => matchesSlotOccupancyCondition(hint.conditionRaw, slotSelectionState))
-                        .filter((hint) => {
-                          const keyword = conditionFilterText.trim().toLowerCase()
-                          if (!keyword) return true
-                          return [hint.label, hint.conditionText, hint.primaryText].filter(Boolean).join(' ').toLowerCase().includes(keyword)
-                        })}
-                      selectedCount={selectedSettlementHints.length > 0 ? 1 : 0}
-                      filterText={conditionFilterText}
-                      onFilterChange={setConditionFilterText}
-                      selectedHintId={settlementSelections[selectedSlot?.id]}
-                      onToggle={handleSelectSettlementHint}
-                    />
-
-                    <SettlementHintGroup
-                      title="全局条件"
-                      description="这些分支不绑定具体卡槽，会直接影响当前仪式的后续结算。"
-                      hints={visibleGlobalSettlementHints
-                        .filter((hint) => {
-                          const keyword = conditionFilterText.trim().toLowerCase()
-                          if (!keyword) return true
-                          return [hint.label, hint.conditionText, hint.primaryText].filter(Boolean).join(' ').toLowerCase().includes(keyword)
-                        })}
-                      selectedCount={globalSettlementSelection ? 1 : 0}
-                      filterText={conditionFilterText}
-                      onFilterChange={setConditionFilterText}
-                      selectedHintId={globalSettlementSelection}
-                      onToggle={handleSelectGlobalSettlementHint}
-                    />
+                    {executionConditionGroups.map((group) => (
+                      <ExecutionConditionGroup
+                        key={group.id}
+                        group={group}
+                        selectedId={executionConditionSelections[group.id] || null}
+                        onSelect={handleSelectExecutionCondition}
+                      />
+                    ))}
                   </div>
 
                   {/* 正文区：固定高度，可滚动，追加显示 */}
                   <div style={executionDialogueBoxStyle} ref={executionBodyRef}>
                     {executionSteps.slice(0, executionStepIndex + 1).map((step, index) => (
-                      <div key={step.id} style={{ marginBottom: index < executionStepIndex ? 16 : 0 }}>
-                        {step.rStageKeys?.length > 0 && step.rStageKeys.map((stageKey) => (
-                          <div key={`${step.id}:${stageKey}`} style={{ marginBottom: 12 }}>
-                            <div style={{ color: '#f8ebd1', fontSize: 18, fontWeight: 700, lineHeight: 1.6 }}>
-                              {model.randomText?.[stageKey] || stageKey}
-                            </div>
-                            {model.randomTextUp?.[stageKey]?.text && (
-                              <div style={{ marginTop: 6, color: '#f4ead8', fontSize: 15, lineHeight: 1.8 }}>
-                                {model.randomTextUp[stageKey].text}
-                              </div>
-                            )}
-                            {model.randomTextUp?.[stageKey]?.type_tips && (
-                              <div style={{ marginTop: 4, color: '#d9c7a5', fontSize: 14, lineHeight: 1.7 }}>
-                                {model.randomTextUp[stageKey].type_tips}
-                              </div>
-                            )}
-                            {model.randomTextUp?.[stageKey]?.low_target_tips && (
-                              <div style={{ marginTop: 2, color: '#d9c7a5', fontSize: 14, lineHeight: 1.7 }}>
-                                {model.randomTextUp[stageKey].low_target_tips}
-                              </div>
-                            )}
+                      <div key={step.id} style={executionNarrativeCardStyle}>
+                        <div style={executionStepMetaStyle}>{step.phase}</div>
+                        {step.kind === 'dice' ? (
+                          <div style={{ display: 'grid', gap: 8 }}>
+                            <div style={executionStepTitleStyle}>{step.title}</div>
+                            {step.text ? <div style={executionStepTextStyle}>{step.text}</div> : null}
+                            {(step.tips || []).map((tip, tipIndex) => (
+                              <div key={`${step.id}:tip:${tipIndex}`} style={executionStepTipStyle}>{tip}</div>
+                            ))}
                           </div>
-                        ))}
+                        ) : null}
+                        {step.kind !== 'dice' && step.title ? (
+                          <div style={executionStepTitleStyle}>{step.title}</div>
+                        ) : null}
                         {step.conditions?.length > 0 && (
                           <div style={{ marginBottom: 6, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                             {step.conditions.map((cond, ci) => (
@@ -2577,7 +2905,7 @@ export default function StoryInspector({ type, data, onClose }) {
                           </div>
                         )}
                         {step.text ? (
-                          <div style={{ fontSize: 17, lineHeight: 1.95, color: '#f7edd8', whiteSpace: 'pre-wrap' }}>
+                          <div style={executionStepTextStyle}>
                             {step.text}
                           </div>
                         ) : null}
@@ -2615,7 +2943,7 @@ export default function StoryInspector({ type, data, onClose }) {
                           推进下一步
                         </button>
                       ) : (
-                        <button type="button" style={primaryButtonStyle} onClick={() => { setExecutionOpen(false); setExecutionAutoAdvance(false) }}>
+                        <button type="button" style={primaryButtonStyle} onClick={() => { setExecutionOpen(false); setExecutionAutoAdvance(false); setExecutionConditionSelections({}) }}>
                           执行完成
                         </button>
                       )}
@@ -3083,15 +3411,16 @@ const executionCanvasStyle = {
 
 const executionSummaryPanelStyle = {
   position: 'absolute',
-  top: '19%',
-  left: '11.5%',
-  bottom: '16%',
-  width: '23%',
+  top: '18%',
+  left: '4%',
+  bottom: '10%',
+  width: '28%',
   minWidth: 220,
   padding: '14px 12px',
   borderRadius: 18,
-  background: 'rgba(12, 10, 8, 0.08)',
-  border: '1px solid rgba(244, 232, 206, 0.08)',
+  background: 'rgba(12, 10, 8, 0.32)',
+  border: '1px solid rgba(244, 232, 206, 0.12)',
+  backdropFilter: 'blur(6px)',
   overflowY: 'auto',
 }
 
@@ -3101,19 +3430,30 @@ const executionDialoguePanelStyle = {
   gap: 14,
   minHeight: 0,
   padding: '12px 8px 8px 0',
-  background: 'rgba(18, 14, 11, 0.03)',
+  background: 'rgba(18, 14, 11, 0.01)',
 }
 
 const executionDialogueBoxStyle = {
   minHeight: 0,
   borderRadius: 24,
-  background: 'rgba(23, 18, 13, 0.08)',
+  background: 'rgba(23, 18, 13, 0.02)',
   border: '1px solid rgba(212, 184, 126, 0.08)',
   padding: '22px 20px',
   overflowY: 'auto',
   display: 'flex',
   flexDirection: 'column',
   gap: 12,
+}
+
+const executionSlotPreviewWrapStyle = {
+  position: 'absolute',
+  top: '4%',
+  right: '4%',
+  display: 'flex',
+  flexWrap: 'wrap',
+  justifyContent: 'flex-end',
+  gap: 10,
+  width: '48%',
 }
 
 const executionTitleWrapStyle = {
@@ -3152,15 +3492,16 @@ const executionFooterStyle = {
 }
 
 const executionSlotCardStyle = {
-  minWidth: 112,
+  width: 112,
   padding: '10px 10px 12px',
   borderRadius: 22,
-  background: 'rgba(14, 12, 10, 0.82)',
+  background: 'rgba(14, 12, 10, 0.56)',
   border: '1px solid rgba(212, 184, 126, 0.16)',
   boxShadow: '0 14px 30px rgba(0, 0, 0, 0.26)',
   display: 'grid',
   justifyItems: 'center',
   gap: 8,
+  backdropFilter: 'blur(6px)',
 }
 
 const executionSlotLabelStyle = {
@@ -3197,7 +3538,6 @@ const executionEmptySlotStyle = {
 }
 
 const executionStepTitleStyle = {
-  marginTop: 8,
   fontSize: 24,
   lineHeight: 1.3,
   color: '#f8ebd1',
@@ -3254,6 +3594,73 @@ const candidateStageStyle = {
   display: 'grid',
   gridTemplateRows: 'auto minmax(0, 1fr)',
   overflow: 'hidden',
+}
+
+const executionStepMetaStyle = {
+  display: 'inline-flex',
+  alignSelf: 'flex-start',
+  padding: '4px 10px',
+  borderRadius: 999,
+  background: 'rgba(241, 230, 203, 0.12)',
+  color: '#ebd7b2',
+  fontSize: 12,
+  letterSpacing: '0.08em',
+}
+
+const executionStepTextStyle = {
+  fontSize: 17,
+  lineHeight: 1.95,
+  color: '#f7edd8',
+  whiteSpace: 'pre-wrap',
+  padding: '12px 14px',
+  borderRadius: 16,
+  background: 'rgba(20, 14, 10, 0.42)',
+  backdropFilter: 'blur(4px)',
+}
+
+const executionStepTipStyle = {
+  fontSize: 14,
+  lineHeight: 1.8,
+  color: '#ddc79d',
+  padding: '10px 12px',
+  borderRadius: 14,
+  background: 'rgba(36, 27, 20, 0.34)',
+}
+
+const executionNarrativeCardStyle = {
+  display: 'grid',
+  gap: 10,
+  padding: '12px 0 6px',
+}
+
+const executionConditionGroupStyle = {
+  display: 'grid',
+  gap: 10,
+  padding: '14px 16px',
+  borderRadius: 20,
+  background: 'rgba(23, 17, 12, 0.12)',
+  border: '1px solid rgba(212, 184, 126, 0.1)',
+}
+
+const executionConditionOptionListStyle = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+  gap: 10,
+}
+
+const executionConditionOptionStyle = {
+  padding: '10px 12px',
+  borderRadius: 16,
+  border: '1px solid rgba(212, 184, 126, 0.14)',
+  background: 'rgba(22, 18, 14, 0.3)',
+  cursor: 'pointer',
+  textAlign: 'left',
+}
+
+const executionConditionOptionActiveStyle = {
+  ...executionConditionOptionStyle,
+  border: '1px solid rgba(143, 191, 119, 0.42)',
+  background: 'rgba(100, 140, 83, 0.18)',
 }
 
 const emptyCandidateStyle = {
