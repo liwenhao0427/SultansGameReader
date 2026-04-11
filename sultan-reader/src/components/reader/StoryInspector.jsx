@@ -344,6 +344,26 @@ function ActionSummary({ actions, onOpenAction }) {
   )
 }
 
+function formatExecutionActionLabel(action, targetNameMap = {}) {
+  if (!action) return ''
+
+  const typeLabelMap = {
+    event: '事件',
+    rite: '仪式',
+    loot: '掉落物',
+    over: '结局',
+    card: '卡牌',
+  }
+
+  if (action.targetType && action.targetId) {
+    const key = `${action.targetType}:${action.targetId}`
+    const targetName = targetNameMap[key] || action.targetId
+    return `${typeLabelMap[action.targetType] || action.targetType}：${targetName}`
+  }
+
+  return action.text || action.key || ''
+}
+
 function SlotButton({ slot, active, candidate, tags, onClick, slotBgKey, bubbleText }) {
   const { url: slotBgUrl } = useResolvedImage(slotBgKey)
   const previewCard = candidate?.cards?.[0] || slot.defaultCards?.[0] || null
@@ -359,9 +379,9 @@ function SlotButton({ slot, active, candidate, tags, onClick, slotBgKey, bubbleT
           minHeight: READER_CHROME.assets.slotFrame.minHeight,
           padding: 0,
           borderRadius: 22,
-          border: active ? '1px solid rgba(239, 215, 169, 0.54)' : '1px solid rgba(219, 207, 181, 0.12)',
+          border: active ? '1px solid rgba(239, 215, 169, 0.62)' : '1px solid rgba(244, 232, 206, 0.22)',
           backgroundColor: 'transparent',
-          boxShadow: active ? '0 0 0 3px rgba(212, 184, 126, 0.12)' : 'none',
+          boxShadow: active ? '0 0 0 2px rgba(212, 184, 126, 0.14)' : 'none',
           cursor: 'pointer',
           overflow: 'hidden',
           position: 'relative',
@@ -377,8 +397,8 @@ function SlotButton({ slot, active, candidate, tags, onClick, slotBgKey, bubbleT
           minHeight: READER_CHROME.assets.slotFrame.minHeight,
           borderRadius: 22,
           backgroundImage: slotBgUrl
-            ? `linear-gradient(180deg, rgba(8, 8, 8, 0.18), rgba(8, 8, 8, 0.48)), url("${slotBgUrl}")`
-            : 'linear-gradient(180deg, rgba(180, 165, 139, 0.88), rgba(94, 80, 57, 0.92))',
+            ? `url("${slotBgUrl}")`
+            : 'linear-gradient(180deg, rgba(180, 165, 139, 0.22), rgba(94, 80, 57, 0.18))',
           backgroundRepeat: 'no-repeat',
           backgroundSize: READER_CHROME.assets.slotFrame.backgroundSize,
           backgroundPosition: READER_CHROME.assets.slotFrame.backgroundPosition,
@@ -407,7 +427,8 @@ function SlotButton({ slot, active, candidate, tags, onClick, slotBgKey, bubbleT
               position: 'absolute',
               inset: '10px 10px 12px',
               borderRadius: 18,
-              background: 'linear-gradient(180deg, rgba(40, 33, 24, 0.4), rgba(12, 10, 8, 0.72))',
+              background: 'rgba(10, 9, 7, 0.1)',
+              border: '1px solid rgba(244, 232, 206, 0.1)',
             }} />
           )}
           <div style={{
@@ -527,13 +548,13 @@ function CandidateHandItem({ candidate, active, onSelect }) {
         padding: 12,
         borderRadius: 20,
         border: active
-          ? '1px solid rgba(239, 215, 169, 0.54)'
-          : '1px solid rgba(212, 184, 126, 0.16)',
-        backgroundColor: active ? 'rgba(212, 184, 126, 0.16)' : 'rgba(18, 15, 11, 0.92)',
+          ? '1px solid rgba(239, 215, 169, 0.62)'
+          : '1px solid rgba(244, 232, 206, 0.18)',
+        backgroundColor: active ? 'rgba(212, 184, 126, 0.08)' : 'rgba(18, 15, 11, 0.12)',
         color: '#f3ebda',
         boxShadow: active
-          ? '0 0 0 3px rgba(212, 184, 126, 0.12), 0 18px 34px rgba(0,0,0,0.24)'
-          : '0 14px 28px rgba(0,0,0,0.22)',
+          ? '0 0 0 2px rgba(212, 184, 126, 0.12), 0 12px 24px rgba(0,0,0,0.12)'
+          : 'none',
         cursor: 'pointer',
         textAlign: 'left',
         boxSizing: 'border-box',
@@ -791,6 +812,8 @@ export default function StoryInspector({ type, data, onClose }) {
   const executedActionKeyRef = useRef(new Set())
   const { url: templateBgUrl } = useResolvedImage(templateData?.bg || READER_RESOURCE_ASSETS.defaultRiteBackground)
   const { url: templateFgUrl } = useResolvedImage(templateData?.fg || null)
+  const { url: riteExecutionBgUrl } = useResolvedImage(READER_RESOURCE_ASSETS.riteExecutionBackground)
+  const [executionTargetNameMap, setExecutionTargetNameMap] = useState({})
 
   function buildDialogueLines(slotId, selections, settlementState, globalSelection = globalSettlementSelection) {
     const slot = model?.slots?.find((entry) => entry.id === slotId) || null
@@ -1369,6 +1392,44 @@ export default function StoryInspector({ type, data, onClose }) {
 
   const currentExecutionStep = executionSteps[executionStepIndex] || null
 
+  const executionSummaryEffects = useMemo(
+    () => executionSteps.slice(0, executionStepIndex + 1).flatMap((step) => step.effects || []),
+    [executionStepIndex, executionSteps]
+  )
+  const executionSummaryActions = useMemo(
+    () => executionSteps.slice(0, executionStepIndex + 1).flatMap((step) => step.actions || []),
+    [executionStepIndex, executionSteps]
+  )
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadExecutionTargetNames() {
+      const next = {}
+      const actionTargets = executionSteps
+        .flatMap((step) => step.actions || [])
+        .filter((action) => action?.targetType && action?.targetId && action.targetType !== 'card')
+
+      for (const action of actionTargets) {
+        const key = `${action.targetType}:${action.targetId}`
+        if (next[key]) continue
+        try {
+          const result = await window.electronAPI.configReadCache(action.targetType, String(action.targetId))
+          next[key] = result?.name || result?.title || String(action.targetId)
+        } catch {
+          next[key] = String(action.targetId)
+        }
+      }
+
+      if (!cancelled) {
+        setExecutionTargetNameMap(next)
+      }
+    }
+
+    loadExecutionTargetNames()
+    return () => { cancelled = true }
+  }, [executionSteps])
+
   useEffect(() => {
     if (!executionOpen) return
     const actions = (currentExecutionStep?.actions || []).filter((action) => (
@@ -1550,6 +1611,11 @@ export default function StoryInspector({ type, data, onClose }) {
       display: 'grid',
       color: '#f1e8d5',
       overflow: 'hidden',
+      backgroundImage: type === 'rite' && templateBgUrl ? `url("${templateBgUrl}")` : 'none',
+      backgroundRepeat: 'no-repeat',
+      backgroundSize: 'cover',
+      backgroundPosition: 'center',
+      borderRadius: 28,
     }}>
       <div style={{
         height: '100%',
@@ -1564,9 +1630,9 @@ export default function StoryInspector({ type, data, onClose }) {
             height: '100%',
             minHeight: 0,
             borderRadius: 32,
-            border: '1px solid rgba(212, 184, 126, 0.12)',
-            backgroundColor: 'rgba(20, 16, 12, 0.92)',
-            boxShadow: '0 20px 44px rgba(0, 0, 0, 0.26)',
+            border: '1px solid rgba(244, 232, 206, 0.2)',
+            backgroundColor: 'rgba(20, 16, 12, 0.18)',
+            boxShadow: '0 12px 28px rgba(0, 0, 0, 0.14)',
             padding: '20px 16px',
             display: 'grid',
             gridTemplateRows: 'auto minmax(0, 1fr) auto',
@@ -1578,12 +1644,12 @@ export default function StoryInspector({ type, data, onClose }) {
             </div>
 
             <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+              display: 'flex',
+              flexWrap: 'wrap',
               gap: 14,
               overflowY: 'auto',
               paddingRight: 4,
-              alignContent: 'start',
+              alignContent: 'flex-start',
             }}>
               {model.slots.map((slot) => {
                 const currentCandidate = slot.candidates?.find((candidate) => candidate.id === slotSelections[slot.id]) || slot.candidates?.[0] || null
@@ -1689,22 +1755,6 @@ export default function StoryInspector({ type, data, onClose }) {
               </div>
             )}
 
-            <SettlementHintGroup
-              title="结算条件"
-              description="这里改为单选结算分支，默认采用最后一项优先级最高的结算。"
-              hints={(selectedSlot?.settlementHints || [])
-                .filter((hint) => matchesSlotOccupancyCondition(hint.conditionRaw, slotSelectionState))
-                .filter((hint) => {
-                  const keyword = conditionFilterText.trim().toLowerCase()
-                  if (!keyword) return true
-                  return [hint.label, hint.conditionText, hint.primaryText].filter(Boolean).join(' ').toLowerCase().includes(keyword)
-                })}
-              selectedCount={selectedSettlementHints.length > 0 ? 1 : 0}
-              filterText={conditionFilterText}
-              onFilterChange={setConditionFilterText}
-              selectedHintId={settlementSelections[selectedSlot?.id]}
-              onToggle={handleSelectSettlementHint}
-            />
           </div>
         </div>
 
@@ -1719,9 +1769,9 @@ export default function StoryInspector({ type, data, onClose }) {
             height: '100%',
             minHeight: 0,
             borderRadius: 32,
-            border: '1px solid rgba(212, 184, 126, 0.14)',
-            boxShadow: '0 24px 58px rgba(0, 0, 0, 0.28)',
-            backgroundColor: 'rgba(22, 17, 13, 0.92)',
+            border: '1px solid rgba(244, 232, 206, 0.2)',
+            boxShadow: '0 16px 34px rgba(0, 0, 0, 0.12)',
+            backgroundColor: 'rgba(22, 17, 13, 0.12)',
             overflow: 'hidden',
             display: 'grid',
             gridTemplateRows: 'minmax(0, 1fr) auto',
@@ -1733,22 +1783,6 @@ export default function StoryInspector({ type, data, onClose }) {
               display: 'grid',
               gap: 18,
             }} ref={readerBodyRef}>
-              <SettlementHintGroup
-                title="全局条件"
-                description="这些分支不绑定具体卡槽，会直接影响当前仪式的全局叙事与结果。"
-                hints={visibleGlobalSettlementHints
-                  .filter((hint) => {
-                    const keyword = conditionFilterText.trim().toLowerCase()
-                    if (!keyword) return true
-                    return [hint.label, hint.conditionText, hint.primaryText].filter(Boolean).join(' ').toLowerCase().includes(keyword)
-                  })}
-                selectedCount={globalSettlementSelection ? 1 : 0}
-                filterText={conditionFilterText}
-                onFilterChange={setConditionFilterText}
-                selectedHintId={globalSettlementSelection}
-                onToggle={handleSelectGlobalSettlementHint}
-              />
-
               {model.image && (
                 <PreviewImage pic={model.image} maxHeight={260} />
               )}
@@ -1764,9 +1798,9 @@ export default function StoryInspector({ type, data, onClose }) {
                         marginLeft: index % 2 === 0 ? 0 : 'auto',
                         padding: READER_CHROME.assets.dialogueFrame.padding,
                         borderRadius: 22,
-                        background: 'linear-gradient(180deg, rgba(30, 24, 18, 0.92), rgba(18, 14, 11, 0.98))',
-                        border: '1px solid rgba(212, 184, 126, 0.14)',
-                        boxShadow: '0 18px 36px rgba(0, 0, 0, 0.22)',
+                        background: 'rgba(18, 14, 11, 0.24)',
+                        border: '1px solid rgba(244, 232, 206, 0.18)',
+                        boxShadow: '0 10px 22px rgba(0, 0, 0, 0.1)',
                       }}
                     >
                       <div style={{ fontSize: 18, lineHeight: 1.95, color: '#f7edd8', whiteSpace: 'pre-wrap' }}>
@@ -1894,7 +1928,7 @@ export default function StoryInspector({ type, data, onClose }) {
                   style={primaryButtonStyle}
                   onClick={handleOpenExecution}
                 >
-                  执行仪式
+                  进入结算
                 </button>
               )}
               {!canRevealLine && !canRevealSegment && availableSegments.length > 0 && (
@@ -1938,15 +1972,25 @@ export default function StoryInspector({ type, data, onClose }) {
                 <div style={{
                   ...executionCanvasStyle,
                   position: 'relative',
-                  background: templateBgUrl
-                    ? 'rgba(19, 15, 11, 0.96)'
-                    : 'linear-gradient(180deg, rgba(244, 236, 220, 0.98), rgba(221, 206, 180, 0.96))',
+                  background: 'rgba(19, 15, 11, 0.96)',
                 }}>
-                  {templateBgUrl && (
-                    <TemplateBackgroundLayer pic={templateBgUrl} titleX={templateData?.title_pos?.x} />
+                  {riteExecutionBgUrl && (
+                    <img
+                      src={riteExecutionBgUrl}
+                      alt=""
+                      style={{
+                        position: 'absolute',
+                        inset: 0,
+                        width: '100%',
+                        height: '100%',
+                        objectFit: 'cover',
+                        objectPosition: 'center',
+                        pointerEvents: 'none',
+                      }}
+                    />
                   )}
 
-                  {bgPreviewOpen && templateBgUrl && (
+                  {bgPreviewOpen && riteExecutionBgUrl && (
                     <div style={{
                       position: 'absolute',
                       top: 8,
@@ -1960,74 +2004,37 @@ export default function StoryInspector({ type, data, onClose }) {
                       background: 'rgba(12, 10, 8, 0.92)',
                     }}>
                       <img
-                        src={templateBgUrl}
+                        src={riteExecutionBgUrl}
                         alt="背景全图"
                         style={{ width: '100%', display: 'block', maxHeight: 160, objectFit: 'cover', objectPosition: 'left top' }}
                       />
-                      {templateData?.title_pos?.x && (
-                        <div style={{
-                          position: 'absolute',
-                          top: 0,
-                          left: 0,
-                          width: `${Math.min(100, ((Number(templateData.title_pos.x) * 0.75) / 2732) * 100)}%`,
-                          height: '100%',
-                          border: '2px solid rgba(212, 184, 126, 0.9)',
-                          boxSizing: 'border-box',
-                          pointerEvents: 'none',
-                        }}>
-                          <span style={{
-                            position: 'absolute',
-                            bottom: 4,
-                            left: 6,
-                            fontSize: 10,
-                            color: '#f3e3c1',
-                            background: 'rgba(0,0,0,0.6)',
-                            padding: '1px 5px',
-                            borderRadius: 3,
-                          }}>
-                            实际使用区域：x &lt; {Math.round(Number(templateData.title_pos.x) * 0.75)}
-                          </span>
-                        </div>
-                      )}
                     </div>
                   )}
-                  {templateFgUrl && (
-                    <img
-                      src={templateFgUrl}
-                      alt=""
-                      style={{
-                        position: 'absolute',
-                        inset: 0,
-                        width: '100%',
-                        height: '100%',
-                        objectFit: 'cover',
-                        pointerEvents: 'none',
-                        opacity: 0.96,
-                      }}
-                    />
-                  )}
-                  {(model.slots || []).map((slot) => {
-                    const candidate = slot.candidates?.find((entry) => entry.id === slotSelections[slot.id]) || slot.candidates?.[0] || null
-                    const overrideCard = slotOverrideCards[slot.id] || null
-                    const previewCard = overrideCard || candidate?.cards?.[0] || slot.defaultCards?.[0] || null
-                    const slotCaption = overrideCard?.name || candidate?.label || slot.defaultCards?.[0]?.name || slot.title
-                    const slotBgKey = slotBackgroundMap?.[slot.id]?.slot_bg || templateData?.nomal_slot_bg || READER_CHROME.assets.slotFrame.asset
-                    const layout = templateSlotLayout[slot.id] || {}
+                  <div style={executionSummaryPanelStyle}>
+                    <div style={sectionTitleStyle}>结算获取</div>
 
-                    return (
-                      <div
-                        key={`execution-${slot.id}`}
-                        style={{ position: 'absolute', ...layout }}
-                      >
-                        <ExecutionSlot
-                          slot={slot}
-                          previewCard={previewCard}
-                          slotCaption={slotCaption}
-                          slotBgKey={slotBgKey}
-                        />
+                    {executionSummaryEffects.length > 0 && (
+                      <div style={{ marginTop: 12 }}>
+                        <EffectSummary effects={executionSummaryEffects} onOpenCard={handleOpenCard} />
                       </div>
-                    )
-                  })}
+                    )}
+
+                    {executionSummaryActions.length > 0 && (
+                      <div style={{ marginTop: 14, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                        {executionSummaryActions.map((action, index) => (
+                          <div key={`${action.key}:${action.targetId || ''}:${index}`} style={effectChipStyle}>
+                            {formatExecutionActionLabel(action, executionTargetNameMap)}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {executionSummaryEffects.length === 0 && executionSummaryActions.length === 0 && (
+                      <div style={{ ...smallLineStyle, marginTop: 12 }}>
+                        当前还没有结算结果，先在右侧推进文本与分支选择。
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 {/* 右侧正文面板：追加显示所有已推进步骤 */}
@@ -2038,7 +2045,7 @@ export default function StoryInspector({ type, data, onClose }) {
                       <div style={{ marginTop: 4, fontSize: 16, fontWeight: 700, color: '#f8ebd1' }}>{model.title}</div>
                     </div>
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
-                      {templateBgUrl && (
+                      {riteExecutionBgUrl && (
                         <button
                           type="button"
                           style={secondaryButtonStyle}
@@ -2055,6 +2062,41 @@ export default function StoryInspector({ type, data, onClose }) {
                         关闭
                       </button>
                     </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gap: 12 }}>
+                    <SettlementHintGroup
+                      title="结算条件"
+                      description="把分支选择挪到结算阶段，这里再决定当前槽位的检定与结果。"
+                      hints={(selectedSlot?.settlementHints || [])
+                        .filter((hint) => matchesSlotOccupancyCondition(hint.conditionRaw, slotSelectionState))
+                        .filter((hint) => {
+                          const keyword = conditionFilterText.trim().toLowerCase()
+                          if (!keyword) return true
+                          return [hint.label, hint.conditionText, hint.primaryText].filter(Boolean).join(' ').toLowerCase().includes(keyword)
+                        })}
+                      selectedCount={selectedSettlementHints.length > 0 ? 1 : 0}
+                      filterText={conditionFilterText}
+                      onFilterChange={setConditionFilterText}
+                      selectedHintId={settlementSelections[selectedSlot?.id]}
+                      onToggle={handleSelectSettlementHint}
+                    />
+
+                    <SettlementHintGroup
+                      title="全局条件"
+                      description="这些分支不绑定具体卡槽，会直接影响当前仪式的后续结算。"
+                      hints={visibleGlobalSettlementHints
+                        .filter((hint) => {
+                          const keyword = conditionFilterText.trim().toLowerCase()
+                          if (!keyword) return true
+                          return [hint.label, hint.conditionText, hint.primaryText].filter(Boolean).join(' ').toLowerCase().includes(keyword)
+                        })}
+                      selectedCount={globalSettlementSelection ? 1 : 0}
+                      filterText={conditionFilterText}
+                      onFilterChange={setConditionFilterText}
+                      selectedHintId={globalSettlementSelection}
+                      onToggle={handleSelectGlobalSettlementHint}
+                    />
                   </div>
 
                   {/* 正文区：固定高度，可滚动，追加显示 */}
@@ -2492,6 +2534,20 @@ const executionCanvasStyle = {
   border: '1px solid rgba(212, 184, 126, 0.16)',
 }
 
+const executionSummaryPanelStyle = {
+  position: 'absolute',
+  top: 18,
+  left: 18,
+  bottom: 18,
+  width: '34%',
+  minWidth: 220,
+  padding: '18px 16px',
+  borderRadius: 22,
+  background: 'rgba(12, 10, 8, 0.32)',
+  border: '1px solid rgba(244, 232, 206, 0.18)',
+  overflowY: 'auto',
+}
+
 const executionDialoguePanelStyle = {
   display: 'grid',
   gridTemplateRows: 'auto minmax(0, 1fr) auto',
@@ -2614,9 +2670,9 @@ const readerFilterInputStyle = {
 const candidateStageStyle = {
   height: '100%',
   borderRadius: 32,
-  border: '1px solid rgba(212, 184, 126, 0.14)',
-  backgroundColor: 'rgba(16, 14, 11, 0.95)',
-  boxShadow: '0 18px 42px rgba(0, 0, 0, 0.26)',
+  border: '1px solid rgba(244, 232, 206, 0.2)',
+  backgroundColor: 'rgba(16, 14, 11, 0.14)',
+  boxShadow: '0 12px 26px rgba(0, 0, 0, 0.1)',
   padding: '20px 18px 18px',
   minHeight: 0,
   display: 'grid',
@@ -2627,8 +2683,8 @@ const candidateStageStyle = {
 const emptyCandidateStyle = {
   marginTop: 16,
   borderRadius: 24,
-  border: '1px dashed rgba(212, 184, 126, 0.18)',
-  backgroundColor: 'rgba(22, 18, 14, 0.92)',
+  border: '1px dashed rgba(244, 232, 206, 0.18)',
+  backgroundColor: 'rgba(22, 18, 14, 0.14)',
   padding: '22px 18px',
   display: 'flex',
   flexDirection: 'column',
