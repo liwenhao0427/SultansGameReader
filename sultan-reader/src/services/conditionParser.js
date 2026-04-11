@@ -10,6 +10,11 @@ const COMMENT_SUFFIXES = ['__c', '__ca', '__ci']
 const SLOT_RE = /^s\d+$/i
 const NUMBER_ID_RE = /^\d{6,}$/
 
+function resolveCounterDisplay(id, fallback = '', counterRegistry = null) {
+  const entry = counterRegistry?.get?.(String(id))
+  return entry?.displayName || entry?.comment || resolveCounterLabel(id, fallback)
+}
+
 function resolveCardName(id, cardsMap) {
   return (cardsMap && cardsMap.get(String(id))) || String(id)
 }
@@ -154,9 +159,9 @@ function formatFormulaCondition(prefix, expression, operator, value) {
   return `${prefix}${expression}（${formatComparator(operator, value)}）`
 }
 
-function formatNestedEffect(label, value, cardsMap) {
+function formatNestedEffect(label, value, cardsMap, counterRegistry = null) {
   if (!isPlainObject(value)) return label
-  const nested = parseEffectObject(value, cardsMap)
+  const nested = parseEffectObject(value, cardsMap, counterRegistry)
   if (nested.length === 0) return label
   return `${label}：${nested.join('；')}`
 }
@@ -242,7 +247,7 @@ function formatCardMutationKey(key, value, cardsMap) {
 /**
  * 解析单个条件。
  */
-export function parseCondition(key, value, comment, cardsMap) {
+export function parseCondition(key, value, comment, cardsMap, counterRegistry = null) {
   let match
 
   const commentCondition = formatCommentCondition(key, value, comment)
@@ -263,7 +268,7 @@ export function parseCondition(key, value, comment, cardsMap) {
 
   if ((match = key.match(/^(!)?(counter|global_counter)\.(\d+)(>=|<=|>|<|=)?$/))) {
     const prefix = match[2] === 'global_counter' ? '全局计数器' : '计数器'
-    const label = resolveCounterLabel(match[3])
+    const label = resolveCounterDisplay(match[3], '', counterRegistry)
     return `${match[1] ? '不满足' : '满足'} ${prefix} ${label}（${match[3]}）${formatComparator(match[4] || '>=', value)}`
   }
 
@@ -318,7 +323,7 @@ export function parseCondition(key, value, comment, cardsMap) {
 /**
  * 解析条件对象。
  */
-export function parseConditionObject(conditionObj, cardsMap) {
+export function parseConditionObject(conditionObj, cardsMap, counterRegistry = null) {
   if (!conditionObj || typeof conditionObj !== 'object') return []
 
   const results = []
@@ -335,8 +340,8 @@ export function parseConditionObject(conditionObj, cardsMap) {
         results.push(anyComment)
       } else {
         const subConditions = Array.isArray(value)
-          ? value.flatMap((item) => parseConditionObject(item, cardsMap))
-          : parseConditionObject(value, cardsMap)
+          ? value.flatMap((item) => parseConditionObject(item, cardsMap, counterRegistry))
+          : parseConditionObject(value, cardsMap, counterRegistry)
         if (subConditions.length > 0) {
           results.push(`满足任意一项：${subConditions.join('；')}`)
         }
@@ -350,14 +355,14 @@ export function parseConditionObject(conditionObj, cardsMap) {
         results.push(allComment)
       } else {
         const subConditions = Array.isArray(value)
-          ? value.flatMap((item) => parseConditionObject(item, cardsMap))
-          : parseConditionObject(value, cardsMap)
+          ? value.flatMap((item) => parseConditionObject(item, cardsMap, counterRegistry))
+          : parseConditionObject(value, cardsMap, counterRegistry)
         results.push(...subConditions)
       }
       continue
     }
 
-    results.push(parseCondition(key, value, comment, cardsMap))
+    results.push(parseCondition(key, value, comment, cardsMap, counterRegistry))
   }
 
   return results.filter(Boolean)
@@ -366,7 +371,7 @@ export function parseConditionObject(conditionObj, cardsMap) {
 /**
  * 解析单个结果。
  */
-export function parseEffect(key, value, comment, cardsMap) {
+export function parseEffect(key, value, comment, cardsMap, counterRegistry = null) {
   if (comment) return comment
 
   let match
@@ -424,30 +429,30 @@ export function parseEffect(key, value, comment, cardsMap) {
   }
 
   if (key === 'no_prompt') {
-    return formatNestedEffect('隐藏执行', value, cardsMap)
+    return formatNestedEffect('隐藏执行', value, cardsMap, counterRegistry)
   }
 
   if (key === 'no_show') {
-    return formatNestedEffect('隐藏结算表现', value, cardsMap)
+    return formatNestedEffect('隐藏结算表现', value, cardsMap, counterRegistry)
   }
 
   if (key === 'success') {
-    return formatNestedEffect('前一动作成功后', value, cardsMap)
+    return formatNestedEffect('前一动作成功后', value, cardsMap, counterRegistry)
   }
 
   if (key === 'failed') {
-    return formatNestedEffect('前一动作失败后', value, cardsMap)
+    return formatNestedEffect('前一动作失败后', value, cardsMap, counterRegistry)
   }
 
   if (key === 'choose') {
-    return formatNestedEffect('随机执行', value, cardsMap)
+    return formatNestedEffect('随机执行', value, cardsMap, counterRegistry)
   }
 
   if (key === 'delay') {
     if (!isPlainObject(value)) return '延迟执行动作'
     const nested = Object.entries(value)
       .filter(([nestedKey]) => !COMMENT_SUFFIXES.some((suffix) => nestedKey.endsWith(suffix)) && nestedKey !== 'id' && nestedKey !== 'round')
-      .map(([nestedKey, nestedValue]) => parseEffect(nestedKey, nestedValue, getComment(value, nestedKey), cardsMap))
+      .map(([nestedKey, nestedValue]) => parseEffect(nestedKey, nestedValue, getComment(value, nestedKey), cardsMap, counterRegistry))
       .filter(Boolean)
     const roundText = value.round != null ? `${value.round} 回合后` : '延迟后'
     return nested.length > 0 ? `${roundText}执行：${nested.join('；')}` : `${roundText}执行动作`
@@ -455,12 +460,12 @@ export function parseEffect(key, value, comment, cardsMap) {
 
   if ((match = key.match(/^global_counter([=+\-])(\d+)$/))) {
     const operatorMap = { '+': '+', '-': '-', '=': '=' }
-    return `全局计数器 ${resolveCounterLabel(match[2])}（${match[2]}） ${operatorMap[match[1]]} ${formatEffectValue(value, cardsMap)}`
+    return `全局计数器 ${resolveCounterDisplay(match[2], '', counterRegistry)}（${match[2]}） ${operatorMap[match[1]]} ${formatEffectValue(value, cardsMap)}`
   }
 
   if ((match = key.match(/^counter([=+\-])(\d+)$/))) {
     const operatorMap = { '+': '+', '-': '-', '=': '=' }
-    return `计数器 ${resolveCounterLabel(match[2])}（${match[2]}） ${operatorMap[match[1]]} ${formatEffectValue(value, cardsMap)}`
+    return `计数器 ${resolveCounterDisplay(match[2], '', counterRegistry)}（${match[2]}） ${operatorMap[match[1]]} ${formatEffectValue(value, cardsMap)}`
   }
 
   if (key === 'clean.rite') {
@@ -492,7 +497,7 @@ export function parseEffect(key, value, comment, cardsMap) {
 /**
  * 解析结果对象。
  */
-export function parseEffectObject(effectObj, cardsMap) {
+export function parseEffectObject(effectObj, cardsMap, counterRegistry = null) {
   if (!effectObj || typeof effectObj !== 'object') return []
 
   const results = []
@@ -504,7 +509,7 @@ export function parseEffectObject(effectObj, cardsMap) {
     if (value == null) continue
 
     const comment = getComment(effectObj, key)
-    results.push(parseEffect(key, value, comment, cardsMap))
+    results.push(parseEffect(key, value, comment, cardsMap, counterRegistry))
   }
 
   return results.filter(Boolean)
@@ -513,3 +518,7 @@ export function parseEffectObject(effectObj, cardsMap) {
 export function getTypeDisplayLabel(type) {
   return getContentTypeLabel(type)
 }
+
+
+
+

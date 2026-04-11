@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { useResolvedImage } from '../../../services/imageResolver'
 import { CARD_RENDER_CONFIG, getCardFrameHeight, getCardRarityFrameAsset } from '../../../resourceConfig'
 import { executionStyles as styles } from './executionStyles'
@@ -297,7 +297,6 @@ export default function ExecutionModal({
   const [detailGroupId, setDetailGroupId] = useState(null)
   const [detailFilterText, setDetailFilterText] = useState('')
   const scrollRef = useRef(null)
-  const manualScrollLockRef = useRef(false)
 
   const detailGroup = useMemo(
     () => executionConditionGroups.find((group) => group.id === detailGroupId) || null,
@@ -321,33 +320,7 @@ export default function ExecutionModal({
     .filter(Boolean)
     .slice(0, 5)
 
-  useEffect(() => {
-    manualScrollLockRef.current = false
-  }, [open, executionConditionSelections, executionSteps.length])
-
-  useEffect(() => {
-    if (!open || !scrollRef.current || manualScrollLockRef.current) return
-    const element = scrollRef.current
-    const frame = window.requestAnimationFrame(() => {
-      element.scrollTo({
-        top: element.scrollHeight,
-        behavior: 'smooth',
-      })
-    })
-
-    return () => window.cancelAnimationFrame(frame)
-  }, [open, executionSteps])
-
-  function handleNarrativeScroll(event) {
-    const element = event.currentTarget
-    const distanceToBottom = element.scrollHeight - element.scrollTop - element.clientHeight
-    if (distanceToBottom > 48) {
-      manualScrollLockRef.current = true
-    }
-  }
-
   function handleSelectAndResume(groupId, optionId) {
-    manualScrollLockRef.current = false
     onSelectCondition(groupId, optionId)
   }
 
@@ -439,7 +412,6 @@ export default function ExecutionModal({
               <div
                 ref={scrollRef}
                 style={styles.narrativeScroll}
-                onScroll={handleNarrativeScroll}
               >
                 {visibleSteps.map((step) => (
                   <div key={step.id} style={styles.narrativeSection}>

@@ -1,4 +1,5 @@
 import { parseConditionObject } from '../../../services/conditionParser'
+import { resolveCounterLabel } from '../../../constants/counterMetadata'
 
 function normalizeArray(value) {
   if (value == null) return []
@@ -75,8 +76,8 @@ function isDisplayMetaKey(key) {
   return String(key).endsWith('__c') || String(key).endsWith('__ca') || String(key).endsWith('__ci')
 }
 
-function buildConditionLabel(condition, cardsMap) {
-  return parseConditionObject(condition, cardsMap)[0] || Object.keys(condition || {})[0] || '未命名条件'
+function buildConditionLabel(condition, cardsMap, counterRegistry = null) {
+  return parseConditionObject(condition, cardsMap, counterRegistry)[0] || Object.keys(condition || {})[0] || '未命名条件'
 }
 
 function extractAtomicEntries(condition, collector = []) {
@@ -107,10 +108,11 @@ function extractGroupIdFromKey(key) {
 
   const normalizedKey = String(key).replace(/^!/, '')
   const { target } = parseOperator(normalizedKey)
+  const counterMatch = String(target).match(/^(counter|global_counter)\.(\d+)$/i)
+  if (counterMatch) return `${counterMatch[1].toLowerCase()}.${counterMatch[2]}`
+
   const prefix = String(target).split(/[.:]/)[0]?.trim()
   return prefix ? prefix.toLowerCase() : null
-
-  return null
 }
 
 function evaluateAtomicCondition(key, value, context) {
@@ -121,6 +123,14 @@ function evaluateAtomicCondition(key, value, context) {
     if (!context.branchSelections?.[groupId]) {
       return {
         status: 'pending',
+        groupId,
+        key,
+        value,
+      }
+    }
+    if (isSkipOptionId(groupId, context.branchSelections[groupId])) {
+      return {
+        status: 'unmatched',
         groupId,
         key,
         value,
@@ -160,6 +170,14 @@ function evaluateAtomicCondition(key, value, context) {
         value,
       }
     }
+    if (isSkipOptionId(slotId, context.branchSelections[slotId])) {
+      return {
+        status: 'unmatched',
+        groupId: slotId,
+        key,
+        value,
+      }
+    }
 
     return {
       status: context.branchSelections[slotId] === optionId ? 'matched' : 'unmatched',
@@ -175,6 +193,14 @@ function evaluateAtomicCondition(key, value, context) {
     if (!context.branchSelections?.[genericGroupId]) {
       return {
         status: 'pending',
+        groupId: genericGroupId,
+        key,
+        value,
+      }
+    }
+    if (isSkipOptionId(genericGroupId, context.branchSelections[genericGroupId])) {
+      return {
+        status: 'unmatched',
         groupId: genericGroupId,
         key,
         value,
@@ -350,9 +376,40 @@ function pickDefaultSlotOption(group, selectedCard) {
   return matched?.id || group.options[0]?.id || null
 }
 
-function buildGroupDescription(model, groupId, slotCards) {
+function formatCounterGroupMeta(groupId, counterRegistry = null) {
+  const match = String(groupId).match(/^(counter|global_counter)\.(\d+)$/i)
+  if (!match) return null
+
+  const entry = counterRegistry?.get?.(match[2])
+  const label = entry?.displayName || entry?.comment || resolveCounterLabel(match[2])
+  return {
+    id: match[2],
+    label,
+    isGlobal: match[1].toLowerCase() === 'global_counter',
+  }
+}
+
+function buildGroupTitle(groupId, counterRegistry = null) {
+  if (/^r\d+$/i.test(groupId)) {
+    return `骰子分支 ${groupId.toUpperCase()}`
+  }
+
+  const counterMeta = formatCounterGroupMeta(groupId, counterRegistry)
+  if (counterMeta) {
+    return `${counterMeta.isGlobal ? '全局计数器' : '计数器'}条件`
+  }
+
+  return `${groupId.toUpperCase()} 条件`
+}
+
+function buildGroupDescription(model, groupId, slotCards, counterRegistry = null) {
   if (/^r\d+$/i.test(groupId)) {
     return model?.randomText?.[groupId] || '请选择这次骰子分支的结果。'
+  }
+
+  const counterMeta = formatCounterGroupMeta(groupId, counterRegistry)
+  if (counterMeta) {
+    return `${counterMeta.label}（${counterMeta.id}），默认可跳过。`
   }
 
   const currentCard = slotCards?.[groupId]
@@ -367,8 +424,14 @@ function extractFirstAtomic(condition) {
   return extractAtomicEntries(condition)[0] || null
 }
 
-function collectGroupOptions(model, phases, startIndex, groupId, cardsMap, slotCards) {
-  const options = []
+function collectGroupOptions(model, phases, startIndex, groupId, cardsMap, slotCards, counterRegistry = null) {
+  const options = [{
+    id: buildSkipOptionId(groupId),
+    rawKey: null,
+    rawValue: null,
+    label: '跳过本组',
+    detail: '',
+  }]
 
   for (let index = startIndex; index < phases.length; index += 1) {
     const phase = phases[index]
@@ -390,15 +453,16 @@ function collectGroupOptions(model, phases, startIndex, groupId, cardsMap, slotC
       id: optionId,
       rawKey: atomic.key,
       rawValue: atomic.value,
-      label: parseConditionObject(phase.raw?.condition || { [atomic.key]: atomic.value }, cardsMap).join(' / ') || buildConditionLabel({ [atomic.key]: atomic.value }, cardsMap),
+      label: parseConditionObject(phase.raw?.condition || { [atomic.key]: atomic.value }, cardsMap, counterRegistry).join(' / ')
+        || buildConditionLabel({ [atomic.key]: atomic.value }, cardsMap, counterRegistry),
       detail,
     })
   }
 
   return {
     id: groupId,
-    title: /^r\d+$/i.test(groupId) ? `骰子分支 ${groupId.toUpperCase()}` : `${groupId.toUpperCase()} 条件`,
-    description: buildGroupDescription(model, groupId, slotCards),
+    title: buildGroupTitle(groupId, counterRegistry),
+    description: buildGroupDescription(model, groupId, slotCards, counterRegistry),
     options,
     isDice: /^r\d+$/i.test(groupId),
     isSlot: /^s\d+$/i.test(groupId),
@@ -408,6 +472,14 @@ function collectGroupOptions(model, phases, startIndex, groupId, cardsMap, slotC
 
 export function buildConditionOptionId(groupId, key, value) {
   return `${groupId}::${key}::${JSON.stringify(value)}`
+}
+
+export function buildSkipOptionId(groupId) {
+  return `${groupId}::skip`
+}
+
+function isSkipOptionId(groupId, optionId) {
+  return optionId === buildSkipOptionId(groupId)
 }
 
 export function resolveSelectedSlotCard(model, slotId, slotSelections, settlementSelections, cardsById) {
@@ -453,7 +525,7 @@ export function buildExecutionFlow(model, context = {}) {
     const blockGroupId = firstAtomic ? extractGroupIdFromKey(firstAtomic.key) : null
 
     if (blockGroupId && !renderedChoiceGroups.has(blockGroupId)) {
-      const group = collectGroupOptions(model, phases, index, blockGroupId, context.cardsMap, context.slotCards || {})
+      const group = collectGroupOptions(model, phases, index, blockGroupId, context.cardsMap, context.slotCards || {}, context.counterRegistry)
       if (group.options.length > 0) {
         conditionGroups.push(group)
         steps.push(buildChoiceStep(model, group))
@@ -473,7 +545,8 @@ export function buildExecutionFlow(model, context = {}) {
 
     if (analysis.status === 'pending' && analysis.groupId) {
       const groupId = analysis.groupId
-      const group = conditionGroups.find((entry) => entry.id === groupId) || collectGroupOptions(model, phases, index, groupId, context.cardsMap, context.slotCards || {})
+      const group = conditionGroups.find((entry) => entry.id === groupId)
+        || collectGroupOptions(model, phases, index, groupId, context.cardsMap, context.slotCards || {}, context.counterRegistry)
 
       if (!conditionGroups.some((entry) => entry.id === group.id) && group.options.length > 0) {
         conditionGroups.push(group)
@@ -491,6 +564,13 @@ export function buildExecutionFlow(model, context = {}) {
           autoSelections[groupId] = autoOptionId
           continue
         }
+      }
+
+      if (!resolvedSelections[groupId] && /^(counter|global_counter)/i.test(groupId)) {
+        const skipOptionId = buildSkipOptionId(groupId)
+        resolvedSelections[groupId] = skipOptionId
+        autoSelections[groupId] = skipOptionId
+        continue
       }
 
       if (!resolvedSelections[groupId]) {

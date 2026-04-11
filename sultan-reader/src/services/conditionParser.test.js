@@ -12,6 +12,15 @@ describe('conditionParser', () => {
     expect(parseEffect('counter+7100006', 1, null, cardsMap)).toContain('金骰子次数')
   })
 
+  it('支持使用计数器注册表中的展示名', () => {
+    const counterRegistry = new Map([
+      ['7000158', { id: '7000158', displayName: '重新营业等待天数' }],
+    ])
+
+    expect(parseCondition('counter.7000158=', 2, null, cardsMap, counterRegistry)).toContain('重新营业等待天数')
+    expect(parseEffect('counter+7000158', 1, null, cardsMap, counterRegistry)).toContain('重新营业等待天数')
+  })
+
   it('可以展示文档里的通用条件写法', () => {
     expect(parseCondition('table_have.2000001.魅力', 3, null, cardsMap)).toContain('闲置区存在')
     expect(parseCondition('hand_have.char', 1, null, cardsMap)).toContain('手牌区存在')

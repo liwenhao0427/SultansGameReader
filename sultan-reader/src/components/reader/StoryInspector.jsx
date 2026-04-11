@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import useConfigStore from '../../stores/useConfigStore'
 import { useResolvedImage } from '../../services/imageResolver'
 import { adaptStoryData } from '../../services/storyAdapter'
@@ -1428,30 +1428,6 @@ export default function StoryInspector({ type, data, onClose }) {
   }
 
   useEffect(() => {
-    if (!readerBodyRef.current) return
-
-    const frame = requestAnimationFrame(() => {
-      const element = readerBodyRef.current
-      if (!element) return
-      element.scrollTo({ top: element.scrollHeight, behavior: 'smooth' })
-    })
-
-    return () => cancelAnimationFrame(frame)
-  }, [revealedLineCount, revealedSegmentCount])
-
-  useEffect(() => {
-    if (type !== 'event' || !readerBodyRef.current) return
-
-    const frame = requestAnimationFrame(() => {
-      const element = readerBodyRef.current
-      if (!element) return
-      element.scrollTo({ top: element.scrollHeight, behavior: 'smooth' })
-    })
-
-    return () => cancelAnimationFrame(frame)
-  }, [eventChoicePath, type])
-
-  useEffect(() => {
     if (type !== 'event' || hasEventNarrative) return
 
     const firstRiteAction = (model?.eventFlow?.actions || []).find((action) => action.targetType === 'rite')
@@ -2310,4 +2286,3 @@ export default function StoryInspector({ type, data, onClose }) {
     </div>
   )
 }
-

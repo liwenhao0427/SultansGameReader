@@ -1,13 +1,10 @@
-export const BUILTIN_COUNTER_LABELS = {
-  '7100001': '善名',
-  '7100002': '恶名',
-  '7100003': '权势',
-  '7100004': '侠名',
-  '7100005': '灵视',
-  '7100006': '金骰子次数',
-  '7100007': '回到上一回合次数',
-  '7100008': '每七天重抽次数',
-}
+import { GENERATED_COUNTER_LABELS } from './generatedCounterLabels'
+
+/**
+ * 计数器展示名映射。
+ * 统一使用离线生成的代码映射，避免运行时直接读取文档目录。
+ */
+export const BUILTIN_COUNTER_LABELS = GENERATED_COUNTER_LABELS
 
 export function resolveCounterLabel(id, fallback = '') {
   const normalizedId = String(id)

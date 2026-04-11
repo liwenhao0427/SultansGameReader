@@ -75,6 +75,7 @@ function CatalogPreview({ item, activeType, cardsById }) {
 export default function MainLayout({ onNavigate }) {
   const isLoaded = useConfigStore((state) => state.isLoaded)
   const initialize = useConfigStore((state) => state.initialize)
+  const buildCounterRegistry = useConfigStore((state) => state.buildCounterRegistry)
   const indexStats = useConfigStore((state) => state.indexStats)
   const cardsById = useConfigStore((state) => state.cardsById)
   const nodeIdSet = useCanvasStore((state) => state.nodeIdSet)
@@ -92,7 +93,8 @@ export default function MainLayout({ onNavigate }) {
 
   useEffect(() => {
     initialize()
-  }, [initialize])
+    buildCounterRegistry()
+  }, [buildCounterRegistry, initialize])
 
   useEffect(() => {
     if (!isLoaded) return
