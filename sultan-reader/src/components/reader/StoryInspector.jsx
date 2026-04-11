@@ -2,14 +2,95 @@
 import useConfigStore from '../../stores/useConfigStore'
 import { useResolvedImage } from '../../services/imageResolver'
 import { adaptStoryData } from '../../services/storyAdapter'
-import { parseConditionObject } from '../../services/conditionParser'
 import { READER_CHROME } from '../../readerChromeConfig'
 import { CARD_RENDER_CONFIG, getCardFrameHeight, getCardRarityFrameAsset, READER_RESOURCE_ASSETS, RITE_TEMPLATE_DEFAULTS } from '../../resourceConfig'
 import { linkNodesOnCanvas, mountNodeOnCanvas } from '../../services/graphNavigation'
 import RawFileView from '../RawFileView'
+import ExecutionModal from './storyInspector/ExecutionModal'
+import { buildExecutionConditionGroups, buildExecutionSteps, evaluateExecutionCondition, resolveExecutionTargetImage, resolveSelectedSlotCard } from './storyInspector/executionUtils'
+import * as storyInspectorStyles from './storyInspector/storyInspectorStyles'
 
 const FULLSCREEN_TYPES = new Set(['rite', 'event', 'dt', 'over', 'after_story'])
 const AUTO_FOLLOWUP_TARGET_TYPES = new Set(['event', 'rite', 'loot', 'over'])
+
+const {
+  imageFallbackStyle,
+  eventFallbackBoardStyle,
+  eventReaderShellStyle,
+  eventBackdropShellStyle,
+  eventBackdropEdgeStyle,
+  eventBackdropHalfStyle,
+  eventBackdropCenterStyle,
+  eventReaderGridStyle,
+  eventBoardStageStyle,
+  eventBoardContentStyle,
+  eventReaderVisualStageStyle,
+  eventVisualSpacerStyle,
+  eventPortraitDockStyle,
+  eventFigureWrapStyle,
+  eventFigureImageStyle,
+  eventFigureFallbackStyle,
+  eventParagraphStyle,
+  eventChoicesWrapStyle,
+  eventChoiceButtonStyle,
+  eventChoiceButtonActiveStyle,
+  eventActionRowStyle,
+  eventResultBlockStyle,
+  eventTriggerShellStyle,
+  eventTriggerDetailStyle,
+  eventTriggerMetaStyle,
+  storyHeaderShellStyle,
+  storyHeaderCardStyle,
+  storyMetaWrapStyle,
+  storyHeaderTitleRowStyle,
+  storyHeaderActionsStyle,
+  conditionSummaryTextStyle,
+  storyHeaderTitleStyle,
+  sectionTitleStyle,
+  smallLineStyle,
+  slotTagStyle,
+  slotTagButtonStyle,
+  metaChipCompactStyle,
+  effectChipStyle,
+  effectCardLinkStyle,
+  segmentCardStyle,
+  readerFilterInputStyle,
+  candidateStageStyle,
+  emptyCandidateStyle,
+  primaryButtonStyle,
+  secondaryButtonStyle,
+  activeToggleButtonStyle,
+  choiceButtonStyle,
+  actionButtonStyle,
+  ritePreparationPanelStyle,
+  riteSlotScrollerStyle,
+  riteCandidateGridStyle,
+  ritePreparationInfoPanelStyle,
+  ritePreparationFooterStyle,
+  translucentTextBlockStyle,
+  candidateToolbarStyle,
+  candidateToolbarGroupStyle,
+  candidateSearchInputStyle,
+  riteHiddenBackdropStyle,
+  branchSuccessButtonStyle,
+  branchFailedButtonStyle,
+  overlayShellStyle,
+  overlayCardStyle,
+  overlayHeaderStyle,
+  overlayHeaderLeftStyle,
+  closeButtonStyle,
+  selectionOverlayStyle,
+  selectionDialogStyle,
+  selectionDialogHeaderStyle,
+  selectionDialogSearchWrapStyle,
+  selectionDialogBodyStyle,
+  selectionDialogEmptyStyle,
+  selectionDialogItemStyle,
+  selectionDialogItemActiveStyle,
+  selectionDialogItemTitleStyle,
+  selectionDialogItemMetaStyle,
+} = storyInspectorStyles
+
 
 function normalizeTextContent(text) {
   if (text == null) return ''
@@ -42,62 +123,6 @@ function truncateDisplayText(text, maxLength = 120) {
   if (!content) return ''
   if (content.length <= maxLength) return content
   return `${content.slice(0, maxLength)}...`
-}
-
-function normalizeArray(value) {
-  if (value == null) return []
-  return Array.isArray(value) ? value : [value]
-}
-
-function isPlainObject(value) {
-  return value && typeof value === 'object' && !Array.isArray(value)
-}
-
-function parseOperator(rawKey) {
-  const match = String(rawKey).match(/^(.*?)(>=|<=|>|<|=)?$/)
-  return {
-    target: match?.[1] || String(rawKey),
-    operator: match?.[2] || '>=',
-  }
-}
-
-function normalizeLookupKey(value) {
-  return String(value ?? '')
-    .normalize('NFKC')
-    .replace(/\s+/g, '')
-    .trim()
-}
-
-function compareByOperator(actualValue, expectedValue, operator = '>=') {
-  const actual = Number(actualValue || 0)
-  const expected = Number(expectedValue || 0)
-
-  switch (operator) {
-    case '=':
-      return actual === expected
-    case '>':
-      return actual > expected
-    case '<':
-      return actual < expected
-    case '<=':
-      return actual <= expected
-    case '>=':
-    default:
-      return actual >= expected
-  }
-}
-
-function readCardMetric(card, target) {
-  if (!card || !target) return 0
-
-  const normalizedTarget = normalizeLookupKey(target)
-  const tagMatch = Object.entries(card.tag || {}).find(([key]) => normalizeLookupKey(key) === normalizedTarget)
-  if (tagMatch) return Number(tagMatch[1] || 0)
-
-  const directMatch = Object.entries(card || {}).find(([key]) => normalizeLookupKey(key) === normalizedTarget)
-  if (directMatch) return Number(directMatch[1] || 0)
-
-  return 0
 }
 
 const CONDITION_BUTTON_MAX_LENGTH = 26
@@ -413,35 +438,6 @@ function ActionSummary({ actions, onOpenAction }) {
   )
 }
 
-function formatExecutionActionLabel(action, targetNameMap = {}) {
-  if (!action) return ''
-
-  const typeLabelMap = {
-    event: '幕后',
-    rite: '仪式',
-    loot: '掉落池',
-    over: '结局',
-    card: '卡牌',
-  }
-
-  if (action.targetType && action.targetId) {
-    const key = `${action.targetType}:${action.targetId}`
-    const targetEntry = targetNameMap[key]
-    const targetName = typeof targetEntry === 'object' ? targetEntry?.name : targetEntry
-    return `${typeLabelMap[action.targetType] || action.targetType}：${targetName}`
-  }
-
-  return action.text || action.key || ''
-}
-
-function resolveStepPopCard(pop, slotOverrideCards, model, slotSelections) {
-  if (!pop?.slotId) return null
-  if (slotOverrideCards?.[pop.slotId]) return slotOverrideCards[pop.slotId]
-  const slot = model?.slots?.find((entry) => entry.id === pop.slotId)
-  const candidate = slot?.candidates?.find((entry) => entry.id === slotSelections?.[pop.slotId]) || slot?.candidates?.[0] || null
-  return candidate?.cards?.[0] || slot?.defaultCards?.[0] || null
-}
-
 function StoryPopLine({ pop, card }) {
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '48px minmax(0,1fr)', gap: 12, alignItems: 'start' }}>
@@ -451,57 +447,6 @@ function StoryPopLine({ pop, card }) {
       <div style={{ color: '#f5ecd9', fontSize: 14, lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>
         {pop.text}
       </div>
-    </div>
-  )
-}
-
-function resolveExecutionTargetImage(targetType, targetData, cardsById) {
-  if (!targetData) return null
-  if (targetType === 'card') {
-    const card = cardsById?.[String(targetData.id)] || targetData
-    const resource = card?.resource
-    return Array.isArray(resource) ? resource[0] || null : resource || null
-  }
-  if (targetType === 'rite' || targetType === 'event') return targetData.icon || null
-  if (targetType === 'over') return targetData.bg || null
-  return targetData.pic || targetData.icon || null
-}
-
-function ExecutionEffectList({ effects, onOpenCard }) {
-  if (!effects?.length) return null
-
-  return (
-    <div style={{ display: 'grid', gap: 10 }}>
-      {effects.map((effect, index) => (
-        <div key={`${effect.label}:${index}`} style={executionResultItemStyle}>
-          <div style={{ color: '#f1dfbb', fontSize: 13, lineHeight: 1.5 }}>{effect.label}</div>
-          {effect.cards?.length > 0 && (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
-              {effect.cards.map((card) => (
-                <button
-                  key={card.id}
-                  type="button"
-                  onClick={() => onOpenCard?.(card)}
-                  style={{ background: 'transparent', border: 'none', padding: 0, cursor: 'pointer' }}
-                >
-                  <CardPortrait card={card} compact />
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      ))}
-    </div>
-  )
-}
-
-function ExecutionActionBadge({ action, targetData }) {
-  const { url } = useResolvedImage(targetData?.image)
-
-  return (
-    <div style={effectChipStyle}>
-      {url && <img src={url} alt="" style={{ width: 24, height: 24, borderRadius: 6, objectFit: 'cover', objectPosition: 'center', flexShrink: 0 }} />}
-      <span>{formatExecutionActionLabel(action, targetData ? { [`${action.targetType}:${action.targetId}`]: targetData.name } : {})}</span>
     </div>
   )
 }
@@ -607,70 +552,6 @@ function SlotButton({ slot, active, candidate, tags, onClick, slotBgKey }) {
   )
 }
 
-// 执行弹窗中的槽位展示（和SlotButton样式一致，无点击交互）
-function ExecutionSlot({ slot, previewCard, slotCaption, slotBgKey }) {
-  const { url: slotBgUrl } = useResolvedImage(slotBgKey)
-
-  return (
-    <div style={{
-      width: READER_CHROME.assets.slotFrame.width,
-      minHeight: READER_CHROME.assets.slotFrame.minHeight,
-      borderRadius: 22,
-      overflow: 'hidden',
-      border: '1px solid rgba(219, 207, 181, 0.18)',
-      backgroundImage: slotBgUrl
-        ? `linear-gradient(180deg, rgba(8, 8, 8, 0.18), rgba(8, 8, 8, 0.48)), url("${slotBgUrl}")`
-        : 'linear-gradient(180deg, rgba(180, 165, 139, 0.88), rgba(94, 80, 57, 0.92))',
-      backgroundRepeat: 'no-repeat',
-      backgroundSize: READER_CHROME.assets.slotFrame.backgroundSize,
-      backgroundPosition: READER_CHROME.assets.slotFrame.backgroundPosition,
-      position: 'relative',
-    }}>
-      <div style={{
-        position: 'absolute',
-        top: 8,
-        left: 8,
-        padding: '2px 6px',
-        borderRadius: 999,
-        background: 'rgba(12, 10, 8, 0.6)',
-        color: '#f3e3c1',
-        fontSize: 10,
-        fontWeight: 700,
-        letterSpacing: '0.08em',
-      }}>
-        {slot.title}
-      </div>
-      {previewCard ? (
-        <div style={{ position: 'absolute', inset: '8px 2px 2px 10px' }}>
-          <CardPortrait card={previewCard} compact showName={false} />
-        </div>
-      ) : (
-        <div style={{
-          position: 'absolute',
-          inset: '10px 10px 12px',
-          borderRadius: 18,
-          background: 'linear-gradient(180deg, rgba(40, 33, 24, 0.4), rgba(12, 10, 8, 0.72))',
-        }} />
-      )}
-      <div style={{
-        position: 'absolute',
-        left: 8,
-        right: 8,
-        bottom: 8,
-        color: '#fff4dd',
-        fontWeight: 800,
-        fontSize: 12,
-        lineHeight: 1.25,
-        textShadow: '0 2px 6px rgba(0,0,0,0.68)',
-        whiteSpace: 'pre-wrap',
-        wordBreak: 'break-word',
-      }}>
-        {slotCaption}
-      </div>
-    </div>
-  )
-}
-
 function CandidateHandItem({ candidate, active, onSelect }) {
   const previewCard = candidate.cards?.[0] || null
   const cardWidth = 92
@@ -750,123 +631,6 @@ function CandidateHandItem({ candidate, active, onSelect }) {
   )
 }
 
-function SettlementHintItem({ hint, active, onToggle }) {
-  const conditionText = hint.conditionText || '无额外条件'
-
-  return (
-    <button
-      type="button"
-      onClick={onToggle}
-      style={{
-        width: '100%',
-        padding: '10px 12px',
-        borderRadius: 18,
-        border: active ? '1px solid rgba(143, 191, 119, 0.42)' : '1px solid rgba(212, 184, 126, 0.14)',
-        background: active ? 'rgba(100, 140, 83, 0.12)' : 'rgba(22, 18, 14, 0.94)',
-        color: '#f1e8d5',
-        cursor: 'pointer',
-        textAlign: 'left',
-        display: 'block',
-      }}
-    >
-      <div
-        title={conditionText}
-        style={{
-          fontSize: 14,
-          lineHeight: 1.75,
-          color: active ? '#fff3dd' : '#e5d4b1',
-          whiteSpace: 'pre-wrap',
-        }}
-      >
-        {conditionText}
-      </div>
-    </button>
-  )
-}
-
-function SettlementHintGroup({
-  title,
-  description,
-  hints,
-  selectedCount,
-  filterText,
-  onFilterChange,
-  selectedHintId,
-  onToggle,
-}) {
-  if (!hints.length) return null
-
-  return (
-    <div style={settlementPanelStyle}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
-        <div>
-          <div style={sectionTitleStyle}>{title}</div>
-          <div style={{ ...smallLineStyle, marginTop: 6 }}>
-            {description}
-          </div>
-        </div>
-        <div style={settlementCountStyle}>
-          已选 {selectedCount}
-        </div>
-      </div>
-      <input
-        type="text"
-        value={filterText}
-        onChange={(event) => onFilterChange(event.target.value)}
-        placeholder="筛选条件..."
-        style={{ ...readerFilterInputStyle, marginTop: 14 }}
-      />
-      <div style={{
-        marginTop: 14,
-        display: 'grid',
-        gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-        gap: 10,
-      }}>
-        {hints.map((hint) => (
-          <SettlementHintItem
-            key={hint.id}
-            hint={hint}
-            active={selectedHintId === hint.id}
-            onToggle={() => onToggle(hint.id)}
-          />
-        ))}
-      </div>
-    </div>
-  )
-}
-
-function ExecutionConditionGroup({ group, selectedId, onSelect }) {
-  if (!group?.options?.length) return null
-
-  return (
-    <div style={executionConditionGroupStyle}>
-      <div style={{ display: 'grid', gap: 4 }}>
-        <div style={sectionTitleStyle}>{group.title}</div>
-        <div style={{ ...smallLineStyle, color: '#dbc7a1' }}>{group.description}</div>
-      </div>
-      <div style={executionConditionOptionListStyle}>
-        {group.options.map((option) => (
-          <button
-            key={option.id}
-            type="button"
-            onClick={() => onSelect(group.id, option.id === selectedId ? null : option.id)}
-            style={option.id === selectedId ? executionConditionOptionActiveStyle : executionConditionOptionStyle}
-          >
-            <div style={{ fontSize: 14, lineHeight: 1.7, color: '#fff4de', whiteSpace: 'pre-wrap' }}>
-              {option.label}
-            </div>
-            {option.detail ? (
-              <div style={{ marginTop: 6, fontSize: 12, lineHeight: 1.6, color: '#d8c5a0', whiteSpace: 'pre-wrap' }}>
-                {option.detail}
-              </div>
-            ) : null}
-          </button>
-        ))}
-      </div>
-    </div>
-  )
-}
-
 /**
  * 默认选中规则：选最后一个无条件（conditionText 为空）的项，否则不选（返回 null）
  * 这样避免强制选中有条件限制的结算分支
@@ -929,227 +693,6 @@ function matchesSlotOccupancyCondition(conditionRaw = {}, slotState = {}) {
   })
 }
 
-function resolveSelectedSlotCard(model, slotId, slotSelections, settlementSelections, cardsById) {
-  const slot = model?.slots?.find((entry) => entry.id === slotId)
-  if (!slot) return null
-
-  const overrideHintId = settlementSelections?.[slotId]
-  const overrideHint = (slot.settlementHints || []).find((hint) => hint.id === overrideHintId)
-  const overrideCard = overrideHint?.cards?.[0]
-  if (overrideCard?.id) {
-    return cardsById?.[String(overrideCard.id)] || overrideCard
-  }
-
-  const candidate = slot.candidates?.find((entry) => entry.id === slotSelections?.[slotId]) || slot.candidates?.[0] || null
-  const candidateCard = candidate?.cards?.[0] || slot.defaultCards?.[0] || null
-  if (!candidateCard?.id) return candidateCard
-  return cardsById?.[String(candidateCard.id)] || candidateCard
-}
-
-function evaluateSlotCondition(card, selector, expectedValue) {
-  if (!selector) return Boolean(card)
-
-  if (selector === 'is') {
-    return normalizeArray(expectedValue).map(String).includes(String(card?.id ?? ''))
-  }
-  if (selector === 'type') {
-    return String(card?.type || '') === String(expectedValue)
-  }
-
-  const { target, operator } = parseOperator(selector)
-  const actualValue = readCardMetric(card, target)
-  return compareByOperator(actualValue, expectedValue, operator)
-}
-
-function buildConditionOptionId(groupId, key, value) {
-  return `${groupId}::${key}::${JSON.stringify(value)}`
-}
-
-function evaluateExecutionCondition(condition, context) {
-  if (!condition || typeof condition !== 'object') return true
-
-  return Object.entries(condition).every(([key, value]) => {
-    if (key.endsWith('__c') || key.endsWith('__ca') || key.endsWith('__ci')) return true
-
-    if (key === 'any') {
-      const items = Array.isArray(value)
-        ? value
-        : (isPlainObject(value) ? Object.entries(value).map(([subKey, subValue]) => ({ [subKey]: subValue })) : [])
-      if (items.length === 0) return true
-      return items.some((item) => evaluateExecutionCondition(item, context))
-    }
-
-    if (key === 'all') {
-      const items = Array.isArray(value)
-        ? value
-        : (isPlainObject(value) ? Object.entries(value).map(([subKey, subValue]) => ({ [subKey]: subValue })) : [])
-      if (items.length === 0) return true
-      return items.every((item) => evaluateExecutionCondition(item, context))
-    }
-
-    const rMatch = String(key).match(/^(r\d+):(.*)$/i)
-    if (rMatch) {
-      const stageId = rMatch[1].toLowerCase()
-      const optionId = buildConditionOptionId(stageId, key, value)
-      return context.branchSelections?.[stageId] === optionId
-    }
-
-    const slotMatch = String(key).match(/^(!)?(s\d+)(?:\.(.+))?$/i)
-    if (slotMatch) {
-      const negate = Boolean(slotMatch[1])
-      const slotId = slotMatch[2].toLowerCase()
-      const selector = slotMatch[3] || ''
-      const card = context.slotCards?.[slotId] || null
-
-      if (!selector) {
-        const occupied = Boolean(card)
-        return negate ? !occupied : occupied
-      }
-
-      const groupId = slotId
-      const optionId = buildConditionOptionId(groupId, key, value)
-      if (context.branchSelections?.[groupId]) {
-        return context.branchSelections[groupId] === optionId
-      }
-
-      const matched = evaluateSlotCondition(card, selector, value)
-      return negate ? !matched : matched
-    }
-
-    return true
-  })
-}
-
-function collectAtomicConditions(condition, collector = []) {
-  if (!condition || typeof condition !== 'object') return collector
-
-  Object.entries(condition).forEach(([key, value]) => {
-    if (key.endsWith('__c') || key.endsWith('__ca') || key.endsWith('__ci')) return
-    if (key === 'any' || key === 'all') {
-      if (Array.isArray(value)) {
-        value.forEach((item) => collectAtomicConditions(item, collector))
-      } else if (isPlainObject(value)) {
-        collectAtomicConditions(value, collector)
-      }
-      return
-    }
-    collector.push({ key, value })
-  })
-
-  return collector
-}
-
-function buildExecutionConditionGroups(model, cardsMap, slotCards) {
-  const groups = new Map()
-
-  ;(model?.rawPhases || []).forEach((phase) => {
-    collectAtomicConditions(phase.raw?.condition || {}).forEach(({ key, value }) => {
-      const rMatch = String(key).match(/^(r\d+):(.*)$/i)
-      if (rMatch) {
-        const stageId = rMatch[1].toLowerCase()
-        const groupId = stageId
-        const group = groups.get(groupId) || {
-          id: groupId,
-          title: `骰子分支 ${stageId.toUpperCase()}`,
-          description: model?.randomText?.[stageId] || '请选择这次骰子检定的结果分支。',
-          options: [],
-          isDice: true,
-          stageId,
-        }
-        const optionId = buildConditionOptionId(groupId, key, value)
-        if (!group.options.some((option) => option.id === optionId)) {
-          group.options.push({
-            id: optionId,
-            label: parseConditionObject({ [key]: value }, cardsMap)[0] || key,
-            detail: model?.randomTextUp?.[stageId]?.text || '',
-          })
-        }
-        groups.set(groupId, group)
-        return
-      }
-
-      const slotMatch = String(key).match(/^!?((s\d+))(?:\.(.+))?$/i)
-      if (!slotMatch || !slotMatch[3]) return
-
-      const slotId = slotMatch[2].toLowerCase()
-      const groupId = slotId
-      const selectedCard = slotCards?.[slotId]
-      const group = groups.get(groupId) || {
-        id: groupId,
-        title: `${slotId.toUpperCase()} 条件`,
-        description: selectedCard?.name ? `当前带入：${selectedCard.name}` : '可手动调整当前卡槽对应条件。',
-        options: [],
-        isDice: false,
-      }
-
-      const optionId = buildConditionOptionId(groupId, key, value)
-      if (!group.options.some((option) => option.id === optionId)) {
-        group.options.push({
-          id: optionId,
-          label: parseConditionObject({ [key]: value }, cardsMap)[0] || key,
-          detail: '',
-        })
-      }
-      groups.set(groupId, group)
-    })
-  })
-
-  return Array.from(groups.values())
-}
-
-function buildExecutionSteps(model, context) {
-  const steps = []
-  const promptedDiceStages = new Set()
-
-  for (const phase of (model?.rawPhases || [])) {
-    const rawCondition = phase.raw?.condition || {}
-    const stageKeys = phase.rStageKeys || []
-    const nonDiceConditions = Object.fromEntries(
-      Object.entries(rawCondition).filter(([key]) => !String(key).match(/^r\d+:/i))
-    )
-
-    if (!evaluateExecutionCondition(nonDiceConditions, context)) {
-      continue
-    }
-
-    for (const stageId of stageKeys) {
-      if (promptedDiceStages.has(stageId)) continue
-      promptedDiceStages.add(stageId)
-      const stageMeta = model?.randomTextUp?.[stageId] || {}
-      steps.push({
-        id: `dice:${stageId}`,
-        kind: 'dice',
-        stageId,
-        phase: '结算骰子',
-        title: model?.randomText?.[stageId] || stageId.toUpperCase(),
-        text: stageMeta.text || '',
-        tips: [stageMeta.type_tips, stageMeta.low_target_tips].filter(Boolean),
-        conditions: [],
-        effects: [],
-        actions: [],
-        popItems: [],
-      })
-    }
-
-    if (!evaluateExecutionCondition(rawCondition, context)) {
-      continue
-    }
-
-    steps.push({
-      ...phase,
-      id: `${phase.phaseKey}:${phase.index}`,
-      kind: 'result',
-      tips: [],
-    })
-
-    if (phase.raw?.result && Object.keys(phase.raw.result).some((key) => !String(key).endsWith('__c') && !String(key).endsWith('__ca') && !String(key).endsWith('__ci'))) {
-      break
-    }
-  }
-
-  return steps
-}
-
 export default function StoryInspector({ type, data, onClose }) {
   const RITE_CANDIDATE_PAGE_SIZE = 7
   const cardsLite = useConfigStore((s) => s.cardsLite)
@@ -1166,7 +709,6 @@ export default function StoryInspector({ type, data, onClose }) {
   const [revealedLineCount, setRevealedLineCount] = useState(1)
   const [revealedSegmentCount, setRevealedSegmentCount] = useState(0)
   const [autoAdvance, setAutoAdvance] = useState(false)
-  const [conditionFilterText, setConditionFilterText] = useState('')
   const [candidatePage, setCandidatePage] = useState(1)
   const [selectedConditionId, setSelectedConditionId] = useState(null)
   const [conditionSelectorOpen, setConditionSelectorOpen] = useState(false)
@@ -1179,16 +721,13 @@ export default function StoryInspector({ type, data, onClose }) {
   const [executionConditionSelections, setExecutionConditionSelections] = useState({})
   const [hideReaderUi, setHideReaderUi] = useState(false)
   const [executionStepIndex, setExecutionStepIndex] = useState(0)
-  const [executionAutoAdvance, setExecutionAutoAdvance] = useState(false)
   const [eventChoicePath, setEventChoicePath] = useState([])
-  const executionBodyRef = useRef(null)
   const readerBodyRef = useRef(null)
   const autoMountedEventIdRef = useRef(null)
   const executedActionKeyRef = useRef(new Set())
   const { url: templateBgUrl } = useResolvedImage(templateData?.bg || READER_RESOURCE_ASSETS.defaultRiteBackground)
   const { url: settlementBgUrl } = useResolvedImage(READER_RESOURCE_ASSETS.settlementBackground)
   const { url: settlementDiceBgUrl } = useResolvedImage(READER_RESOURCE_ASSETS.settlementDiceBackground)
-  const { url: riteTitlePlateUrl } = useResolvedImage(READER_RESOURCE_ASSETS.riteTitlePlate)
   const [executionTargetNameMap, setExecutionTargetNameMap] = useState({})
 
   function buildDialogueLines(slotId, selections, settlementState, globalSelection = globalSettlementSelection) {
@@ -1452,12 +991,6 @@ export default function StoryInspector({ type, data, onClose }) {
     // 全局条件也可能带卡牌，但无法对应到具体槽位，暂不处理
     return overrides
   }, [model?.slots, settlementSelections])
-
-  const selectedSettlementHints = useMemo(() => {
-    if (!selectedSlot) return []
-    const selectedId = settlementSelections[selectedSlot.id]
-    return (visibleSettlementHintsBySlot[selectedSlot.id] || []).filter((hint) => hint.id === selectedId)
-  }, [selectedSlot, settlementSelections, visibleSettlementHintsBySlot])
 
   useEffect(() => {
     if (!model?.slots?.length) return
@@ -1789,28 +1322,6 @@ export default function StoryInspector({ type, data, onClose }) {
     setExecutionStepIndex(0)
   }
 
-  function handleSelectSettlementHint(hintId) {
-    if (!selectedSlot) return
-
-    const slotId = selectedSlot.id
-    // 再次点击已选中的项则取消选中
-    const nextId = settlementSelections[slotId] === hintId ? null : hintId
-    const nextSettlementSelections = {
-      ...settlementSelections,
-      [slotId]: nextId,
-    }
-
-    setSettlementSelections(nextSettlementSelections)
-    resetFlow(slotId, slotSelections, nextSettlementSelections, globalSettlementSelection)
-  }
-
-  function handleSelectGlobalSettlementHint(hintId) {
-    // 再次点击已选中的项则取消选中
-    const nextId = globalSettlementSelection === hintId ? null : hintId
-    setGlobalSettlementSelection(nextId)
-    resetFlow(activeSlotId, slotSelections, settlementSelections, nextId)
-  }
-
   function handleSelectExecutionCondition(groupId, optionId) {
     setExecutionConditionSelections((current) => ({
       ...current,
@@ -1834,7 +1345,6 @@ export default function StoryInspector({ type, data, onClose }) {
     setExecutionMode('normal')
     setExecutionConditionSelections({})
     setExecutionStepIndex(0)
-    setExecutionAutoAdvance(false)
     setExecutionOpen(true)
   }
 
@@ -1871,16 +1381,12 @@ export default function StoryInspector({ type, data, onClose }) {
     setExecutionMode('waiting_round_end')
     setExecutionConditionSelections({})
     setExecutionStepIndex(0)
-    setExecutionAutoAdvance(false)
     setExecutionOpen(true)
   }
 
   function handleAdvanceExecution() {
     setExecutionStepIndex((current) => {
-      if (current >= executionSteps.length - 1) {
-        setExecutionAutoAdvance(false)
-        return current
-      }
+      if (current >= executionSteps.length - 1) return current
       return current + 1
     })
   }
@@ -1893,7 +1399,6 @@ export default function StoryInspector({ type, data, onClose }) {
     setSlotSelections(defaults)
     setSettlementSelections(hintDefaults)
     setGlobalSettlementSelection(pickDefaultHintId(model.globalSettlementHints || []))
-    setConditionFilterText('')
     setCandidatePage(1)
     setActiveSlotId(model.slots?.[0]?.id || null)
     const nextLines = splitIntro(model.intro)
@@ -1904,7 +1409,6 @@ export default function StoryInspector({ type, data, onClose }) {
     setExecutionMode('normal')
     setExecutionConditionSelections({})
     setExecutionStepIndex(0)
-    setExecutionAutoAdvance(false)
     executedActionKeyRef.current = new Set()
     setEventChoicePath([])
   }
@@ -1958,30 +1462,6 @@ export default function StoryInspector({ type, data, onClose }) {
 
     return () => window.clearInterval(timer)
   }, [autoAdvance, canRevealLine, canRevealSegment, dialogueLines.length, availableSegments.length])
-
-  // 执行弹窗自动推进
-  useEffect(() => {
-    if (!executionAutoAdvance || !executionOpen) return
-    if (executionStepIndex >= executionSteps.length - 1) {
-      setExecutionAutoAdvance(false)
-      return
-    }
-    const timer = window.setInterval(() => {
-      handleAdvanceExecution()
-    }, 1800)
-    return () => window.clearInterval(timer)
-  }, [executionAutoAdvance, executionOpen, executionStepIndex, executionSteps.length])
-
-  // 执行弹窗正文区域自动滚动到底部
-  useEffect(() => {
-    if (!executionBodyRef.current || !executionOpen) return
-    const frame = requestAnimationFrame(() => {
-      if (executionBodyRef.current) {
-        executionBodyRef.current.scrollTo({ top: executionBodyRef.current.scrollHeight, behavior: 'smooth' })
-      }
-    })
-    return () => cancelAnimationFrame(frame)
-  }, [executionStepIndex, executionOpen])
 
   const currentExecutionStep = executionSteps[executionStepIndex] || null
 
@@ -2734,226 +2214,30 @@ export default function StoryInspector({ type, data, onClose }) {
         </div>
       </div>
       {executionOpen && type === 'rite' && (
-        <div style={executionOverlayStyle}>
-          <div style={executionModalStyle}>
-            <div style={executionStageStyle}>
-              <div style={executionToolbarStyle}>
-                <div>
-                  <div style={sectionTitleStyle}>{executionMode === 'waiting_round_end' ? '超时结算' : '仪式结算'}</div>
-                  <div style={{ ...smallLineStyle, marginTop: 6, color: '#6a4623' }}>
-                    {executionMode === 'waiting_round_end' ? '单独展示 waiting_round_end_action 的执行结果。' : '按当前准备状态预览仪式结算步骤。'}
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  style={closeButtonStyle}
-                  onClick={() => {
-                    setExecutionOpen(false)
-                    setExecutionAutoAdvance(false)
-                    setExecutionMode('normal')
-                    setExecutionConditionSelections({})
-                  }}
-                >
-                  关闭结算
-                </button>
-              </div>
-
-              <div style={executionBodyStyle}>
-                <div style={{
-                  ...executionCanvasStyle,
-                  position: 'relative',
-                  background: 'rgba(8, 6, 5, 0.96)',
-                }}>
-                  {settlementBgUrl && (
-                    <img
-                      src={settlementBgUrl}
-                      alt=""
-                      style={{
-                        position: 'absolute',
-                        inset: 0,
-                        width: '100%',
-                        height: '100%',
-                        objectFit: 'cover',
-                        objectPosition: 'center top',
-                        pointerEvents: 'none',
-                      }}
-                    />
-                  )}
-                  {settlementDiceBgUrl && (
-                    <img
-                      src={settlementDiceBgUrl}
-                      alt=""
-                      style={{
-                        position: 'absolute',
-                        left: '3.2%',
-                        top: '6%',
-                        width: '43%',
-                        height: '88%',
-                        objectFit: 'cover',
-                        objectPosition: 'left center',
-                        pointerEvents: 'none',
-                      }}
-                    />
-                  )}
-                  <div style={executionSlotPreviewWrapStyle}>
-                    {(model.slots || []).map((slot) => {
-                      const card = executionSlotCards[slot.id]
-                      return (
-                        <div key={slot.id} style={executionSlotCardStyle}>
-                          <div style={executionSlotLabelStyle}>{slot.id.toUpperCase()}</div>
-                          {card ? <CardPortrait card={card} compact={false} widthOverride={84} /> : <div style={executionEmptySlotStyle}>空槽</div>}
-                          <div style={executionSlotNameStyle}>{card?.name || slot.text || slot.title}</div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                  <div style={executionSummaryPanelStyle}>
-                    <div style={sectionTitleStyle}>结算获取</div>
-
-                    {executionSummaryEffects.length > 0 && (
-                      <div style={{ marginTop: 12 }}>
-                        <ExecutionEffectList effects={executionSummaryEffects} onOpenCard={handleOpenCard} />
-                      </div>
-                    )}
-
-                    {executionSummaryActions.length > 0 && (
-                      <div style={{ marginTop: 14, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                        {executionSummaryActions.map((action, index) => (
-                          <ExecutionActionBadge
-                            key={`${action.key}:${action.targetId || ''}:${index}`}
-                            action={action}
-                            targetData={executionTargetNameMap[`${action.targetType}:${action.targetId}`]}
-                          />
-                        ))}
-                      </div>
-                    )}
-
-                    {executionSummaryPops.length > 0 && (
-                      <div style={{ marginTop: 14, display: 'grid', gap: 10 }}>
-                        {executionSummaryPops.map((pop, index) => (
-                          <StoryPopLine
-                            key={`${pop.key}:${index}`}
-                            pop={pop}
-                            card={resolveStepPopCard(pop, slotOverrideCards, model, slotSelections)}
-                          />
-                        ))}
-                      </div>
-                    )}
-
-                    {executionSummaryEffects.length === 0 && executionSummaryActions.length === 0 && executionSummaryPops.length === 0 && (
-                      <div style={{ ...smallLineStyle, marginTop: 12 }}>
-                        当前还没有结算结果，先在右侧推进文本与分支选择。
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* 右侧正文面板：追加显示所有已推进步骤 */}
-                <div style={executionDialoguePanelStyle}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
-                    <div>
-                      <div style={sectionTitleStyle}>仪式结算</div>
-                      <div style={executionTitleWrapStyle}>
-                        {riteTitlePlateUrl && <img src={riteTitlePlateUrl} alt="" style={executionTitlePlateStyle} />}
-                        <div style={executionTitleTextStyle}>{model.title}</div>
-                      </div>
-                    </div>
-                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
-                      <button
-                        type="button"
-                        onClick={() => { setExecutionOpen(false); setExecutionAutoAdvance(false); setExecutionConditionSelections({}) }}
-                        style={executionCloseButtonStyle}
-                      >
-                        关闭
-                      </button>
-                    </div>
-                  </div>
-
-                  <div style={{ display: 'grid', gap: 12 }}>
-                    {executionConditionGroups.map((group) => (
-                      <ExecutionConditionGroup
-                        key={group.id}
-                        group={group}
-                        selectedId={executionConditionSelections[group.id] || null}
-                        onSelect={handleSelectExecutionCondition}
-                      />
-                    ))}
-                  </div>
-
-                  {/* 正文区：固定高度，可滚动，追加显示 */}
-                  <div style={executionDialogueBoxStyle} ref={executionBodyRef}>
-                    {executionSteps.slice(0, executionStepIndex + 1).map((step, index) => (
-                      <div key={step.id} style={executionNarrativeCardStyle}>
-                        <div style={executionStepMetaStyle}>{step.phase}</div>
-                        {step.kind === 'dice' ? (
-                          <div style={{ display: 'grid', gap: 8 }}>
-                            <div style={executionStepTitleStyle}>{step.title}</div>
-                            {step.text ? <div style={executionStepTextStyle}>{step.text}</div> : null}
-                            {(step.tips || []).map((tip, tipIndex) => (
-                              <div key={`${step.id}:tip:${tipIndex}`} style={executionStepTipStyle}>{tip}</div>
-                            ))}
-                          </div>
-                        ) : null}
-                        {step.kind !== 'dice' && step.title ? (
-                          <div style={executionStepTitleStyle}>{step.title}</div>
-                        ) : null}
-                        {step.conditions?.length > 0 && (
-                          <div style={{ marginBottom: 6, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                            {step.conditions.map((cond, ci) => (
-                              <span key={ci} style={executionCondTagStyle}>{cond}</span>
-                            ))}
-                          </div>
-                        )}
-                        {step.text ? (
-                          <div style={executionStepTextStyle}>
-                            {step.text}
-                          </div>
-                        ) : null}
-                        <EffectSummary effects={step.effects} onOpenCard={handleOpenCard} />
-                        <ActionSummary actions={step.actions} onOpenAction={handleOpenAction} />
-                        {step.popItems?.length > 0 && (
-                          <div style={{ marginTop: 12, display: 'grid', gap: 10 }}>
-                            {step.popItems.map((pop, popIndex) => (
-                              <StoryPopLine
-                                key={`${step.id}:pop:${popIndex}`}
-                                pop={pop}
-                                card={resolveStepPopCard(pop, slotOverrideCards, model, slotSelections)}
-                              />
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-
-                  <div style={executionFooterStyle}>
-                    <div style={smallLineStyle}>
-                      步骤 {Math.min(executionStepIndex + 1, Math.max(executionSteps.length, 1))} / {Math.max(executionSteps.length, 1)}
-                    </div>
-                    <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-                      <button
-                        type="button"
-                        style={executionAutoAdvance ? activeToggleButtonStyle : secondaryButtonStyle}
-                        onClick={() => setExecutionAutoAdvance((v) => !v)}
-                      >
-                        {executionAutoAdvance ? '停止自动' : '自动下一步'}
-                      </button>
-                      {executionStepIndex < executionSteps.length - 1 ? (
-                        <button type="button" style={primaryButtonStyle} onClick={handleAdvanceExecution}>
-                          推进下一步
-                        </button>
-                      ) : (
-                        <button type="button" style={primaryButtonStyle} onClick={() => { setExecutionOpen(false); setExecutionAutoAdvance(false); setExecutionConditionSelections({}) }}>
-                          执行完成
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+        <ExecutionModal
+          open={executionOpen}
+          model={model}
+          settlementBgUrl={settlementBgUrl}
+          settlementDiceBgUrl={settlementDiceBgUrl}
+          executionSteps={executionSteps}
+          executionStepIndex={executionStepIndex}
+          executionSummaryEffects={executionSummaryEffects}
+          executionSummaryActions={executionSummaryActions}
+          executionSummaryPops={executionSummaryPops}
+          executionTargetNameMap={executionTargetNameMap}
+          executionSlotCards={executionSlotCards}
+          executionConditionGroups={executionConditionGroups}
+          executionConditionSelections={executionConditionSelections}
+          onSelectCondition={handleSelectExecutionCondition}
+          onOpenCard={handleOpenCard}
+          onOpenAction={handleOpenAction}
+          onAdvance={handleAdvanceExecution}
+          onClose={() => {
+            setExecutionOpen(false)
+            setExecutionMode('normal')
+            setExecutionConditionSelections({})
+          }}
+        />
       )}
       {conditionSelectorOpen && type === 'rite' && (
         <div style={selectionOverlayStyle} onClick={() => setConditionSelectorOpen(false)}>
@@ -3015,957 +2299,3 @@ export default function StoryInspector({ type, data, onClose }) {
   )
 }
 
-const imageFallbackStyle = {
-  color: 'rgba(241, 232, 213, 0.58)',
-  fontSize: 14,
-}
-
-const eventFallbackBoardStyle = {
-  backgroundImage: 'linear-gradient(180deg, rgba(51, 39, 25, 0.92), rgba(17, 13, 10, 0.98))',
-}
-
-const eventReaderShellStyle = {
-  height: '100%',
-  minHeight: 0,
-}
-
-const eventBackdropShellStyle = {
-  position: 'relative',
-  height: '100%',
-  minHeight: 0,
-  borderRadius: 32,
-  overflow: 'hidden',
-  background: 'radial-gradient(circle at top, rgba(67, 48, 27, 0.28), rgba(8, 6, 5, 0.96))',
-  border: '1px solid rgba(212, 184, 126, 0.12)',
-}
-
-const eventBackdropEdgeStyle = {
-  position: 'absolute',
-  inset: 0,
-  display: 'grid',
-  gridTemplateColumns: '1fr 1fr',
-  opacity: 0.96,
-}
-
-const eventBackdropHalfStyle = {
-  backgroundRepeat: 'no-repeat',
-  backgroundSize: '100% 100%',
-  backgroundPosition: 'center',
-}
-
-const eventBackdropCenterStyle = {
-  position: 'relative',
-  zIndex: 1,
-  height: '100%',
-  minHeight: 0,
-  padding: '28px 30px',
-}
-
-const eventReaderGridStyle = {
-  display: 'grid',
-  gridTemplateColumns: 'minmax(0, 1fr) 320px',
-  gap: 24,
-  height: '100%',
-  minHeight: 0,
-}
-
-const eventBoardStageStyle = {
-  minHeight: 0,
-  display: 'grid',
-  alignContent: 'start',
-  gridTemplateRows: 'minmax(0, 1fr) auto',
-  gap: 18,
-  padding: '48px 0 28px 56px',
-}
-
-const eventBoardContentStyle = {
-  minHeight: 0,
-  overflowY: 'auto',
-  padding: '42px 56px 28px 28px',
-  display: 'grid',
-  alignContent: 'start',
-  gap: 18,
-}
-
-const eventReaderVisualStageStyle = {
-  minHeight: 0,
-  display: 'grid',
-  gridTemplateRows: 'minmax(0, 1fr) auto',
-  gap: 10,
-  alignItems: 'end',
-}
-
-const eventVisualSpacerStyle = {
-  minHeight: 0,
-}
-
-const eventPortraitDockStyle = {
-  display: 'flex',
-  justifyContent: 'flex-end',
-  alignItems: 'flex-end',
-  minHeight: 420,
-  paddingRight: 12,
-}
-
-const eventFigureWrapStyle = {
-  width: '100%',
-  height: '100%',
-  minHeight: 420,
-  display: 'flex',
-  alignItems: 'flex-end',
-  justifyContent: 'flex-end',
-  overflow: 'hidden',
-}
-
-const eventFigureImageStyle = {
-  maxWidth: '120%',
-  maxHeight: '96%',
-  objectFit: 'contain',
-  objectPosition: 'right bottom',
-  filter: 'drop-shadow(0 24px 34px rgba(0, 0, 0, 0.34))',
-}
-
-const eventFigureFallbackStyle = {
-  color: '#cdb28a',
-  fontSize: 16,
-}
-
-const eventParagraphStyle = {
-  padding: '0',
-  borderRadius: 0,
-  background: 'transparent',
-  color: '#f4ead6',
-  fontSize: 17,
-  lineHeight: 2,
-  whiteSpace: 'pre-wrap',
-  textShadow: '0 1px 6px rgba(0, 0, 0, 0.24)',
-}
-
-const eventChoicesWrapStyle = {
-  display: 'grid',
-  gap: 10,
-  paddingRight: 56,
-}
-
-const eventChoiceButtonStyle = {
-  width: '100%',
-  padding: '14px 18px',
-  borderRadius: 14,
-  border: '1px solid rgba(212, 184, 126, 0.2)',
-  background: 'linear-gradient(180deg, rgba(52, 44, 30, 0.86), rgba(23, 18, 13, 0.94))',
-  color: '#efe2c7',
-  fontSize: 16,
-  lineHeight: 1.6,
-  textAlign: 'center',
-  cursor: 'pointer',
-  transition: 'all 160ms ease',
-}
-
-const eventChoiceButtonActiveStyle = {
-  border: '1px solid rgba(239, 215, 169, 0.52)',
-  background: 'linear-gradient(180deg, rgba(95, 73, 43, 0.96), rgba(42, 31, 19, 0.96))',
-  boxShadow: '0 10px 24px rgba(0, 0, 0, 0.22)',
-}
-
-const eventActionRowStyle = {
-  display: 'flex',
-  flexWrap: 'wrap',
-  gap: 10,
-}
-
-const eventResultBlockStyle = {
-  display: 'grid',
-  gap: 10,
-  marginTop: 10,
-}
-
-const eventTriggerShellStyle = {
-  height: '100%',
-  display: 'flex',
-  justifyContent: 'flex-end',
-  alignItems: 'stretch',
-}
-
-const eventTriggerDetailStyle = {
-  width: 'min(460px, 100%)',
-  borderRadius: 28,
-  border: '1px solid rgba(212, 184, 126, 0.14)',
-  background: 'rgba(21, 16, 12, 0.94)',
-  boxShadow: '0 24px 56px rgba(0, 0, 0, 0.28)',
-  padding: '26px 24px',
-  overflowY: 'auto',
-}
-
-const eventTriggerMetaStyle = {
-  padding: '10px 12px',
-  borderRadius: 14,
-  background: 'rgba(41, 31, 20, 0.82)',
-  color: '#e5d2ae',
-  fontSize: 13,
-  lineHeight: 1.7,
-}
-
-const storyHeaderShellStyle = {
-  display: 'flex',
-  justifyContent: 'stretch',
-  minWidth: 0,
-  width: '100%',
-}
-
-const storyHeaderCardStyle = {
-  width: '100%',
-  padding: '12px 16px 10px',
-  position: 'relative',
-  overflow: 'hidden',
-  borderRadius: 22,
-  background: 'linear-gradient(180deg, rgba(250, 244, 231, 0.98), rgba(227, 212, 186, 0.95))',
-  color: READER_CHROME.header.metaColor,
-  border: '1px solid rgba(212, 184, 126, 0.14)',
-  boxShadow: '0 10px 26px rgba(0, 0, 0, 0.18)',
-}
-
-const storyMetaWrapStyle = {
-  position: 'absolute',
-  top: 10,
-  right: 14,
-  display: 'flex',
-  flexWrap: 'wrap',
-  justifyContent: 'flex-end',
-  gap: 8,
-  maxWidth: '52%',
-}
-
-const storyHeaderTitleRowStyle = {
-  marginTop: 6,
-  display: 'flex',
-  alignItems: 'center',
-  gap: 12,
-  paddingRight: 320,
-}
-
-const storyHeaderActionsStyle = {
-  position: 'absolute',
-  top: 50,
-  right: 16,
-  display: 'flex',
-  alignItems: 'center',
-  gap: 10,
-  flexWrap: 'wrap',
-  justifyContent: 'flex-end',
-  maxWidth: '45%',
-}
-
-const conditionSummaryTextStyle = {
-  display: 'inline-block',
-  maxWidth: 240,
-  overflow: 'hidden',
-  textOverflow: 'ellipsis',
-  whiteSpace: 'nowrap',
-  verticalAlign: 'bottom',
-}
-
-const storyHeaderTitleStyle = {
-  fontSize: 22,
-  fontWeight: 900,
-  lineHeight: 1.18,
-  color: '#3f2a16',
-  letterSpacing: '0.01em',
-}
-
-const sectionTitleStyle = {
-  fontSize: 12,
-  letterSpacing: '0.24em',
-  textTransform: 'uppercase',
-  color: '#d4b87e',
-}
-
-const smallLineStyle = {
-  fontSize: 13,
-  lineHeight: 1.7,
-  color: '#cbb391',
-}
-
-const slotTagStyle = {
-  padding: '2px 7px',
-  borderRadius: 999,
-  backgroundColor: 'rgba(212, 184, 126, 0.12)',
-  border: '1px solid rgba(212, 184, 126, 0.14)',
-  color: '#dcc9a6',
-  fontSize: 10,
-  lineHeight: 1.3,
-}
-
-const slotTagButtonStyle = {
-  display: 'inline-flex',
-  alignItems: 'center',
-  gap: 5,
-  padding: '2px 7px',
-  borderRadius: 999,
-  backgroundColor: 'rgba(212, 184, 126, 0.12)',
-  border: '1px solid rgba(212, 184, 126, 0.14)',
-  color: '#dcc9a6',
-  fontSize: 10,
-  lineHeight: 1.3,
-  cursor: 'pointer',
-}
-
-const metaChipCompactStyle = {
-  padding: '4px 10px',
-  borderRadius: 999,
-  border: '1px solid rgba(92, 62, 31, 0.12)',
-  backgroundColor: 'rgba(126, 93, 53, 0.12)',
-  color: '#6a4623',
-  fontSize: 11,
-  lineHeight: 1.4,
-}
-
-const effectChipStyle = {
-  display: 'inline-flex',
-  alignItems: 'center',
-  gap: 4,
-  padding: '5px 10px',
-  borderRadius: 999,
-  border: '1px solid rgba(212, 184, 126, 0.16)',
-  background: 'rgba(45, 34, 23, 0.74)',
-  color: '#ead7b2',
-  fontSize: 12,
-  lineHeight: 1.5,
-}
-
-const executionResultItemStyle = {
-  padding: '8px 10px',
-  borderRadius: 14,
-  background: 'rgba(18, 14, 11, 0.16)',
-  border: '1px solid rgba(244, 232, 206, 0.1)',
-}
-
-const effectCardLinkStyle = {
-  padding: '2px 8px',
-  borderRadius: 999,
-  border: '1px solid rgba(212, 184, 126, 0.28)',
-  background: 'rgba(212, 184, 126, 0.14)',
-  color: '#ffefcc',
-  fontSize: 12,
-  lineHeight: 1.4,
-  cursor: 'pointer',
-}
-
-const executionOverlayStyle = {
-  position: 'fixed',
-  inset: 0,
-  padding: 28,
-  background: 'rgba(7, 6, 5, 0.68)',
-  backdropFilter: 'blur(8px)',
-  zIndex: 70,
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-}
-
-const executionModalStyle = {
-  width: 'min(1380px, 100%)',
-  height: 'calc(100vh - 56px)',
-  borderRadius: 28,
-  overflow: 'hidden',
-  border: '1px solid rgba(212, 184, 126, 0.18)',
-  background: 'linear-gradient(180deg, rgba(39, 28, 18, 0.98), rgba(18, 13, 10, 0.98))',
-  boxShadow: '0 36px 82px rgba(0, 0, 0, 0.34)',
-  display: 'grid',
-  gridTemplateRows: '1fr',
-}
-
-const executionStageStyle = {
-  display: 'grid',
-  gridTemplateRows: 'auto 1fr',
-  minHeight: 0,
-  overflow: 'hidden',
-}
-
-const executionToolbarStyle = {
-  display: 'flex',
-  justifyContent: 'space-between',
-  alignItems: 'center',
-  gap: 16,
-  padding: '22px 24px 18px',
-  background: 'linear-gradient(180deg, rgba(250, 244, 231, 0.98), rgba(227, 212, 186, 0.95))',
-}
-
-const executionBodyStyle = {
-  display: 'grid',
-  gridTemplateColumns: 'minmax(520px, 1.2fr) minmax(340px, 0.86fr)',
-  gap: 18,
-  padding: 18,
-  minHeight: 0,
-  overflow: 'hidden',
-}
-
-const executionCanvasStyle = {
-  position: 'relative',
-  borderRadius: 24,
-  overflow: 'hidden',
-  backgroundRepeat: 'no-repeat',
-  backgroundSize: 'cover',
-  backgroundPosition: 'center',
-  border: '1px solid rgba(212, 184, 126, 0.16)',
-}
-
-const executionSummaryPanelStyle = {
-  position: 'absolute',
-  top: '18%',
-  left: '4%',
-  bottom: '10%',
-  width: '28%',
-  minWidth: 220,
-  padding: '14px 12px',
-  borderRadius: 18,
-  background: 'rgba(12, 10, 8, 0.32)',
-  border: '1px solid rgba(244, 232, 206, 0.12)',
-  backdropFilter: 'blur(6px)',
-  overflowY: 'auto',
-}
-
-const executionDialoguePanelStyle = {
-  display: 'grid',
-  gridTemplateRows: 'auto minmax(0, 1fr) auto',
-  gap: 14,
-  minHeight: 0,
-  padding: '12px 8px 8px 0',
-  background: 'rgba(18, 14, 11, 0.01)',
-}
-
-const executionDialogueBoxStyle = {
-  minHeight: 0,
-  borderRadius: 24,
-  background: 'rgba(23, 18, 13, 0.02)',
-  border: '1px solid rgba(212, 184, 126, 0.08)',
-  padding: '22px 20px',
-  overflowY: 'auto',
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 12,
-}
-
-const executionSlotPreviewWrapStyle = {
-  position: 'absolute',
-  top: '4%',
-  right: '4%',
-  display: 'flex',
-  flexWrap: 'wrap',
-  justifyContent: 'flex-end',
-  gap: 10,
-  width: '48%',
-}
-
-const executionTitleWrapStyle = {
-  position: 'relative',
-  marginTop: 8,
-  width: 320,
-  maxWidth: '100%',
-  height: 74,
-}
-
-const executionTitlePlateStyle = {
-  width: '100%',
-  height: '100%',
-  objectFit: 'fill',
-  display: 'block',
-}
-
-const executionTitleTextStyle = {
-  position: 'absolute',
-  inset: 0,
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  color: '#2f1908',
-  fontSize: 22,
-  fontWeight: 800,
-  textAlign: 'center',
-  padding: '0 26px',
-}
-
-const executionFooterStyle = {
-  display: 'flex',
-  justifyContent: 'space-between',
-  alignItems: 'center',
-  gap: 12,
-}
-
-const executionSlotCardStyle = {
-  width: 112,
-  padding: '10px 10px 12px',
-  borderRadius: 22,
-  background: 'rgba(14, 12, 10, 0.56)',
-  border: '1px solid rgba(212, 184, 126, 0.16)',
-  boxShadow: '0 14px 30px rgba(0, 0, 0, 0.26)',
-  display: 'grid',
-  justifyItems: 'center',
-  gap: 8,
-  backdropFilter: 'blur(6px)',
-}
-
-const executionSlotLabelStyle = {
-  padding: '3px 8px',
-  borderRadius: 999,
-  background: 'rgba(241, 230, 203, 0.12)',
-  color: '#f0dec1',
-  fontSize: 11,
-  letterSpacing: '0.12em',
-}
-
-const executionSlotNameStyle = {
-  maxWidth: 112,
-  fontSize: 12,
-  lineHeight: 1.35,
-  color: '#fff1d6',
-  fontWeight: 700,
-  textAlign: 'center',
-  whiteSpace: 'nowrap',
-  overflow: 'hidden',
-  textOverflow: 'ellipsis',
-}
-
-const executionEmptySlotStyle = {
-  width: 96,
-  height: 132,
-  borderRadius: 18,
-  border: '1px dashed rgba(228, 208, 170, 0.28)',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  color: '#dcc8a3',
-  fontSize: 14,
-}
-
-const executionStepTitleStyle = {
-  fontSize: 24,
-  lineHeight: 1.3,
-  color: '#f8ebd1',
-  fontWeight: 800,
-  display: '-webkit-box',
-  WebkitBoxOrient: 'vertical',
-  WebkitLineClamp: 2,
-  overflow: 'hidden',
-}
-
-const segmentCardStyle = {
-  padding: '18px 18px 16px',
-  borderRadius: 24,
-  border: '1px solid rgba(212, 184, 126, 0.12)',
-  backgroundImage: 'linear-gradient(180deg, rgba(31, 24, 18, 0.96), rgba(20, 16, 12, 0.96))',
-}
-
-const settlementPanelStyle = {
-  padding: '16px 16px 14px',
-  borderRadius: 22,
-  border: '1px solid rgba(212, 184, 126, 0.12)',
-  background: 'linear-gradient(180deg, rgba(28, 22, 16, 0.94), rgba(19, 15, 11, 0.98))',
-}
-
-const settlementCountStyle = {
-  padding: '5px 10px',
-  borderRadius: 999,
-  border: '1px solid rgba(143, 191, 119, 0.18)',
-  background: 'rgba(143, 191, 119, 0.08)',
-  color: '#d8e8ca',
-  fontSize: 12,
-}
-
-const readerFilterInputStyle = {
-  width: '100%',
-  boxSizing: 'border-box',
-  padding: '10px 12px',
-  borderRadius: 14,
-  border: '1px solid rgba(212, 184, 126, 0.14)',
-  background: 'rgba(212, 184, 126, 0.05)',
-  color: '#f1e8d5',
-  outline: 'none',
-  fontSize: 13,
-}
-
-const candidateStageStyle = {
-  height: '100%',
-  borderRadius: 32,
-  border: '1px solid rgba(244, 232, 206, 0.2)',
-  backgroundColor: 'rgba(16, 14, 11, 0.72)',
-  boxShadow: '0 12px 26px rgba(0, 0, 0, 0.1)',
-  padding: '20px 18px 18px',
-  minHeight: 0,
-  display: 'grid',
-  gridTemplateRows: 'auto minmax(0, 1fr)',
-  overflow: 'hidden',
-}
-
-const executionStepMetaStyle = {
-  display: 'inline-flex',
-  alignSelf: 'flex-start',
-  padding: '4px 10px',
-  borderRadius: 999,
-  background: 'rgba(241, 230, 203, 0.12)',
-  color: '#ebd7b2',
-  fontSize: 12,
-  letterSpacing: '0.08em',
-}
-
-const executionStepTextStyle = {
-  fontSize: 17,
-  lineHeight: 1.95,
-  color: '#f7edd8',
-  whiteSpace: 'pre-wrap',
-  padding: '12px 14px',
-  borderRadius: 16,
-  background: 'rgba(20, 14, 10, 0.42)',
-  backdropFilter: 'blur(4px)',
-}
-
-const executionStepTipStyle = {
-  fontSize: 14,
-  lineHeight: 1.8,
-  color: '#ddc79d',
-  padding: '10px 12px',
-  borderRadius: 14,
-  background: 'rgba(36, 27, 20, 0.34)',
-}
-
-const executionNarrativeCardStyle = {
-  display: 'grid',
-  gap: 10,
-  padding: '12px 0 6px',
-}
-
-const executionConditionGroupStyle = {
-  display: 'grid',
-  gap: 10,
-  padding: '14px 16px',
-  borderRadius: 20,
-  background: 'rgba(23, 17, 12, 0.12)',
-  border: '1px solid rgba(212, 184, 126, 0.1)',
-}
-
-const executionConditionOptionListStyle = {
-  display: 'grid',
-  gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-  gap: 10,
-}
-
-const executionConditionOptionStyle = {
-  padding: '10px 12px',
-  borderRadius: 16,
-  border: '1px solid rgba(212, 184, 126, 0.14)',
-  background: 'rgba(22, 18, 14, 0.3)',
-  cursor: 'pointer',
-  textAlign: 'left',
-}
-
-const executionConditionOptionActiveStyle = {
-  ...executionConditionOptionStyle,
-  border: '1px solid rgba(143, 191, 119, 0.42)',
-  background: 'rgba(100, 140, 83, 0.18)',
-}
-
-const emptyCandidateStyle = {
-  marginTop: 16,
-  borderRadius: 24,
-  border: '1px dashed rgba(244, 232, 206, 0.18)',
-  backgroundColor: 'rgba(22, 18, 14, 0.76)',
-  padding: '22px 18px',
-  display: 'flex',
-  flexDirection: 'column',
-  alignItems: 'center',
-  justifyContent: 'center',
-  textAlign: 'center',
-}
-
-const primaryButtonStyle = {
-  padding: '12px 18px',
-  borderRadius: 999,
-  border: '1px solid rgba(212, 184, 126, 0.24)',
-  backgroundColor: 'rgba(212, 184, 126, 0.28)',
-  color: '#fff1d4',
-  cursor: 'pointer',
-  fontSize: 14,
-}
-
-const secondaryButtonStyle = {
-  padding: '10px 16px',
-  borderRadius: 999,
-  border: '1px solid rgba(212, 184, 126, 0.18)',
-  backgroundColor: 'rgba(22, 18, 14, 0.82)',
-  color: '#f3ead8',
-  cursor: 'pointer',
-}
-
-const activeToggleButtonStyle = {
-  ...secondaryButtonStyle,
-  border: '1px solid rgba(143, 191, 119, 0.28)',
-  backgroundColor: 'rgba(143, 191, 119, 0.14)',
-  color: '#e4f1d7',
-}
-
-const choiceButtonStyle = {
-  padding: '9px 14px',
-  borderRadius: 999,
-  border: '1px solid rgba(212, 184, 126, 0.24)',
-  backgroundColor: 'rgba(212, 184, 126, 0.08)',
-  color: '#f2ead5',
-  cursor: 'pointer',
-}
-
-const actionButtonStyle = {
-  padding: '10px 14px',
-  borderRadius: 999,
-  border: '1px solid rgba(143, 191, 119, 0.24)',
-  backgroundColor: 'rgba(83, 116, 70, 0.72)',
-  color: '#e5f1d9',
-  cursor: 'pointer',
-}
-
-const ritePreparationPanelStyle = {
-  borderRadius: 32,
-  border: '1px solid rgba(244, 232, 206, 0.2)',
-  backgroundColor: 'rgba(20, 16, 12, 0.78)',
-  boxShadow: '0 12px 28px rgba(0, 0, 0, 0.18)',
-  padding: '20px 18px',
-  display: 'grid',
-  gap: 16,
-  overflow: 'hidden',
-}
-
-const riteSlotScrollerStyle = {
-  display: 'flex',
-  gap: 14,
-  overflowX: 'auto',
-  overflowY: 'hidden',
-  paddingBottom: 8,
-  alignItems: 'flex-start',
-}
-
-const riteCandidateGridStyle = {
-  display: 'flex',
-  gap: 6,
-  overflow: 'hidden',
-  alignItems: 'stretch',
-}
-
-const ritePreparationInfoPanelStyle = {
-  height: '100%',
-  minHeight: 0,
-  borderRadius: 32,
-  border: '1px solid rgba(244, 232, 206, 0.2)',
-  boxShadow: '0 16px 34px rgba(0, 0, 0, 0.18)',
-  backgroundColor: 'rgba(22, 17, 13, 0.78)',
-  overflow: 'hidden',
-  display: 'flex',
-  flexDirection: 'column',
-}
-
-const ritePreparationFooterStyle = {
-  padding: '16px 24px 24px',
-  borderTop: '1px solid rgba(212, 184, 126, 0.12)',
-  display: 'flex',
-  gap: 12,
-  flexWrap: 'wrap',
-  alignItems: 'center',
-}
-
-const translucentTextBlockStyle = {
-  marginTop: 10,
-  padding: '14px 16px',
-  borderRadius: 18,
-  background: 'rgba(12, 10, 8, 0.58)',
-  border: '1px solid rgba(244, 232, 206, 0.12)',
-  color: '#f2ead7',
-  fontSize: 14,
-  lineHeight: 1.8,
-  whiteSpace: 'pre-wrap',
-}
-
-const candidateToolbarStyle = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 8,
-  justifyItems: 'end',
-  alignItems: 'flex-end',
-}
-
-const candidateToolbarGroupStyle = {
-  display: 'flex',
-  flexWrap: 'wrap',
-  justifyContent: 'flex-end',
-  alignItems: 'center',
-  gap: 8,
-}
-
-const candidateSearchInputStyle = {
-  ...readerFilterInputStyle,
-  width: 'min(220px, 100%)',
-}
-
-const riteHiddenBackdropStyle = {
-  height: '100%',
-  minHeight: 0,
-  gridColumn: '1 / -1',
-  borderRadius: 32,
-  background: 'transparent',
-}
-
-const branchSuccessButtonStyle = {
-  padding: '10px 14px',
-  borderRadius: 999,
-  border: '1px solid rgba(143, 191, 119, 0.24)',
-  backgroundColor: 'rgba(143, 191, 119, 0.12)',
-  color: '#e5f1d9',
-  cursor: 'pointer',
-}
-
-const branchFailedButtonStyle = {
-  padding: '10px 14px',
-  borderRadius: 999,
-  border: '1px solid rgba(195, 91, 91, 0.24)',
-  backgroundColor: 'rgba(195, 91, 91, 0.12)',
-  color: '#f6d1d1',
-  cursor: 'pointer',
-}
-
-const overlayShellStyle = {
-  position: 'fixed',
-  inset: 0,
-  backgroundColor: 'rgba(5, 4, 3, 0.8)',
-  zIndex: 90,
-  backdropFilter: `blur(${READER_CHROME.eventOverlay.backdropBlur})`,
-}
-
-const overlayCardStyle = {
-  position: 'fixed',
-  inset: 0,
-  display: 'grid',
-  gridTemplateRows: 'auto 1fr',
-  backgroundImage: READER_CHROME.eventOverlay.background,
-}
-
-const overlayHeaderStyle = {
-  padding: '16px 24px 12px',
-  borderBottom: '1px solid rgba(212, 184, 126, 0.12)',
-}
-
-const overlayHeaderLeftStyle = {
-  width: '100%',
-}
-
-const closeButtonStyle = {
-  padding: '10px 16px',
-  borderRadius: 999,
-  border: '1px solid rgba(143, 80, 80, 0.34)',
-  backgroundColor: 'rgba(133, 85, 62, 0.92)',
-  color: '#fff3de',
-  cursor: 'pointer',
-  fontWeight: 800,
-  boxShadow: '0 8px 18px rgba(77, 35, 25, 0.18)',
-}
-
-const selectionOverlayStyle = {
-  position: 'fixed',
-  inset: 0,
-  background: 'rgba(7, 6, 5, 0.72)',
-  backdropFilter: 'blur(8px)',
-  zIndex: 95,
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  padding: 24,
-}
-
-const selectionDialogStyle = {
-  width: 'min(720px, 100%)',
-  maxHeight: 'min(78vh, 760px)',
-  borderRadius: 28,
-  overflow: 'hidden',
-  border: '1px solid rgba(212, 184, 126, 0.18)',
-  background: 'linear-gradient(180deg, rgba(39, 28, 18, 0.98), rgba(18, 13, 10, 0.98))',
-  boxShadow: '0 36px 82px rgba(0, 0, 0, 0.34)',
-  display: 'flex',
-  flexDirection: 'column',
-}
-
-const selectionDialogHeaderStyle = {
-  padding: '22px 24px 18px',
-  borderBottom: '1px solid rgba(212, 184, 126, 0.12)',
-  display: 'flex',
-  justifyContent: 'space-between',
-  alignItems: 'flex-start',
-  gap: 16,
-}
-
-const selectionDialogSearchWrapStyle = {
-  padding: '16px 20px 0',
-}
-
-const selectionDialogBodyStyle = {
-  padding: 20,
-  overflowY: 'auto',
-  display: 'grid',
-  gap: 12,
-}
-
-const selectionDialogEmptyStyle = {
-  padding: '18px 16px',
-  borderRadius: 18,
-  border: '1px solid rgba(212, 184, 126, 0.14)',
-  background: 'rgba(22, 18, 14, 0.94)',
-  color: '#cbb391',
-  textAlign: 'center',
-}
-
-const selectionDialogItemStyle = {
-  width: '100%',
-  textAlign: 'left',
-  padding: '14px 16px',
-  borderRadius: 18,
-  border: '1px solid rgba(212, 184, 126, 0.14)',
-  background: 'rgba(22, 18, 14, 0.94)',
-  color: '#f1e8d5',
-  cursor: 'pointer',
-}
-
-const selectionDialogItemActiveStyle = {
-  ...selectionDialogItemStyle,
-  border: '1px solid rgba(143, 191, 119, 0.36)',
-  background: 'rgba(83, 116, 70, 0.22)',
-  color: '#f4f0de',
-}
-
-const selectionDialogItemTitleStyle = {
-  fontSize: 15,
-  lineHeight: 1.8,
-  color: 'inherit',
-  whiteSpace: 'pre-wrap',
-}
-
-const selectionDialogItemMetaStyle = {
-  marginTop: 8,
-  fontSize: 12,
-  color: '#cbb391',
-}
-
-// 执行弹窗关闭按钮：深色背景上需要更高对比度
-const executionCloseButtonStyle = {
-  padding: '10px 16px',
-  borderRadius: 999,
-  border: '1px solid rgba(212, 184, 126, 0.5)',
-  backgroundColor: 'rgba(212, 184, 126, 0.18)',
-  color: '#ffe8a0',
-  cursor: 'pointer',
-  fontWeight: 600,
-  flexShrink: 0,
-}
-
-// 执行弹窗条件标签
-const executionCondTagStyle = {
-  display: 'inline-block',
-  padding: '3px 8px',
-  borderRadius: 999,
-  background: 'rgba(212, 184, 126, 0.12)',
-  border: '1px solid rgba(212, 184, 126, 0.2)',
-  color: '#dcc8a3',
-  fontSize: 12,
-}
