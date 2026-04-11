@@ -2028,18 +2028,21 @@ export default function StoryInspector({ type, data, onClose }) {
                     </div>
                   </div>
                   {activeConditionGroup?.label && (
-                    <div
-                      style={{
-                        ...translucentTextBlockStyle,
-                        overflow: 'hidden',
-                        whiteSpace: conditionPreviewExpanded ? 'normal' : 'nowrap',
-                        textOverflow: conditionPreviewExpanded ? 'clip' : 'ellipsis',
-                      }}
-                      title={activeConditionGroup.label}
-                      onMouseEnter={() => setConditionPreviewExpanded(true)}
-                      onMouseLeave={() => setConditionPreviewExpanded(false)}
-                    >
-                      {activeConditionGroup.label}
+                    <div style={{ marginTop: 12, position: 'relative', zIndex: 1 }}>
+                      <div
+                        style={{
+                          ...translucentTextBlockStyle,
+                          marginTop: 0,
+                          overflow: 'hidden',
+                          whiteSpace: conditionPreviewExpanded ? 'normal' : 'nowrap',
+                          textOverflow: conditionPreviewExpanded ? 'clip' : 'ellipsis',
+                        }}
+                        title={activeConditionGroup.label}
+                        onMouseEnter={() => setConditionPreviewExpanded(true)}
+                        onMouseLeave={() => setConditionPreviewExpanded(false)}
+                      >
+                        {activeConditionGroup.label}
+                      </div>
                     </div>
                   )}
                 </div>
