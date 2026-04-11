@@ -39,6 +39,16 @@ function splitIntro(text) {
     .filter(Boolean)
 }
 
+function truncateDisplayText(text, maxLength = 120) {
+  const content = normalizeTextContent(text)
+  if (!content) return ''
+  if (content.length <= maxLength) return content
+  return `${content.slice(0, maxLength)}...`
+}
+
+const CONDITION_BUTTON_MAX_LENGTH = 26
+const CONDITION_PREVIEW_MAX_LENGTH = 72
+
 function CardPortrait({ card, compact = false, showName = true, widthOverride = null }) {
   const { url } = useResolvedImage(card?.image)
   const { url: rareFrameUrl } = useResolvedImage(getCardRarityFrameAsset(card?.rare))
@@ -1963,15 +1973,15 @@ export default function StoryInspector({ type, data, onClose }) {
 
               <div style={candidateStageStyle}>
                 <div>
-                  <div style={candidateHeaderTopStyle}>
-                    <div style={candidateHeaderInfoStyle}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+                    <div>
                       <div style={sectionTitleStyle}>卡牌候选</div>
                       <div style={{ ...smallLineStyle, marginTop: 8 }}>
                         当前槽位：{selectedSlot?.title || '未选择槽位'}
                       </div>
                     </div>
                     <div style={candidateToolbarStyle}>
-                      <div style={{ ...candidateToolbarGroupStyle, flexWrap: 'nowrap' }}>
+                      <div style={candidateToolbarGroupStyle}>
                         <button
                           type="button"
                           style={secondaryButtonStyle}
@@ -1982,12 +1992,12 @@ export default function StoryInspector({ type, data, onClose }) {
                         </button>
                         <button
                           type="button"
-                          style={candidateConditionButtonStyle}
+                          style={activeToggleButtonStyle}
                           onClick={() => setConditionSelectorOpen(true)}
                           title={activeConditionGroup?.label || '默认条件'}
                         >
                           <span style={conditionSummaryTextStyle}>
-                            {activeConditionGroup?.label || '默认条件'}
+                            {truncateDisplayText(activeConditionGroup?.label || '默认条件', CONDITION_BUTTON_MAX_LENGTH)}
                           </span>
                         </button>
                         <button
@@ -1999,7 +2009,7 @@ export default function StoryInspector({ type, data, onClose }) {
                           下一个条件
                         </button>
                       </div>
-                      <div style={candidateToolbarGroupStyle}>
+                      <div style={{ ...candidateToolbarGroupStyle, flexWrap: 'nowrap', whiteSpace: 'nowrap' }}>
                         <input
                           type="text"
                           value={candidateCardFilterText}
@@ -2015,7 +2025,7 @@ export default function StoryInspector({ type, data, onClose }) {
                         >
                           上一页
                         </button>
-                        <span style={smallLineStyle}>{candidatePage} / {selectedSlotPageCount}</span>
+                        <span style={{ ...smallLineStyle, whiteSpace: 'nowrap', flexShrink: 0 }}>{candidatePage} / {selectedSlotPageCount}</span>
                         <button
                           type="button"
                           style={secondaryButtonStyle}
@@ -2028,25 +2038,23 @@ export default function StoryInspector({ type, data, onClose }) {
                     </div>
                   </div>
                   {activeConditionGroup?.label && (
-                    <div style={{ marginTop: 12, position: 'relative', zIndex: 1, minWidth: 0 }}>
+                    <div style={{ marginTop: 12, position: 'relative', zIndex: 1 }}>
                       <div
                         style={{
                           ...translucentTextBlockStyle,
                           marginTop: 0,
-                          width: '100%',
-                          maxWidth: '100%',
-                          minWidth: 0,
-                          boxSizing: 'border-box',
-                          overflow: 'hidden',
+                          overflow: conditionPreviewExpanded ? 'auto' : 'hidden',
                           whiteSpace: conditionPreviewExpanded ? 'normal' : 'nowrap',
                           textOverflow: conditionPreviewExpanded ? 'clip' : 'ellipsis',
-                          wordBreak: conditionPreviewExpanded ? 'break-word' : 'normal',
+                          maxHeight: conditionPreviewExpanded ? 144 : undefined,
                         }}
                         title={activeConditionGroup.label}
                         onMouseEnter={() => setConditionPreviewExpanded(true)}
                         onMouseLeave={() => setConditionPreviewExpanded(false)}
                       >
-                        {activeConditionGroup.label}
+                        {conditionPreviewExpanded
+                          ? activeConditionGroup.label
+                          : truncateDisplayText(activeConditionGroup.label, CONDITION_PREVIEW_MAX_LENGTH)}
                       </div>
                     </div>
                   )}
@@ -3242,7 +3250,6 @@ const candidateStageStyle = {
   backgroundColor: 'rgba(16, 14, 11, 0.72)',
   boxShadow: '0 12px 26px rgba(0, 0, 0, 0.1)',
   padding: '20px 18px 18px',
-  minWidth: 0,
   minHeight: 0,
   display: 'grid',
   gridTemplateRows: 'auto minmax(0, 1fr)',
@@ -3367,9 +3374,6 @@ const translucentTextBlockStyle = {
 }
 
 const candidateToolbarStyle = {
-  position: 'absolute',
-  top: 0,
-  right: 0,
   display: 'flex',
   flexDirection: 'column',
   gap: 8,
@@ -3383,22 +3387,6 @@ const candidateToolbarGroupStyle = {
   justifyContent: 'flex-end',
   alignItems: 'center',
   gap: 8,
-}
-
-const candidateHeaderTopStyle = {
-  position: 'relative',
-  minHeight: 84,
-  paddingRight: 'min(52%, 520px)',
-}
-
-const candidateHeaderInfoStyle = {
-  minWidth: 0,
-}
-
-const candidateConditionButtonStyle = {
-  ...activeToggleButtonStyle,
-  minWidth: 0,
-  maxWidth: 260,
 }
 
 const candidateSearchInputStyle = {
