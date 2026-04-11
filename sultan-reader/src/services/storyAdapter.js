@@ -396,6 +396,62 @@ function buildSlotCandidate(slotId, pop, index, cardsMap, cardsById) {
   }
 }
 
+function buildBrowseCandidateEntry(slotId, card, cardsMap, cardsById, extra = {}) {
+  return {
+    id: `${slotId}:browse:${card.id}:${extra.suffix || 'default'}`,
+    label: card.name || String(card.id),
+    mode: 'card',
+    cards: [buildCardSummary(card.id, cardsMap, cardsById)],
+    bubbleText: extra.bubbleText || '',
+    conditionText: extra.conditionText || '',
+    popItems: extra.popItems || [],
+    choiceTexts: extra.choiceTexts || [],
+    rawAction: extra.rawAction || null,
+    isEmpty: false,
+  }
+}
+
+function buildSlotCandidates(slotId, pop, index, cardsMap, cardsById) {
+  const baseCandidate = buildSlotCandidate(slotId, pop, index, cardsMap, cardsById)
+  const condition = pop?.condition || {}
+  const actionChoiceTexts = extractChoiceOptions(pop?.action?.choose)
+  const actionPopItems = extractSettlementPopItems(pop?.action)
+  const bubbleText = baseCandidate.bubbleText || actionPopItems[0]?.text || actionChoiceTexts[0]?.text || ''
+  const basePayload = {
+    ...baseCandidate,
+    bubbleText,
+    popItems: actionPopItems,
+    choiceTexts: actionChoiceTexts,
+    rawAction: pop?.action || null,
+  }
+
+  if (baseCandidate.cards?.length > 0) {
+    return [basePayload]
+  }
+
+  const matchedCards = Object.values(cardsById || {})
+    .filter((card) => card?.id != null)
+    .filter((card) => matchesBrowseCondition(card, condition))
+    .sort((a, b) => {
+      const rareDelta = Number(b?.rare || 0) - Number(a?.rare || 0)
+      if (rareDelta !== 0) return rareDelta
+      return Number(a?.id || 0) - Number(b?.id || 0)
+    })
+
+  if (matchedCards.length === 0) {
+    return [basePayload]
+  }
+
+  return matchedCards.map((card) => buildBrowseCandidateEntry(slotId, card, cardsMap, cardsById, {
+    suffix: `${index}:${card.id}`,
+    bubbleText,
+    conditionText: baseCandidate.conditionText,
+    popItems: actionPopItems,
+    choiceTexts: actionChoiceTexts,
+    rawAction: pop?.action || null,
+  }))
+}
+
 function buildResultEffects(result = {}, cardsMap, cardsById) {
   if (!result || typeof result !== 'object') return []
 
@@ -559,6 +615,26 @@ function parseConditionOperator(rawKey) {
   }
 }
 
+function normalizeLookupKey(value) {
+  return String(value ?? '')
+    .normalize('NFKC')
+    .replace(/\s+/g, '')
+    .trim()
+}
+
+function readCardMetric(card, target) {
+  if (!card || !target) return 0
+
+  const normalizedTarget = normalizeLookupKey(target)
+  const tagMatch = Object.entries(card.tag || {}).find(([key]) => normalizeLookupKey(key) === normalizedTarget)
+  if (tagMatch) return Number(tagMatch[1] || 0)
+
+  const directMatch = Object.entries(card || {}).find(([key]) => normalizeLookupKey(key) === normalizedTarget)
+  if (directMatch) return Number(directMatch[1] || 0)
+
+  return 0
+}
+
 function matchesBrowseCondition(card, condition) {
   if (!card || !condition || typeof condition !== 'object') return true
 
@@ -594,7 +670,7 @@ function matchesBrowseCondition(card, condition) {
     const normalizedKey = negative ? key.slice(1) : key
     const costKey = normalizedKey.startsWith('cost.') ? normalizedKey.slice('cost.'.length) : normalizedKey
     const { target, operator } = parseConditionOperator(costKey)
-    const actual = Number(card.tag?.[target] || 0)
+    const actual = readCardMetric(card, target)
     const matched = compareNumeric(actual, value, operator)
     return negative ? !matched : matched
   })
@@ -613,14 +689,8 @@ function buildBrowseCandidates(slotId, slot, cardsMap, cardsById) {
       return Number(a?.id || 0) - Number(b?.id || 0)
     })
 
-  return matches.map((card) => ({
-    id: `${slotId}:browse:${card.id}`,
-    label: card.name || String(card.id),
-    mode: 'card',
-    cards: [buildCardSummary(card.id, cardsMap, cardsById)],
-    bubbleText: '',
+  return matches.map((card) => buildBrowseCandidateEntry(slotId, card, cardsMap, cardsById, {
     conditionText: baseConditionText,
-    isEmpty: false,
   }))
 }
 
@@ -800,8 +870,8 @@ export function adaptStoryData(type, data, cardsMap, cardsById = {}) {
           conditions: parseConditionObject(slot.condition, cardsMap),
           defaultCards: extractConditionCards(slot.condition || {}, cardsMap, cardsById),
           candidates: (() => {
-            const pops = normalizeArray(slot.pops).map((pop, index) => (
-              buildSlotCandidate(slotId, pop, index, cardsMap, cardsById)
+            const pops = normalizeArray(slot.pops).flatMap((pop, index) => (
+              buildSlotCandidates(slotId, pop, index, cardsMap, cardsById)
             ))
             const browseCandidates = pops.length === 0 ? buildBrowseCandidates(slotId, slot, cardsMap, cardsById) : []
             const resolved = pops.length > 0

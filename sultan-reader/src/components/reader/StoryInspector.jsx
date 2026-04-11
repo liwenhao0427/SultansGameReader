@@ -873,6 +873,7 @@ export default function StoryInspector({ type, data, onClose }) {
   const [candidatePage, setCandidatePage] = useState(1)
   const [selectedConditionId, setSelectedConditionId] = useState(null)
   const [conditionSelectorOpen, setConditionSelectorOpen] = useState(false)
+  const [candidateConditionFilterText, setCandidateConditionFilterText] = useState('')
   const [slotBubbleTexts, setSlotBubbleTexts] = useState({})
   const [executionOpen, setExecutionOpen] = useState(false)
   const [executionMode, setExecutionMode] = useState('normal')
@@ -919,6 +920,7 @@ export default function StoryInspector({ type, data, onClose }) {
     setCandidatePage(1)
     setSelectedConditionId(null)
     setConditionSelectorOpen(false)
+    setCandidateConditionFilterText('')
     setRevealedLineCount(type === 'rite' ? initialLines.length : (initialLines.length > 0 ? 1 : 0))
     setRevealedSegmentCount(type === 'rite' ? 9999 : 0)
     setExecutionOpen(false)
@@ -1003,14 +1005,23 @@ export default function StoryInspector({ type, data, onClose }) {
     return groups
   }, [selectedSlot?.id, selectedSlotCandidates])
 
-  const activeConditionGroup = useMemo(() => {
-    if (selectedSlotConditionGroups.length === 0) return null
-    return selectedSlotConditionGroups.find((group) => group.id === selectedConditionId) || selectedSlotConditionGroups[0]
-  }, [selectedConditionId, selectedSlotConditionGroups])
+  const visibleConditionGroups = useMemo(() => {
+    const keyword = candidateConditionFilterText.trim().toLowerCase()
+    if (!keyword) return selectedSlotConditionGroups
+    return selectedSlotConditionGroups.filter((group) => (
+      (group.label || '').toLowerCase().includes(keyword)
+    ))
+  }, [candidateConditionFilterText, selectedSlotConditionGroups])
 
-  const activeConditionCandidates = useMemo(() => (
-    activeConditionGroup?.candidates || selectedSlotCandidates
-  ), [activeConditionGroup?.candidates, selectedSlotCandidates])
+  const activeConditionGroup = useMemo(() => {
+    if (visibleConditionGroups.length === 0) return null
+    return visibleConditionGroups.find((group) => group.id === selectedConditionId) || visibleConditionGroups[0]
+  }, [selectedConditionId, visibleConditionGroups])
+
+  const activeConditionCandidates = useMemo(() => {
+    if (visibleConditionGroups.length === 0) return []
+    return activeConditionGroup?.candidates || selectedSlotCandidates
+  }, [activeConditionGroup?.candidates, selectedSlotCandidates, visibleConditionGroups.length])
 
   const selectedSlotPageCount = useMemo(() => (
     Math.max(1, Math.ceil(activeConditionCandidates.length / RITE_CANDIDATE_PAGE_SIZE))
@@ -1026,21 +1037,36 @@ export default function StoryInspector({ type, data, onClose }) {
     return selectedSlot.candidates?.find((candidate) => candidate.id === slotSelections[selectedSlot.id]) || selectedSlot.candidates?.[0] || null
   }, [selectedSlot, slotSelections])
 
+  const selectedCandidatePopItems = useMemo(() => {
+    if (!selectedCandidate) return []
+    if (selectedCandidate.popItems?.length > 0) return selectedCandidate.popItems
+    if (selectedCandidate.choiceTexts?.length > 0) {
+      return selectedCandidate.choiceTexts.map((item) => ({
+        key: item.id,
+        slotId: selectedSlot?.id || null,
+        speakerKey: selectedSlot?.id || 'self',
+        text: item.text,
+      }))
+    }
+    return []
+  }, [selectedCandidate, selectedSlot?.id])
+
   useEffect(() => {
     setCandidatePage(1)
     setConditionSelectorOpen(false)
+    setCandidateConditionFilterText('')
   }, [activeSlotId])
 
   useEffect(() => {
-    if (selectedSlotConditionGroups.length === 0) {
+    if (visibleConditionGroups.length === 0) {
       setSelectedConditionId(null)
       return
     }
 
-    if (!selectedConditionId || !selectedSlotConditionGroups.some((group) => group.id === selectedConditionId)) {
-      setSelectedConditionId(selectedSlotConditionGroups[0].id)
+    if (!selectedConditionId || !visibleConditionGroups.some((group) => group.id === selectedConditionId)) {
+      setSelectedConditionId(visibleConditionGroups[0].id)
     }
-  }, [selectedConditionId, selectedSlotConditionGroups])
+  }, [selectedConditionId, visibleConditionGroups])
 
   useEffect(() => {
     if (!selectedSlot || !activeConditionGroup) return
@@ -1386,6 +1412,7 @@ export default function StoryInspector({ type, data, onClose }) {
     setCandidatePage(1)
     setSelectedConditionId(null)
     setConditionSelectorOpen(false)
+    setCandidateConditionFilterText('')
     resetFlow(slotId)
   }
 
@@ -1482,11 +1509,11 @@ export default function StoryInspector({ type, data, onClose }) {
   }
 
   function handleStepCondition(direction) {
-    if (selectedSlotConditionGroups.length <= 1) return
-    const currentIndex = selectedSlotConditionGroups.findIndex((group) => group.id === activeConditionGroup?.id)
+    if (visibleConditionGroups.length <= 1) return
+    const currentIndex = visibleConditionGroups.findIndex((group) => group.id === activeConditionGroup?.id)
     const safeIndex = currentIndex >= 0 ? currentIndex : 0
-    const nextIndex = (safeIndex + direction + selectedSlotConditionGroups.length) % selectedSlotConditionGroups.length
-    handleSelectConditionGroup(selectedSlotConditionGroups[nextIndex].id)
+    const nextIndex = (safeIndex + direction + visibleConditionGroups.length) % visibleConditionGroups.length
+    handleSelectConditionGroup(visibleConditionGroups[nextIndex].id)
   }
 
   function handleOpenWaitingRoundExecution() {
@@ -1940,12 +1967,19 @@ export default function StoryInspector({ type, data, onClose }) {
                       </div>
                     </div>
                     <div style={candidateToolbarStyle}>
+                      <input
+                        type="text"
+                        value={candidateConditionFilterText}
+                        onChange={(event) => setCandidateConditionFilterText(event.target.value)}
+                        placeholder="搜索条件"
+                        style={readerFilterInputStyle}
+                      />
                       <div style={candidateToolbarGroupStyle}>
                         <button
                           type="button"
                           style={secondaryButtonStyle}
                           onClick={() => handleStepCondition(-1)}
-                          disabled={selectedSlotConditionGroups.length <= 1}
+                          disabled={visibleConditionGroups.length <= 1}
                         >
                           上一个条件
                         </button>
@@ -1963,17 +1997,9 @@ export default function StoryInspector({ type, data, onClose }) {
                           type="button"
                           style={secondaryButtonStyle}
                           onClick={() => handleStepCondition(1)}
-                          disabled={selectedSlotConditionGroups.length <= 1}
+                          disabled={visibleConditionGroups.length <= 1}
                         >
                           下一个条件
-                        </button>
-                        <button
-                          type="button"
-                          style={secondaryButtonStyle}
-                          onClick={() => setConditionSelectorOpen(true)}
-                          disabled={selectedSlotConditionGroups.length === 0}
-                        >
-                          选择条件
                         </button>
                       </div>
                       <div style={candidateToolbarGroupStyle}>
@@ -2085,6 +2111,23 @@ export default function StoryInspector({ type, data, onClose }) {
                       <div style={translucentTextBlockStyle}>
                         <div style={{ fontSize: 16, lineHeight: 1.9, color: '#f7edd8', whiteSpace: 'pre-wrap' }}>
                           {model.intro}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedCandidatePopItems.length > 0 && !hideReaderUi && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                      <div style={sectionTitleStyle}>当前条件对白</div>
+                      <div style={translucentTextBlockStyle}>
+                        <div style={{ display: 'grid', gap: 12 }}>
+                          {selectedCandidatePopItems.map((pop, index) => (
+                            <StoryPopLine
+                              key={`${pop.key || 'pop'}:${index}`}
+                              pop={pop}
+                              card={selectedCandidate?.cards?.[0] || null}
+                            />
+                          ))}
                         </div>
                       </div>
                     </div>
@@ -2572,8 +2615,17 @@ export default function StoryInspector({ type, data, onClose }) {
                 关闭
               </button>
             </div>
+            <div style={selectionDialogSearchWrapStyle}>
+              <input
+                type="text"
+                value={candidateConditionFilterText}
+                onChange={(event) => setCandidateConditionFilterText(event.target.value)}
+                placeholder="搜索条件"
+                style={readerFilterInputStyle}
+              />
+            </div>
             <div style={selectionDialogBodyStyle}>
-              {selectedSlotConditionGroups.map((group) => (
+              {visibleConditionGroups.map((group) => (
                 <button
                   key={group.id}
                   type="button"
@@ -2589,6 +2641,11 @@ export default function StoryInspector({ type, data, onClose }) {
                   </div>
                 </button>
               ))}
+              {visibleConditionGroups.length === 0 && (
+                <div style={selectionDialogEmptyStyle}>
+                  没有匹配当前搜索的条件。
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -3409,11 +3466,24 @@ const selectionDialogHeaderStyle = {
   gap: 16,
 }
 
+const selectionDialogSearchWrapStyle = {
+  padding: '16px 20px 0',
+}
+
 const selectionDialogBodyStyle = {
   padding: 20,
   overflowY: 'auto',
   display: 'grid',
   gap: 12,
+}
+
+const selectionDialogEmptyStyle = {
+  padding: '18px 16px',
+  borderRadius: 18,
+  border: '1px solid rgba(212, 184, 126, 0.14)',
+  background: 'rgba(22, 18, 14, 0.94)',
+  color: '#cbb391',
+  textAlign: 'center',
 }
 
 const selectionDialogItemStyle = {
