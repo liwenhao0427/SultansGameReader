@@ -1631,22 +1631,6 @@ export default function StoryInspector({ type, data, onClose }) {
               selectedHintId={settlementSelections[selectedSlot?.id]}
               onToggle={handleSelectSettlementHint}
             />
-
-            <SettlementHintGroup
-              title="全局条件"
-              description="这些分支同样只允许选择一个，默认采用最后一项。"
-              hints={visibleGlobalSettlementHints
-                .filter((hint) => {
-                  const keyword = conditionFilterText.trim().toLowerCase()
-                  if (!keyword) return true
-                  return [hint.label, hint.conditionText, hint.primaryText].filter(Boolean).join(' ').toLowerCase().includes(keyword)
-                })}
-              selectedCount={globalSettlementSelection ? 1 : 0}
-              filterText={conditionFilterText}
-              onFilterChange={setConditionFilterText}
-              selectedHintId={globalSettlementSelection}
-              onToggle={handleSelectGlobalSettlementHint}
-            />
           </div>
         </div>
 
@@ -1675,6 +1659,22 @@ export default function StoryInspector({ type, data, onClose }) {
               display: 'grid',
               gap: 18,
             }} ref={readerBodyRef}>
+              <SettlementHintGroup
+                title="全局条件"
+                description="这些分支不绑定具体卡槽，会直接影响当前仪式的全局叙事与结果。"
+                hints={visibleGlobalSettlementHints
+                  .filter((hint) => {
+                    const keyword = conditionFilterText.trim().toLowerCase()
+                    if (!keyword) return true
+                    return [hint.label, hint.conditionText, hint.primaryText].filter(Boolean).join(' ').toLowerCase().includes(keyword)
+                  })}
+                selectedCount={globalSettlementSelection ? 1 : 0}
+                filterText={conditionFilterText}
+                onFilterChange={setConditionFilterText}
+                selectedHintId={globalSettlementSelection}
+                onToggle={handleSelectGlobalSettlementHint}
+              />
+
               {model.image && (
                 <PreviewImage pic={model.image} maxHeight={260} />
               )}
