@@ -532,6 +532,98 @@ function buildPhaseItem(item, cardsMap, cardsById, phase, slotIds = []) {
   }
 }
 
+function compareNumeric(actualValue, expectedValue, operator = '>=') {
+  const actual = Number(actualValue || 0)
+  const expected = Number(expectedValue || 0)
+
+  switch (operator) {
+    case '=':
+      return actual === expected
+    case '>':
+      return actual > expected
+    case '<':
+      return actual < expected
+    case '<=':
+      return actual <= expected
+    case '>=':
+    default:
+      return actual >= expected
+  }
+}
+
+function parseConditionOperator(rawKey) {
+  const match = String(rawKey).match(/^(.*?)(>=|<=|>|<|=)?$/)
+  return {
+    target: match?.[1] || String(rawKey),
+    operator: match?.[2] || '>=',
+  }
+}
+
+function matchesBrowseCondition(card, condition) {
+  if (!card || !condition || typeof condition !== 'object') return true
+
+  return Object.entries(condition).every(([key, value]) => {
+    if (key.endsWith('__c') || key.endsWith('__ca') || key.endsWith('__ci')) return true
+    if (key === 'any') {
+      if (Array.isArray(value)) return value.some((item) => matchesBrowseCondition(card, item))
+      if (value && typeof value === 'object') return Object.entries(value).some(([subKey, subValue]) => (
+        matchesBrowseCondition(card, { [subKey]: subValue })
+      ))
+      return true
+    }
+    if (key === 'all') {
+      if (Array.isArray(value)) return value.every((item) => matchesBrowseCondition(card, item))
+      if (value && typeof value === 'object') return matchesBrowseCondition(card, value)
+      return true
+    }
+
+    if (key === 'is') {
+      return normalizeArray(value).map(String).includes(String(card.id))
+    }
+    if (key === '!is') {
+      return !normalizeArray(value).map(String).includes(String(card.id))
+    }
+    if (key === 'type') {
+      return String(card.type || '') === String(value)
+    }
+    if (key === '!type') {
+      return String(card.type || '') !== String(value)
+    }
+
+    const negative = key.startsWith('!')
+    const normalizedKey = negative ? key.slice(1) : key
+    const costKey = normalizedKey.startsWith('cost.') ? normalizedKey.slice('cost.'.length) : normalizedKey
+    const { target, operator } = parseConditionOperator(costKey)
+    const actual = Number(card.tag?.[target] || 0)
+    const matched = compareNumeric(actual, value, operator)
+    return negative ? !matched : matched
+  })
+}
+
+function buildBrowseCandidates(slotId, slot, cardsMap, cardsById) {
+  if (!cardsById || typeof cardsById !== 'object') return []
+
+  const baseConditionText = parseConditionObject(slot?.condition || {}, cardsMap).join(' / ')
+  const matches = Object.values(cardsById)
+    .filter((card) => card?.id != null)
+    .filter((card) => matchesBrowseCondition(card, slot?.condition || {}))
+    .sort((a, b) => {
+      const rareDelta = Number(b?.rare || 0) - Number(a?.rare || 0)
+      if (rareDelta !== 0) return rareDelta
+      return Number(a?.id || 0) - Number(b?.id || 0)
+    })
+
+  return matches.map((card) => ({
+    id: `${slotId}:browse:${card.id}`,
+    label: card.name || String(card.id),
+    mode: 'card',
+    cards: [buildCardSummary(card.id, cardsMap, cardsById)],
+    bubbleText: '',
+    conditionText: baseConditionText,
+    isEmpty: false,
+  }))
+}
+
 function pickEventImage(data) {
   for (const settlement of normalizeArray(data.settlement)) {
     const pics = settlement?.action?.slide?.pics
@@ -702,20 +794,36 @@ export function adaptStoryData(type, data, cardsMap, cardsById = {}) {
           id: slotId,
           title: slotId.toUpperCase(),
           text: slot.text || '',
+          rawCondition: slot.condition || {},
+          canBeEmpty: Boolean(slot.is_empty),
+          hasExplicitCandidates: normalizeArray(slot.pops).length > 0,
           conditions: parseConditionObject(slot.condition, cardsMap),
           defaultCards: extractConditionCards(slot.condition || {}, cardsMap, cardsById),
           candidates: (() => {
             const pops = normalizeArray(slot.pops).map((pop, index) => (
               buildSlotCandidate(slotId, pop, index, cardsMap, cardsById)
             ))
-            const resolved = pops.length > 0 ? pops : [buildFallbackSlotCandidate(slotId, slot, cardsMap, cardsById)]
-            return [...resolved, buildEmptySlotCandidate(slotId, slot)]
+            const browseCandidates = pops.length === 0 ? buildBrowseCandidates(slotId, slot, cardsMap, cardsById) : []
+            const resolved = pops.length > 0
+              ? pops
+              : browseCandidates.length > 0
+                ? browseCandidates
+                : [buildFallbackSlotCandidate(slotId, slot, cardsMap, cardsById)]
+            return slot.is_empty ? [...resolved, buildEmptySlotCandidate(slotId, slot)] : resolved
           })(),
           settlementHints: settlementHintsBySlot[slotId] || [],
         })),
         globalSettlementHints,
         randomText: data.random_text || {},
         randomTextUp: data.random_text_up || {},
+        tipsText: data.tips_text || '',
+        waitingRoundEnd: data.waiting_round_end_action
+          ? {
+            effects: buildResultEffects(data.waiting_round_end_action, cardsMap, cardsById),
+            actions: extractActionTargets(data.waiting_round_end_action),
+            raw: data.waiting_round_end_action,
+          }
+          : null,
         segments: [
           ...normalizeArray(data.settlement_prior).map((item) => buildPhaseItem(item, cardsMap, cardsById, '前置结算', riteSlotIds)),
           ...normalizeArray(data.settlement).map((item) => buildPhaseItem(item, cardsMap, cardsById, '主结算', riteSlotIds)),

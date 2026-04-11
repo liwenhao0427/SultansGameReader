@@ -507,7 +507,7 @@ function SlotButton({ slot, active, candidate, tags, onClick, slotBgKey, bubbleT
             {slot.title}
           </div>
           {previewCard ? (
-            <div style={{ position: 'absolute', inset: '3px 4px 7px' }}>
+            <div style={{ position: 'absolute', inset: '8px 2px 2px 10px' }}>
               <CardPortrait card={previewCard} compact showName={false} />
             </div>
           ) : (
@@ -592,7 +592,7 @@ function ExecutionSlot({ slot, previewCard, slotCaption, slotBgKey }) {
         {slot.title}
       </div>
       {previewCard ? (
-        <div style={{ position: 'absolute', inset: '3px 4px 7px' }}>
+        <div style={{ position: 'absolute', inset: '8px 2px 2px 10px' }}>
           <CardPortrait card={previewCard} compact showName={false} />
         </div>
       ) : (
@@ -624,6 +624,7 @@ function ExecutionSlot({ slot, previewCard, slotCaption, slotBgKey }) {
 
 function CandidateHandItem({ candidate, active, onSelect }) {
   const previewCard = candidate.cards?.[0] || null
+  const secondaryText = previewCard?.title || candidate.conditionText || ''
 
   return (
     <button
@@ -638,7 +639,7 @@ function CandidateHandItem({ candidate, active, onSelect }) {
         border: active
           ? '1px solid rgba(239, 215, 169, 0.62)'
           : '1px solid rgba(244, 232, 206, 0.18)',
-        backgroundColor: active ? 'rgba(212, 184, 126, 0.08)' : 'rgba(18, 15, 11, 0.12)',
+        backgroundColor: active ? 'rgba(212, 184, 126, 0.14)' : 'rgba(18, 15, 11, 0.66)',
         color: '#f3ebda',
         boxShadow: active
           ? '0 0 0 2px rgba(212, 184, 126, 0.12), 0 12px 24px rgba(0,0,0,0.12)'
@@ -692,6 +693,11 @@ function CandidateHandItem({ candidate, active, onSelect }) {
             {candidate.label}
           </div>
           <ConditionPreview text={candidate.conditionText} color="#e1cfad" />
+          {secondaryText && (
+            <div style={{ marginTop: 6, color: '#d7c6a4', fontSize: 12, lineHeight: 1.5 }}>
+              {secondaryText}
+            </div>
+          )}
         </div>
         {!previewCard && candidate.cards.length <= 1 && (
           <div style={{
@@ -872,6 +878,7 @@ function matchesSlotOccupancyCondition(conditionRaw = {}, slotState = {}) {
 }
 
 export default function StoryInspector({ type, data, onClose }) {
+  const RITE_CANDIDATE_PAGE_SIZE = 8
   const cardsLite = useConfigStore((s) => s.cardsLite)
   const cardsById = useConfigStore((s) => s.cardsById)
   const model = adaptStoryData(type, data, cardsLite, cardsById)
@@ -887,8 +894,10 @@ export default function StoryInspector({ type, data, onClose }) {
   const [revealedSegmentCount, setRevealedSegmentCount] = useState(0)
   const [autoAdvance, setAutoAdvance] = useState(false)
   const [conditionFilterText, setConditionFilterText] = useState('')
+  const [candidatePage, setCandidatePage] = useState(1)
   const [slotBubbleTexts, setSlotBubbleTexts] = useState({})
   const [executionOpen, setExecutionOpen] = useState(false)
+  const [executionMode, setExecutionMode] = useState('normal')
   const [executionStepIndex, setExecutionStepIndex] = useState(0)
   const [executionAutoAdvance, setExecutionAutoAdvance] = useState(false)
   const [eventChoicePath, setEventChoicePath] = useState([])
@@ -928,9 +937,11 @@ export default function StoryInspector({ type, data, onClose }) {
     setGlobalSettlementSelection(pickDefaultHintId(model.globalSettlementHints || []))
     setSlotBubbleTexts({})
     setActiveSlotId(firstSlotId)
-    setRevealedLineCount(initialLines.length > 0 ? 1 : 0)
-    setRevealedSegmentCount(0)
+    setCandidatePage(1)
+    setRevealedLineCount(type === 'rite' ? initialLines.length : (initialLines.length > 0 ? 1 : 0))
+    setRevealedSegmentCount(type === 'rite' ? 9999 : 0)
     setExecutionOpen(false)
+    setExecutionMode('normal')
     setExecutionStepIndex(0)
     setEventChoicePath([])
     autoMountedEventIdRef.current = null
@@ -982,10 +993,34 @@ export default function StoryInspector({ type, data, onClose }) {
     [model?.slots, activeSlotId]
   )
 
+  const selectedSlotCandidates = useMemo(() => {
+    if (!selectedSlot) return []
+    return selectedSlot.candidates || []
+  }, [selectedSlot])
+
+  const selectedSlotPageCount = useMemo(() => (
+    Math.max(1, Math.ceil(selectedSlotCandidates.length / RITE_CANDIDATE_PAGE_SIZE))
+  ), [RITE_CANDIDATE_PAGE_SIZE, selectedSlotCandidates.length])
+
+  const pagedSelectedSlotCandidates = useMemo(() => {
+    const start = (candidatePage - 1) * RITE_CANDIDATE_PAGE_SIZE
+    return selectedSlotCandidates.slice(start, start + RITE_CANDIDATE_PAGE_SIZE)
+  }, [RITE_CANDIDATE_PAGE_SIZE, candidatePage, selectedSlotCandidates])
+
   const selectedCandidate = useMemo(() => {
     if (!selectedSlot) return null
     return selectedSlot.candidates?.find((candidate) => candidate.id === slotSelections[selectedSlot.id]) || selectedSlot.candidates?.[0] || null
   }, [selectedSlot, slotSelections])
+
+  useEffect(() => {
+    setCandidatePage(1)
+  }, [activeSlotId])
+
+  useEffect(() => {
+    if (candidatePage > selectedSlotPageCount) {
+      setCandidatePage(selectedSlotPageCount)
+    }
+  }, [candidatePage, selectedSlotPageCount])
 
   const slotSelectionState = useMemo(() => {
     return Object.fromEntries((model?.slots || []).map((slot) => {
@@ -1185,6 +1220,19 @@ export default function StoryInspector({ type, data, onClose }) {
   const visibleLines = dialogueLines.slice(0, revealedLineCount)
   const visibleSegments = availableSegments.slice(0, revealedSegmentCount)
   const executionSteps = useMemo(() => {
+    if (executionMode === 'waiting_round_end') {
+      if (!model?.waitingRoundEnd) return []
+      return [{
+        id: 'waiting-round-end',
+        phase: '超时结算',
+        title: '等待回合结束',
+        text: model.waitingRoundEnd.raw?.result_text || model.waitingRoundEnd.raw?.tips_text || '',
+        effects: model.waitingRoundEnd.effects || [],
+        actions: (model.waitingRoundEnd.actions || []).filter((action) => action?.targetType && action?.targetId),
+        conditions: [],
+      }]
+    }
+
     const introSteps = dialogueLines.map((line, index) => ({
       id: `line:${index}`,
       phase: '仪式正文',
@@ -1205,7 +1253,7 @@ export default function StoryInspector({ type, data, onClose }) {
     }))
 
     return [...introSteps, ...segmentSteps]
-  }, [availableSegments, dialogueLines])
+  }, [availableSegments, dialogueLines, executionMode, model?.waitingRoundEnd])
   const currentGateSegment = visibleSegments.find((segment) => segment.options?.length > 0)
   const canRevealLine = revealedLineCount < dialogueLines.length
   const canRevealSegment = !canRevealLine && !currentGateSegment && revealedSegmentCount < availableSegments.length
@@ -1272,8 +1320,8 @@ export default function StoryInspector({ type, data, onClose }) {
 
   function resetFlow(nextSlotId = activeSlotId, nextSelections = slotSelections, nextSettlementSelections = settlementSelections, nextGlobalSelection = globalSettlementSelection) {
     const nextLines = buildDialogueLines(nextSlotId, nextSelections, nextSettlementSelections, nextGlobalSelection)
-    setRevealedLineCount(nextLines.length > 0 ? 1 : 0)
-    setRevealedSegmentCount(0)
+    setRevealedLineCount(type === 'rite' ? nextLines.length : (nextLines.length > 0 ? 1 : 0))
+    setRevealedSegmentCount(type === 'rite' ? 9999 : 0)
     setExecutionStepIndex(0)
   }
 
@@ -1294,6 +1342,7 @@ export default function StoryInspector({ type, data, onClose }) {
   function handleSelectSlot(slotId) {
     setActiveSlotId(slotId)
     setConditionFilterText('')
+    setCandidatePage(1)
     resetFlow(slotId)
   }
 
@@ -1306,6 +1355,7 @@ export default function StoryInspector({ type, data, onClose }) {
     }
 
     setSlotSelections(nextSelections)
+    setCandidatePage(1)
     const nextCandidate = selectedSlot.candidates?.find((candidate) => candidate.id === candidateId) || null
     if (nextCandidate?.bubbleText) {
       const bubbleText = nextCandidate.bubbleText
@@ -1362,6 +1412,15 @@ export default function StoryInspector({ type, data, onClose }) {
 
   function handleOpenExecution() {
     executedActionKeyRef.current = new Set()
+    setExecutionMode('normal')
+    setExecutionStepIndex(0)
+    setExecutionAutoAdvance(false)
+    setExecutionOpen(true)
+  }
+
+  function handleOpenWaitingRoundExecution() {
+    executedActionKeyRef.current = new Set()
+    setExecutionMode('waiting_round_end')
     setExecutionStepIndex(0)
     setExecutionAutoAdvance(false)
     setExecutionOpen(true)
@@ -1386,13 +1445,15 @@ export default function StoryInspector({ type, data, onClose }) {
     setSettlementSelections(hintDefaults)
     setGlobalSettlementSelection(pickDefaultHintId(model.globalSettlementHints || []))
     setConditionFilterText('')
+    setCandidatePage(1)
     setSlotBubbleTexts({})
     setActiveSlotId(model.slots?.[0]?.id || null)
     const nextLines = splitIntro(model.intro)
-    setRevealedLineCount(nextLines.length > 0 ? 1 : 0)
-    setRevealedSegmentCount(0)
+    setRevealedLineCount(type === 'rite' ? nextLines.length : (nextLines.length > 0 ? 1 : 0))
+    setRevealedSegmentCount(type === 'rite' ? 9999 : 0)
     setAutoAdvance(false)
     setExecutionOpen(false)
+    setExecutionMode('normal')
     setExecutionStepIndex(0)
     setExecutionAutoAdvance(false)
     executedActionKeyRef.current = new Set()
@@ -1719,143 +1780,304 @@ export default function StoryInspector({ type, data, onClose }) {
         height: '100%',
         minHeight: 0,
         display: 'grid',
-        gridTemplateColumns: model.slots.length > 0 ? '232px minmax(280px, 360px) minmax(0, 0.92fr)' : 'minmax(280px, 360px) minmax(0, 0.92fr)',
+        gridTemplateColumns: type === 'rite'
+          ? 'minmax(0, 2fr) minmax(360px, 1fr)'
+          : 'minmax(0, 1fr)',
         gap: 22,
         overflow: 'hidden',
       }}>
-        {model.slots.length > 0 && (
-          <div style={{
-            height: '100%',
-            minHeight: 0,
-            borderRadius: 32,
-            border: '1px solid rgba(244, 232, 206, 0.2)',
-            backgroundColor: 'rgba(20, 16, 12, 0.18)',
-            boxShadow: '0 12px 28px rgba(0, 0, 0, 0.14)',
-            padding: '20px 16px',
-            display: 'grid',
-            gridTemplateRows: 'auto minmax(0, 1fr) auto',
-            gap: 16,
-            overflow: 'hidden',
-          }}>
-            <div>
-              <div style={sectionTitleStyle}>卡牌槽位</div>
+        {type === 'rite' ? (
+          <>
+            <div style={{
+              height: '100%',
+              minHeight: 0,
+              display: 'grid',
+              gridTemplateRows: 'auto minmax(0, 1fr)',
+              gap: 18,
+              overflow: 'hidden',
+            }}>
+              {model.slots.length > 0 && (
+                <div style={ritePreparationPanelStyle}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, alignItems: 'center' }}>
+                    <div>
+                      <div style={sectionTitleStyle}>卡牌槽位</div>
+                      <div style={{ ...smallLineStyle, marginTop: 8 }}>
+                        固定槽位会直接显示指定卡牌，条件槽位可在下方分页浏览满足条件的卡牌。
+                      </div>
+                    </div>
+                    <button type="button" style={secondaryButtonStyle} onClick={handleManualReset}>
+                      重置仪式
+                    </button>
+                  </div>
+
+                  <div style={riteSlotScrollerStyle}>
+                    {model.slots.map((slot) => {
+                      const currentCandidate = slot.candidates?.find((candidate) => candidate.id === slotSelections[slot.id]) || slot.candidates?.[0] || null
+                      const overrideCard = slotOverrideCards[slot.id] || null
+                      const displayCandidate = overrideCard
+                        ? { ...currentCandidate, cards: [overrideCard], label: overrideCard.name || currentCandidate?.label }
+                        : currentCandidate
+                      const activeTags = (slot.settlementHints || [])
+                        .filter((hint) => settlementSelections[slot.id] === hint.id)
+                        .map((hint) => ({
+                          id: hint.id,
+                          label: hint.label,
+                          onRemove: () => {
+                            const next = { ...settlementSelections, [slot.id]: null }
+                            setSettlementSelections(next)
+                            resetFlow(activeSlotId, slotSelections, next, globalSettlementSelection)
+                          },
+                        }))
+                      return (
+                        <SlotButton
+                          key={slot.id}
+                          slot={slot}
+                          slotBgKey={slotBackgroundMap?.[slot.id]?.slot_bg || templateData?.nomal_slot_bg || READER_CHROME.assets.slotFrame.asset}
+                          active={activeSlotId === slot.id}
+                          candidate={displayCandidate}
+                          bubbleText={slotBubbleTexts[slot.id]}
+                          tags={activeTags}
+                          onClick={() => handleSelectSlot(slot.id)}
+                        />
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+              <div style={candidateStageStyle}>
+                <div>
+                  <div style={sectionTitleStyle}>卡牌候选</div>
+                  <div style={{ ...smallLineStyle, marginTop: 8 }}>
+                    当前槽位：{selectedSlot?.title || '未选择槽位'}
+                  </div>
+                  {selectedSlot?.text && (
+                    <div style={translucentTextBlockStyle}>
+                      {selectedSlot.text}
+                    </div>
+                  )}
+                  {selectedSlot?.conditions?.length > 0 && (
+                    <div style={{ ...smallLineStyle, marginTop: 8 }}>
+                      <span title={selectedSlot.conditions.join('；')}>
+                        可放入条件：{selectedSlot.conditions.join('；')}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                <div style={{
+                  marginTop: 16,
+                  minHeight: 0,
+                  overflowY: 'auto',
+                  paddingRight: 4,
+                  display: 'grid',
+                  gap: 18,
+                  alignContent: 'start',
+                }}>
+                  {selectedSlotCandidates.length > 0 ? (
+                    <>
+                      <div style={riteCandidateGridStyle}>
+                        {pagedSelectedSlotCandidates.map((candidate) => (
+                          <CandidateHandItem
+                            key={candidate.id}
+                            candidate={candidate}
+                            active={slotSelections[selectedSlot.id] === candidate.id}
+                            onSelect={() => handleChangeCandidate(candidate.id)}
+                          />
+                        ))}
+                      </div>
+                      {selectedSlotPageCount > 1 && (
+                        <div style={ritePaginationStyle}>
+                          <button
+                            type="button"
+                            style={secondaryButtonStyle}
+                            onClick={() => setCandidatePage((page) => Math.max(1, page - 1))}
+                            disabled={candidatePage === 1}
+                          >
+                            上一页
+                          </button>
+                          <span style={smallLineStyle}>
+                            {candidatePage} / {selectedSlotPageCount}
+                          </span>
+                          <button
+                            type="button"
+                            style={secondaryButtonStyle}
+                            onClick={() => setCandidatePage((page) => Math.min(selectedSlotPageCount, page + 1))}
+                            disabled={candidatePage === selectedSlotPageCount}
+                          >
+                            下一页
+                          </button>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div style={emptyCandidateStyle}>
+                      <div style={{ fontSize: 18, fontWeight: 700, color: '#f5e5c4' }}>
+                        当前槽位暂无可选卡牌
+                      </div>
+                      <div style={{ ...smallLineStyle, marginTop: 10, textAlign: 'center' }}>
+                        这个槽位没有找到可直接展示的候选卡牌。
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
 
             <div style={{
-              display: 'flex',
-              flexWrap: 'wrap',
-              gap: 14,
-              overflowY: 'auto',
-              paddingRight: 4,
-              alignContent: 'flex-start',
+              height: '100%',
+              minHeight: 0,
+              display: 'grid',
+              gridTemplateColumns: '1fr',
+              overflow: 'hidden',
             }}>
-              {model.slots.map((slot) => {
-                const currentCandidate = slot.candidates?.find((candidate) => candidate.id === slotSelections[slot.id]) || slot.candidates?.[0] || null
-                // 结算条件有卡牌时，构造一个覆盖候选用于显示
-                const overrideCard = slotOverrideCards[slot.id] || null
-                const displayCandidate = overrideCard
-                  ? { ...currentCandidate, cards: [overrideCard], label: overrideCard.name || currentCandidate?.label }
-                  : currentCandidate
-                const activeTags = (slot.settlementHints || [])
-                  .filter((hint) => settlementSelections[slot.id] === hint.id)
-                  .map((hint) => ({
-                    id: hint.id,
-                    label: hint.label,
-                    onRemove: () => {
-                      // x 按钮：直接取消选中（置 null）
-                      const next = { ...settlementSelections, [slot.id]: null }
-                      setSettlementSelections(next)
-                      resetFlow(activeSlotId, slotSelections, next, globalSettlementSelection)
-                    },
-                  }))
-                return (
-                  <SlotButton
-                    key={slot.id}
-                    slot={slot}
-                    slotBgKey={slotBackgroundMap?.[slot.id]?.slot_bg || templateData?.nomal_slot_bg || READER_CHROME.assets.slotFrame.asset}
-                    active={activeSlotId === slot.id}
-                    candidate={displayCandidate}
-                    bubbleText={slotBubbleTexts[slot.id]}
-                    tags={activeTags}
-                    onClick={() => handleSelectSlot(slot.id)}
+              <div style={ritePreparationInfoPanelStyle}>
+                <div style={{
+                  minHeight: 0,
+                  overflowY: 'auto',
+                  padding: '24px 24px 16px',
+                  display: 'grid',
+                  gap: 18,
+                }} ref={readerBodyRef}>
+                  {model.image && (
+                    <PreviewImage pic={model.image} maxHeight={240} />
+                  )}
+
+                  {model.tipsText && (
+                    <div>
+                      <div style={sectionTitleStyle}>准备提示</div>
+                      <div style={translucentTextBlockStyle}>{model.tipsText}</div>
+                    </div>
+                  )}
+
+                  {model.tags?.length > 0 && (
+                    <div>
+                      <div style={sectionTitleStyle}>标签提示</div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
+                        {model.tags.map((tag) => (
+                          <span key={tag} style={effectChipStyle}>{tag}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {visibleLines.length > 0 && (
+                    <div style={{ display: 'grid', gap: 12 }}>
+                      <div style={sectionTitleStyle}>仪式正文</div>
+                      {visibleLines.map((line, index) => (
+                        <div key={`${line}-${index}`} style={translucentTextBlockStyle}>
+                          <div style={{ fontSize: 16, lineHeight: 1.9, color: '#f7edd8', whiteSpace: 'pre-wrap' }}>
+                            {line}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {selectedSlot && (
+                    <div>
+                      <div style={sectionTitleStyle}>当前槽位说明</div>
+                      <div style={translucentTextBlockStyle}>
+                        <div style={{ fontWeight: 700, color: '#fff0d0' }}>{selectedSlot.title}</div>
+                        {selectedSlot.text && <div style={{ marginTop: 8 }}>{selectedSlot.text}</div>}
+                        {selectedSlot.conditions?.length > 0 && (
+                          <div style={{ marginTop: 8, color: '#dcc9a6' }}>
+                            条件：{selectedSlot.conditions.join('；')}
+                          </div>
+                        )}
+                        <div style={{ marginTop: 8, color: '#dcc9a6' }}>
+                          {selectedSlot.canBeEmpty ? '该槽位允许空置。' : '该槽位不可为空。'}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedSlot && (
+                    <SettlementHintGroup
+                      title="槽位条件"
+                      description="点击切换当前槽位的结算条件。"
+                      hints={(visibleSettlementHintsBySlot[selectedSlot.id] || []).filter((hint) => {
+                        const keyword = conditionFilterText.trim().toLowerCase()
+                        if (!keyword) return true
+                        return [hint.label, hint.conditionText, hint.primaryText].filter(Boolean).join(' ').toLowerCase().includes(keyword)
+                      })}
+                      selectedCount={selectedSettlementHints.length > 0 ? 1 : 0}
+                      filterText={conditionFilterText}
+                      onFilterChange={setConditionFilterText}
+                      selectedHintId={settlementSelections[selectedSlot?.id]}
+                      onToggle={handleSelectSettlementHint}
+                    />
+                  )}
+
+                  <SettlementHintGroup
+                    title="全局条件"
+                    description="这些条件会影响整个仪式的结算展示。"
+                    hints={visibleGlobalSettlementHints.filter((hint) => {
+                      const keyword = conditionFilterText.trim().toLowerCase()
+                      if (!keyword) return true
+                      return [hint.label, hint.conditionText, hint.primaryText].filter(Boolean).join(' ').toLowerCase().includes(keyword)
+                    })}
+                    selectedCount={globalSettlementSelection ? 1 : 0}
+                    filterText={conditionFilterText}
+                    onFilterChange={setConditionFilterText}
+                    selectedHintId={globalSettlementSelection}
+                    onToggle={handleSelectGlobalSettlementHint}
                   />
-                )
-              })}
-            </div>
 
-            <button type="button" style={secondaryButtonStyle} onClick={handleManualReset}>
-              重置仪式
-            </button>
-          </div>
-        )}
-
-        <div style={candidateStageStyle}>
-          <div>
-            <div style={sectionTitleStyle}>卡牌候选</div>
-            <div style={{ ...smallLineStyle, marginTop: 8 }}>
-              当前显示的是 {selectedSlot?.title || '当前槽位'} 的候选卡牌或条件分支。
-            </div>
-            {selectedSlot?.text && (
-              <div style={{ ...smallLineStyle, marginTop: 10 }}>
-                {selectedSlot.text}
-              </div>
-            )}
-            {selectedSlot?.conditions?.length > 0 && (
-              <div style={{ ...smallLineStyle, marginTop: 8 }}>
-                <span title={selectedSlot.conditions.join('，')}>
-                  可放入条件：{selectedSlot.conditions.join('，')}
-                </span>
-              </div>
-            )}
-          </div>
-
-          <div style={{
-            marginTop: 16,
-            minHeight: 0,
-            overflowY: 'auto',
-            paddingRight: 4,
-            display: 'grid',
-            gap: 18,
-            alignContent: 'start',
-          }}>
-            {selectedSlot?.candidates?.length > 0 ? (
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-                gap: 14,
-              }}>
-                {selectedSlot.candidates.map((candidate) => (
-                  <CandidateHandItem
-                    key={candidate.id}
-                    candidate={candidate}
-                    active={slotSelections[selectedSlot.id] === candidate.id}
-                    onSelect={() => handleChangeCandidate(candidate.id)}
-                  />
-                ))}
-              </div>
-            ) : (
-              <div style={emptyCandidateStyle}>
-                <div style={{ fontSize: 18, fontWeight: 700, color: '#f5e5c4' }}>
-                  当前槽位没有显式候选
+                  {visibleSegments.length > 0 && (
+                    <div style={{ display: 'grid', gap: 14 }}>
+                      <div style={sectionTitleStyle}>可见结算片段</div>
+                      {visibleSegments.map((segment, index) => (
+                        <div key={`${segment.phase}-${index}`} style={segmentCardStyle}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 14 }}>
+                            <div>
+                              <div style={sectionTitleStyle}>{segment.phase}</div>
+                              {segment.title && (
+                                <div style={{ marginTop: 8, fontSize: 18, fontWeight: 700 }}>{segment.title}</div>
+                              )}
+                            </div>
+                            {segment.conditions.length > 0 && (
+                              <div style={{ ...smallLineStyle, maxWidth: 200, textAlign: 'right' }}>
+                                {segment.conditions.join(' / ')}
+                              </div>
+                            )}
+                          </div>
+                          {segment.text && (
+                            <div style={{ marginTop: 12, fontSize: 15, lineHeight: 1.85, whiteSpace: 'pre-wrap' }}>
+                              {segment.text}
+                            </div>
+                          )}
+                          <EffectSummary effects={segment.effects} onOpenCard={handleOpenCard} />
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
-                <div style={{ ...smallLineStyle, marginTop: 10, textAlign: 'center' }}>
-                  这个槽位没有直接给出 `pops` 候选卡牌。
-                  <br />
-                  目前先按槽位说明与后续结算文本继续阅读。
+
+                <div style={ritePreparationFooterStyle}>
+                  {type === 'rite' && executionSteps.length > 0 && (
+                    <button
+                      type="button"
+                      style={primaryButtonStyle}
+                      onClick={handleOpenExecution}
+                    >
+                      进入结算
+                    </button>
+                  )}
+                  {type === 'rite' && model.waitingRoundEnd && (
+                    <button
+                      type="button"
+                      style={actionButtonStyle}
+                      onClick={handleOpenWaitingRoundExecution}
+                    >
+                      超时结算
+                    </button>
+                  )}
                 </div>
-                {selectedSlot?.conditions?.length > 0 && (
-                  <div style={{ ...smallLineStyle, marginTop: 12, textAlign: 'center' }}>
-                    <span title={selectedSlot.conditions.join('；')}>
-                      条件：{selectedSlot.conditions.join('；')}
-                    </span>
-                  </div>
-                )}
               </div>
-            )}
-
-          </div>
-        </div>
-
+            </div>
+          </>
+        ) : (
         <div style={{
           height: '100%',
           minHeight: 0,
@@ -2035,6 +2257,7 @@ export default function StoryInspector({ type, data, onClose }) {
             </div>
           </div>
         </div>
+        )}
       </div>
     </div>
   )
@@ -2063,8 +2286,25 @@ export default function StoryInspector({ type, data, onClose }) {
         <div style={executionOverlayStyle}>
           <div style={executionModalStyle}>
             <div style={executionStageStyle}>
-              {/* 顶部标题条：仅保留背景色 */}
-              <div style={executionToolbarStyle} />
+              <div style={executionToolbarStyle}>
+                <div>
+                  <div style={sectionTitleStyle}>{executionMode === 'waiting_round_end' ? '超时结算' : '仪式结算'}</div>
+                  <div style={{ ...smallLineStyle, marginTop: 6, color: '#6a4623' }}>
+                    {executionMode === 'waiting_round_end' ? '单独展示 waiting_round_end_action 的执行结果。' : '按当前准备状态预览仪式结算步骤。'}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  style={closeButtonStyle}
+                  onClick={() => {
+                    setExecutionOpen(false)
+                    setExecutionAutoAdvance(false)
+                    setExecutionMode('normal')
+                  }}
+                >
+                  关闭结算
+                </button>
+              </div>
 
               <div style={executionBodyStyle}>
                 <div style={{
@@ -2841,7 +3081,7 @@ const candidateStageStyle = {
   height: '100%',
   borderRadius: 32,
   border: '1px solid rgba(244, 232, 206, 0.2)',
-  backgroundColor: 'rgba(16, 14, 11, 0.14)',
+  backgroundColor: 'rgba(16, 14, 11, 0.72)',
   boxShadow: '0 12px 26px rgba(0, 0, 0, 0.1)',
   padding: '20px 18px 18px',
   minHeight: 0,
@@ -2854,7 +3094,7 @@ const emptyCandidateStyle = {
   marginTop: 16,
   borderRadius: 24,
   border: '1px dashed rgba(244, 232, 206, 0.18)',
-  backgroundColor: 'rgba(22, 18, 14, 0.14)',
+  backgroundColor: 'rgba(22, 18, 14, 0.76)',
   padding: '22px 18px',
   display: 'flex',
   flexDirection: 'column',
@@ -2867,7 +3107,7 @@ const primaryButtonStyle = {
   padding: '12px 18px',
   borderRadius: 999,
   border: '1px solid rgba(212, 184, 126, 0.24)',
-  backgroundColor: 'rgba(212, 184, 126, 0.14)',
+  backgroundColor: 'rgba(212, 184, 126, 0.28)',
   color: '#fff1d4',
   cursor: 'pointer',
   fontSize: 14,
@@ -2877,7 +3117,7 @@ const secondaryButtonStyle = {
   padding: '10px 16px',
   borderRadius: 999,
   border: '1px solid rgba(212, 184, 126, 0.18)',
-  backgroundColor: 'rgba(212, 184, 126, 0.08)',
+  backgroundColor: 'rgba(22, 18, 14, 0.82)',
   color: '#f3ead8',
   cursor: 'pointer',
 }
@@ -2902,9 +3142,75 @@ const actionButtonStyle = {
   padding: '10px 14px',
   borderRadius: 999,
   border: '1px solid rgba(143, 191, 119, 0.24)',
-  backgroundColor: 'rgba(143, 191, 119, 0.08)',
+  backgroundColor: 'rgba(83, 116, 70, 0.72)',
   color: '#e5f1d9',
   cursor: 'pointer',
+}
+
+const ritePreparationPanelStyle = {
+  borderRadius: 32,
+  border: '1px solid rgba(244, 232, 206, 0.2)',
+  backgroundColor: 'rgba(20, 16, 12, 0.78)',
+  boxShadow: '0 12px 28px rgba(0, 0, 0, 0.18)',
+  padding: '20px 18px',
+  display: 'grid',
+  gap: 16,
+  overflow: 'hidden',
+}
+
+const riteSlotScrollerStyle = {
+  display: 'flex',
+  gap: 14,
+  overflowX: 'auto',
+  overflowY: 'hidden',
+  paddingBottom: 8,
+  alignItems: 'flex-start',
+}
+
+const riteCandidateGridStyle = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+  gap: 14,
+}
+
+const ritePaginationStyle = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  gap: 12,
+}
+
+const ritePreparationInfoPanelStyle = {
+  height: '100%',
+  minHeight: 0,
+  borderRadius: 32,
+  border: '1px solid rgba(244, 232, 206, 0.2)',
+  boxShadow: '0 16px 34px rgba(0, 0, 0, 0.18)',
+  backgroundColor: 'rgba(22, 17, 13, 0.78)',
+  overflow: 'hidden',
+  display: 'grid',
+  gridTemplateRows: 'minmax(0, 1fr) auto',
+}
+
+const ritePreparationFooterStyle = {
+  padding: '16px 24px 24px',
+  borderTop: '1px solid rgba(212, 184, 126, 0.12)',
+  display: 'flex',
+  gap: 12,
+  flexWrap: 'wrap',
+  alignItems: 'center',
+}
+
+const translucentTextBlockStyle = {
+  marginTop: 10,
+  padding: '14px 16px',
+  borderRadius: 18,
+  background: 'rgba(12, 10, 8, 0.58)',
+  border: '1px solid rgba(244, 232, 206, 0.12)',
+  color: '#f2ead7',
+  fontSize: 14,
+  lineHeight: 1.8,
+  whiteSpace: 'pre-wrap',
 }
 
 const branchSuccessButtonStyle = {
