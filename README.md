@@ -267,4 +267,4 @@ npm run pack:win
 
 如果这个工具对你有帮助，欢迎支持作者继续完善阅读器。
 
-<img src="/C:/Users/temp/项目/SultansGameReader/sultan-reader/src/assets/donate-support.jpeg" alt="支持作者开发" width="220" />
+<img src="sultan-reader/src/assets/donate-support.jpeg" alt="支持作者开发" width="220" />
