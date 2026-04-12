@@ -29,5 +29,7 @@ describe('executionUtils - 仪式 5000003', () => {
     expect(
       s3Group.options.some((option) => (option.fullLabel || option.label || '').includes('s3戴上了荆棘戒指'))
     ).toBe(true)
+    expect(Object.keys(flow.autoSelections || {}).length).toBeGreaterThan(0)
+    expect(flow.steps.some((step) => step.kind === 'choice' && step.groupId === 's3')).toBe(true)
   })
 })

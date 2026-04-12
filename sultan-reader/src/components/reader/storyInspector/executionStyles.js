@@ -229,13 +229,22 @@ export const executionStyles = {
     background: 'rgba(22, 18, 14, 0.28)',
     cursor: 'pointer',
     textAlign: 'left',
-    flex: '0 1 260px',
+    flex: '0 1 180px',
+  },
+  conditionOptionLabel: {
+    fontSize: 13,
+    lineHeight: 1.4,
+    color: '#fff4de',
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
   },
   conditionOptionActive: {
     border: '1px solid rgba(143, 191, 119, 0.42)',
     background: 'rgba(100, 140, 83, 0.18)',
   },
   conditionOptionHint: {
+    display: 'none',
     marginTop: 4,
     fontSize: 11,
     lineHeight: 1.45,
@@ -275,6 +284,14 @@ export const executionStyles = {
     gap: 4,
     textAlign: 'left',
     cursor: 'pointer',
+  },
+  pagerSummaryLabel: {
+    fontSize: 13,
+    lineHeight: 1.4,
+    color: '#f8edd9',
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
   },
   detailButton: {
     padding: '8px 12px',

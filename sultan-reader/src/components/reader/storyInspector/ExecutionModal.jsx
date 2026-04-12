@@ -276,20 +276,16 @@ function LegacyInlineChoiceStep({ group, selectedId, onSelect, onOpenDetail }) {
   )
 }
 
+function truncateConditionLabel(text, maxLength = 10) {
+  const raw = String(text || '').replace(/\s+/g, ' ').trim()
+  if (!raw) return ''
+  return raw.length > maxLength ? `${raw.slice(0, maxLength)}…` : raw
+}
+
 function ConditionGroupIntro({ group }) {
   return (
     <div style={styles.conditionIntro}>
       <div style={styles.headerLabel}>{group.title}</div>
-      {group.phaseText ? <div style={styles.conditionLeadText}>{group.phaseText}</div> : null}
-      {group.promptText ? <div style={styles.conditionAccentText}>{group.promptText}</div> : null}
-      {group.description ? <div style={styles.conditionMetaText}>{group.description}</div> : null}
-      {group.tipLines?.length > 0 ? (
-        <div style={styles.conditionTipList}>
-          {group.tipLines.map((tip, index) => (
-            <span key={`${group.id}:tip:${index}`} style={styles.conditionTipChip}>{tip}</span>
-          ))}
-        </div>
-      ) : null}
     </div>
   )
 }
@@ -306,8 +302,8 @@ function ConditionGridGroup({ group, selectedId, onSelect }) {
             onClick={() => onSelect(group.id, option.id === selectedId ? null : option.id)}
             style={option.id === selectedId ? { ...styles.conditionOption, ...styles.conditionOptionActive } : styles.conditionOption}
           >
-            <div style={{ fontSize: 13, lineHeight: 1.55, color: '#fff4de', whiteSpace: 'pre-wrap' }}>
-              {option.label}
+            <div style={styles.conditionOptionLabel} title={option.fullLabel || option.label}>
+              {truncateConditionLabel(option.label)}
             </div>
             {option.hiddenCount > 0 ? (
               <div style={styles.conditionOptionHint}>另有 {option.hiddenCount} 条条件</div>
@@ -340,8 +336,8 @@ function ConditionPagerGroup({ group, selectedId, onSelect, onOpenDetail }) {
           <div style={{ fontSize: 13, color: '#ccb38e' }}>
             {activeIndex + 1} / {group.options.length}
           </div>
-          <div style={{ fontSize: 13, lineHeight: 1.55, color: '#f8edd9', whiteSpace: 'pre-wrap' }}>
-            {activeOption?.label}
+          <div style={styles.pagerSummaryLabel} title={activeOption?.fullLabel || activeOption?.label || ''}>
+            {truncateConditionLabel(activeOption?.label)}
           </div>
           <div style={styles.conditionOptionHint}>
             {activeOption?.hiddenCount > 0 ? `点击查看全部，另有 ${activeOption.hiddenCount} 条条件` : '点击查看全部条件'}
@@ -515,7 +511,7 @@ export default function ExecutionModal({
 
                   return (
                   <div key={step.id} style={styles.narrativeSection}>
-                    {!hideRepeatedConditionInfo ? <div style={styles.metaTag}>{step.phase}</div> : null}
+                    {!hideRepeatedConditionInfo && step.phase ? <div style={styles.metaTag}>{step.phase}</div> : null}
                     {step.title ? <div style={styles.stepTitle}>{step.title}</div> : null}
                     {!hideRepeatedConditionInfo && step.conditions?.length > 0 ? (
                       <div style={{ ...styles.contentBlock, ...styles.conditionChips }}>

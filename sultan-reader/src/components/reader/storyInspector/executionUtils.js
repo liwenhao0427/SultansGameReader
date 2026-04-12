@@ -429,6 +429,22 @@ function buildDicePromptStep(model, groupId) {
   }
 }
 
+function buildChoiceStepPlain(group) {
+  return {
+    id: `choice:${group.id}`,
+    kind: 'choice',
+    phase: '',
+    title: '',
+    text: '',
+    conditions: [],
+    effects: [],
+    actions: [],
+    popItems: [],
+    tips: [],
+    groupId: group.id,
+  }
+}
+
 function buildChoiceStep(model, group) {
   return {
     id: `choice:${group.id}`,
@@ -646,7 +662,7 @@ export function buildExecutionFlow(model, context = {}) {
       const group = collectGroupOptions(model, phases, index, blockGroupId, context.cardsMap, context.slotCards || {}, context.counterRegistry)
       if (group.options.length > 0) {
         conditionGroups.push(group)
-        steps.push(buildChoiceStep(model, group))
+        steps.push(buildChoiceStepPlain(group))
         renderedChoiceGroups.add(blockGroupId)
       }
     }
@@ -674,25 +690,17 @@ export function buildExecutionFlow(model, context = {}) {
         break
       }
 
-      if (!resolvedSelections[groupId] && group.isSlot) {
-        const selectedCard = context.slotCards?.[groupId] || null
-        const autoOptionId = pickDefaultSlotOption(group, selectedCard)
-        if (autoOptionId) {
-          resolvedSelections[groupId] = autoOptionId
-          autoSelections[groupId] = autoOptionId
-          continue
-        }
-      }
-
-      if (!resolvedSelections[groupId] && /^(counter|global_counter)/i.test(groupId)) {
-        const skipOptionId = buildSkipOptionId(groupId)
-        resolvedSelections[groupId] = skipOptionId
-        autoSelections[groupId] = skipOptionId
-        continue
-      }
-
       if (!resolvedSelections[groupId]) {
-        break
+        const skipOptionId = buildSkipOptionId(groupId)
+        let autoOptionId = skipOptionId
+
+        if (group.isSlot) {
+          const selectedCard = context.slotCards?.[groupId] || null
+          autoOptionId = pickDefaultSlotOption(group, selectedCard) || skipOptionId
+        }
+
+        resolvedSelections[groupId] = autoOptionId
+        autoSelections[groupId] = autoOptionId
       }
 
       continue
