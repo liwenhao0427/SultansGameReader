@@ -606,6 +606,7 @@ function CanvasInner() {
   }, [screenToFlowPosition])
 
   const onNodeClick = useCallback((_event, node) => {
+    if (!_event.target?.closest?.('[data-node-body="true"]')) return
     setSelectedNode(node.id, node.type === 'rite' ? 'fullscreen' : 'panel')
     setTooltip(null)
   }, [setSelectedNode])
@@ -688,11 +689,12 @@ function CanvasInner() {
         option.relation.branchType,
         option.conditionText || option.resultTitle || option.resultText || ''
       )
+
+      runAutoLayout()
+      setNodes(useCanvasStore.getState().nodes)
     }
 
-    setNodes(useCanvasStore.getState().nodes)
     setRelationPicker(null)
-    runAutoLayout()
   }, [nodeMap, relationPicker, runAutoLayout, setNodes])
 
   const onNodeDragStop = useCallback(() => {
@@ -850,17 +852,14 @@ const canvasBackdropImageStyle = {
   objectFit: 'cover',
   objectPosition: 'center',
   display: 'block',
-  filter: 'saturate(0.9) brightness(0.7)',
-  transform: 'scale(1.02)',
+  filter: 'none',
+  transform: 'scale(1.01)',
 }
 
 const canvasBackdropShadeStyle = {
   position: 'absolute',
   inset: 0,
-  background: `
-    linear-gradient(180deg, rgba(17, 12, 9, 0.42), rgba(13, 10, 8, 0.68)),
-    radial-gradient(circle at center, rgba(130, 57, 22, 0.08), rgba(10, 8, 6, 0.18))
-  `,
+  background: 'transparent',
 }
 
 const pickerPanelStyle = {

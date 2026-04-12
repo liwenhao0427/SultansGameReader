@@ -39,7 +39,9 @@ export default function BaseNode({ id, label, color, selected, image, rare, vari
         boxShadow: selected
           ? `0 16px 30px ${withAlpha(color, 0.22)}`
           : `0 14px 26px ${withAlpha(color, 0.12)}`,
-      }}>
+      }}
+      data-node-body="true"
+      >
         {useIconTitle ? (
           <>
             <div style={{
@@ -74,10 +76,11 @@ export default function BaseNode({ id, label, color, selected, image, rare, vari
             event.stopPropagation()
             onExpand(id)
           }}
+          className="nodrag nopan"
           style={{
             ...expandButtonStyle,
             opacity: hovered ? 1 : 0,
-            transform: hovered ? 'translate(0, -50%)' : 'translate(8px, -50%)',
+            transform: hovered ? 'translate(0, -50%)' : 'translate(12px, -50%)',
             pointerEvents: hovered ? 'auto' : 'none',
             borderColor: selected ? lighten(color) : color,
             boxShadow: `0 10px 20px ${withAlpha(color, 0.22)}`,
@@ -112,7 +115,7 @@ function withAlpha(hex, alpha) {
 
 const nodeShellStyle = {
   position: 'relative',
-  paddingRight: 24,
+  display: 'inline-block',
 }
 
 const nodeCardStyle = {
@@ -182,15 +185,15 @@ const textTitleStyle = {
 const expandButtonStyle = {
   position: 'absolute',
   top: '50%',
-  right: -8,
-  width: 28,
-  height: 28,
+  right: -42,
+  width: 32,
+  height: 32,
   borderRadius: 999,
   border: '2px solid #c8aa70',
   background: 'rgba(16, 12, 9, 0.96)',
   color: '#f4ead6',
-  fontSize: 18,
-  lineHeight: '24px',
+  fontSize: 20,
+  lineHeight: '28px',
   fontWeight: 700,
   cursor: 'pointer',
   transition: 'opacity 140ms ease, transform 140ms ease',
