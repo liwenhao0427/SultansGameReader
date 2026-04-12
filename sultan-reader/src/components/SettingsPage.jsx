@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react'
 import useReadingStateStore from '../stores/useReadingStateStore'
 import { APP_TITLE_WITH_VERSION } from '../appMeta'
+import donateSupportImage from '../assets/donate-support.jpeg'
+
+const GITHUB_REPOSITORY_URL = 'https://github.com/liwenhao0427/SultansGameReader'
 
 /**
  * 设置页组件
@@ -28,6 +31,7 @@ export default function SettingsPage({ onNavigate }) {
   // 资源提取状态
   const [extracting, setExtracting] = useState(false)
   const [extractLog, setExtractLog] = useState([])
+  const [showDonateImage, setShowDonateImage] = useState(false)
 
   useEffect(() => {
     document.title = APP_TITLE_WITH_VERSION
@@ -108,6 +112,10 @@ export default function SettingsPage({ onNavigate }) {
   async function handleOpenFolder(targetPath) {
     if (!targetPath) return
     await window.electronAPI.fileOpenFolder(targetPath)
+  }
+
+  function handleOpenGithub() {
+    window.open(GITHUB_REPOSITORY_URL, '_blank', 'noopener,noreferrer')
   }
 
   async function handleRebuildCache() {
@@ -209,14 +217,30 @@ export default function SettingsPage({ onNavigate }) {
   return (
     <div style={{ width: '100vw', height: '100vh', overflowY: 'auto', background: '#11111b', color: '#cdd6f4' }}>
       <div style={{ maxWidth: 680, margin: '0 auto', padding: '32px 24px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 28 }}>
-          <h2 style={{ margin: 0, fontSize: 20, color: '#cba6f7' }}>{APP_TITLE_WITH_VERSION}</h2>
-          <button
-            style={{ ...btnStyle, background: '#89b4fa', color: '#1e1e2e' }}
-            onClick={() => onNavigate('main')}
-          >
-            进入主界面 →
-          </button>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', marginBottom: 28 }}>
+          <h2 style={{ margin: 0, fontSize: 20, color: '#cba6f7', flex: '1 1 240px' }}>{APP_TITLE_WITH_VERSION}</h2>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+            <button
+              type="button"
+              style={{ ...btnStyle, background: '#45475a', color: '#cdd6f4' }}
+              onClick={handleOpenGithub}
+            >
+              GitHub 页面
+            </button>
+            <button
+              type="button"
+              style={{ ...btnStyle, background: '#f9e2af', color: '#1e1e2e' }}
+              onClick={() => setShowDonateImage(true)}
+            >
+              支持作者
+            </button>
+            <button
+              style={{ ...btnStyle, background: '#89b4fa', color: '#1e1e2e' }}
+              onClick={() => onNavigate('main')}
+            >
+              进入主界面 →
+            </button>
+          </div>
         </div>
 
         <div style={sectionStyle}>
@@ -467,6 +491,62 @@ export default function SettingsPage({ onNavigate }) {
           )}
         </div>
       </div>
+
+      {showDonateImage && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setShowDonateImage(false)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(17, 17, 27, 0.88)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 24,
+            zIndex: 1000,
+          }}
+        >
+          <div
+            onClick={(event) => event.stopPropagation()}
+            style={{
+              width: 'min(92vw, 560px)',
+              background: '#1e1e2e',
+              border: '1px solid #45475a',
+              borderRadius: 12,
+              padding: 18,
+              boxShadow: '0 16px 48px rgba(0, 0, 0, 0.4)',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
+              <div>
+                <div style={{ fontSize: 16, fontWeight: 600, color: '#f9e2af' }}>支持作者开发</div>
+                <div style={{ marginTop: 4, fontSize: 12, color: '#a6adc8' }}>感谢你的支持，这张图片已随应用一起打包。</div>
+              </div>
+              <button
+                type="button"
+                style={{ ...btnStyle, background: '#45475a', color: '#cdd6f4', padding: '6px 12px' }}
+                onClick={() => setShowDonateImage(false)}
+              >
+                关闭
+              </button>
+            </div>
+            <img
+              src={donateSupportImage}
+              alt="支持作者开发"
+              style={{
+                display: 'block',
+                width: '100%',
+                height: 'auto',
+                borderRadius: 8,
+                border: '1px solid #313244',
+                background: '#11111b',
+              }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   )
 }
