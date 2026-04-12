@@ -894,7 +894,7 @@ const pickerPanelStyle = {
   width: 'min(980px, 92vw)',
   maxHeight: '82vh',
   display: 'grid',
-  gridTemplateRows: 'auto minmax(0, 1fr)',
+  gridTemplateRows: 'auto auto minmax(0, 1fr)',
   borderRadius: 28,
   border: '1px solid rgba(212, 184, 126, 0.16)',
   background: 'linear-gradient(180deg, rgba(28, 22, 16, 0.98), rgba(18, 15, 11, 0.98))',

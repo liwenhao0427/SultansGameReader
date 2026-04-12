@@ -5,6 +5,7 @@ const EDGE_COLORS = { success: '#d3d8a2', failed: '#d9a09a', default: '#d9c7a0' 
 const CANVAS_NODE_TYPES = new Set(['rite', 'event', 'loot', 'over'])
 const AUTO_EXPAND_SOURCE_TYPES = new Set(['event'])
 const AUTO_EXPAND_TARGET_TYPES = new Set(['event', 'loot', 'rite', 'over'])
+const AUTO_EXPAND_LIMIT = 3
 
 function summarize(item, data) {
   return item.name || item.text || data?.name || data?.text || item.id
@@ -54,6 +55,10 @@ export async function mountNodeOnCanvas(item, position, options = {}) {
         const [targetType] = relation.target.split(':')
         return AUTO_EXPAND_TARGET_TYPES.has(targetType)
       })
+
+    if (relations.length > AUTO_EXPAND_LIMIT) {
+      return nodeKey
+    }
 
     for (let index = 0; index < relations.length; index += 1) {
       const relation = relations[index]

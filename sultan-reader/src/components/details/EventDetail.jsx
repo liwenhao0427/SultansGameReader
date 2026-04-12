@@ -5,6 +5,8 @@ import useConfigStore from '../../stores/useConfigStore'
 import useCanvasStore from '../../stores/useCanvasStore'
 import { linkNodesOnCanvas, mountNodeOnCanvas } from '../../services/graphNavigation'
 
+const AUTO_CANVAS_LIMIT = 3
+
 function normalizeTextContent(text) {
   if (text == null) return ''
   if (typeof text === 'string') return text
@@ -118,7 +120,9 @@ export default function EventDetail({ data }) {
   ), [currentEventNode?.actions])
 
   const autoFollowupActions = useMemo(
-    () => [...followupActions].sort(() => Math.random() - 0.5).slice(0, 3),
+    () => (followupActions.length > AUTO_CANVAS_LIMIT
+      ? []
+      : [...followupActions].sort(() => Math.random() - 0.5).slice(0, AUTO_CANVAS_LIMIT)),
     [followupActions]
   )
 
@@ -231,7 +235,11 @@ export default function EventDetail({ data }) {
         {followupActions.length > 0 ? (
           <div style={S.followupSection}>
             <div style={S.followupTitle}>后续节点</div>
-            <div style={S.followupHint}>默认只随机带出 3 个到画布；这里仍然可以手动继续打开。</div>
+            <div style={S.followupHint}>
+              {followupActions.length > AUTO_CANVAS_LIMIT
+                ? '当前后续节点超过自动带出阈值，已停止自动带出；请在下面手动选择需要展开的节点。'
+                : '默认只随机带出 3 个到画布；这里仍然可以手动继续打开。'}
+            </div>
             <div style={S.followupList}>
               {followupActions.map((action, index) => (
                 <button
@@ -255,8 +263,8 @@ const S = {
   shell: {
     position: 'relative',
     minHeight: 520,
-    padding: '6px 0 20px',
-    overflow: 'hidden',
+    padding: '6px 0 120px',
+    overflow: 'visible',
   },
   heroLayer: {
     position: 'absolute',
@@ -326,6 +334,7 @@ const S = {
     display: 'grid',
     gap: 18,
     alignContent: 'start',
+    overflow: 'visible',
   },
   flowSection: {
     display: 'grid',

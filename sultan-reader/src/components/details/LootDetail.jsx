@@ -5,6 +5,8 @@ import { CARD_RENDER_CONFIG, getCardFrameHeight, getCardRarityFrameAsset } from 
 import useCanvasStore from '../../stores/useCanvasStore'
 import { linkNodesOnCanvas, mountNodeOnCanvas } from '../../services/graphNavigation'
 
+const AUTO_CANVAS_LIMIT = 3
+
 const S = {
   shell: { display: 'grid', gap: 18 },
   title: { color: '#fff0d3', fontSize: 30, fontWeight: 900, lineHeight: 1.15 },
@@ -97,7 +99,9 @@ export default function LootDetail({ data }) {
     [enrichedItems]
   )
   const autoCanvasItems = useMemo(
-    () => [...relatedCanvasItems].sort(() => Math.random() - 0.5).slice(0, 3),
+    () => (relatedCanvasItems.length > AUTO_CANVAS_LIMIT
+      ? []
+      : [...relatedCanvasItems].sort(() => Math.random() - 0.5).slice(0, AUTO_CANVAS_LIMIT)),
     [relatedCanvasItems]
   )
 
@@ -140,6 +144,19 @@ export default function LootDetail({ data }) {
     })
   }, [autoCanvasItems, selectedNodeId])
 
+  async function handleOpenRelatedItem(item, offsetIndex = 0) {
+    if (!item?.id || (item.type !== 'rite' && item.type !== 'event')) return
+
+    const targetNodeKey = await mountNodeOnCanvas(
+      { id: String(item.id), type: item.type, name: item.name },
+      { x: 460 + offsetIndex * 60, y: 180 + offsetIndex * 50 },
+      { autoSelect: true, expandRelations: false }
+    )
+
+    if (!targetNodeKey || !selectedNodeId) return
+    linkNodesOnCanvas(selectedNodeId, item.type, String(item.id), 'default', item.name || `${item.type}:${item.id}`)
+  }
+
   return (
     <div style={S.shell}>
       <div>
@@ -157,19 +174,29 @@ export default function LootDetail({ data }) {
         <div>
           <div style={S.sectionTitle}>掉落内容</div>
           <div style={{ ...S.grid, marginTop: 12 }}>
-            {enrichedItems.map((item) => (
-              <div key={item.key} style={S.card}>
+            {enrichedItems.map((item, index) => (
+              <button
+                key={item.key}
+                type="button"
+                style={{
+                  ...S.card,
+                  cursor: item.type === 'rite' || item.type === 'event' ? 'pointer' : 'default',
+                  textAlign: 'left',
+                }}
+                onClick={() => handleOpenRelatedItem(item, index)}
+                disabled={item.type !== 'rite' && item.type !== 'event'}
+              >
                 <LootItemPoster pic={item.pic} rare={item.rare} />
                 <div style={{ minWidth: 0 }}>
                   <div style={S.name}>{item.name}</div>
                   <div style={S.meta}>{item.type}:{item.id}</div>
                   {(item.type === 'rite' || item.type === 'event') && (
-                    <div style={S.stat}>{item.type === 'rite' ? `关联仪式：${item.name}` : `关联事件：${item.name}`}</div>
+                    <div style={S.stat}>{item.type === 'rite' ? `关联仪式：${item.name}` : `关联幕后：${item.name}`}</div>
                   )}
                   <div style={S.stat}>数量：{item.num ?? '-'} / 权重：{item.weight ?? '-'}</div>
                   {item.text && <div title={item.text} style={S.text}>{item.text}</div>}
                 </div>
-              </div>
+              </button>
             ))}
           </div>
         </div>
