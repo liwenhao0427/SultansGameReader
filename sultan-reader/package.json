@@ -53,7 +53,7 @@
     },
     "win": {
       "icon": "electron/app-icon.ico",
-      "signAndEditExecutable": false,
+      "signAndEditExecutable": true,
       "target": [
         {
           "target": "dir",
