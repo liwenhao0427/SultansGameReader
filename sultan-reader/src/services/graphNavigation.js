@@ -1,7 +1,7 @@
 import useCanvasStore from '../stores/useCanvasStore'
 import { extractEdges } from './edgeExtractor'
 
-const EDGE_COLORS = { success: '#8fbf77', failed: '#c35b5b', default: '#927453' }
+const EDGE_COLORS = { success: '#d3d8a2', failed: '#d9a09a', default: '#d9c7a0' }
 const CANVAS_NODE_TYPES = new Set(['rite', 'event', 'loot', 'over'])
 const AUTO_EXPAND_SOURCE_TYPES = new Set(['event'])
 const AUTO_EXPAND_TARGET_TYPES = new Set(['event', 'loot', 'rite', 'over'])
@@ -89,11 +89,29 @@ export function linkNodesOnCanvas(sourceNodeKey, targetType, targetId, branchTyp
   const store = useCanvasStore.getState()
   if (!store.nodeIdSet.has(sourceNodeKey) || !store.nodeIdSet.has(targetNodeKey)) return
 
+  const stroke = EDGE_COLORS[branchType] ?? EDGE_COLORS.default
   store.addEdges([{
     id: `${sourceNodeKey}->${targetNodeKey}:manual:${branchType}:${conditionText}`,
+    type: 'smoothstep',
     source: sourceNodeKey,
     target: targetNodeKey,
-    style: { stroke: EDGE_COLORS[branchType] ?? EDGE_COLORS.default },
+    sourcePosition: 'right',
+    targetPosition: 'left',
+    style: {
+      stroke,
+      strokeWidth: 2.4,
+      filter: `drop-shadow(0 0 2px ${stroke})`,
+    },
+    markerEnd: {
+      type: 'arrowclosed',
+      width: 16,
+      height: 16,
+      color: stroke,
+    },
+    pathOptions: {
+      borderRadius: 18,
+      offset: 18,
+    },
     data: {
       conditionText,
       branchType,

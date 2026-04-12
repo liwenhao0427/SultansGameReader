@@ -1009,6 +1009,7 @@ export default function StoryInspector({ type, data, onClose }) {
   const [executionOpen, setExecutionOpen] = useState(false)
   const [executionMode, setExecutionMode] = useState('normal')
   const [executionConditionSelections, setExecutionConditionSelections] = useState({})
+  const [persistedExecutionActions, setPersistedExecutionActions] = useState([])
   const [hideReaderUi, setHideReaderUi] = useState(false)
   const [executionStepIndex, setExecutionStepIndex] = useState(0)
   const [eventChoicePath, setEventChoicePath] = useState([])
@@ -1675,6 +1676,7 @@ export default function StoryInspector({ type, data, onClose }) {
 
   function handleOpenExecution() {
     executedActionKeyRef.current = new Set()
+    setPersistedExecutionActions([])
     setExecutionMode('normal')
     setExecutionConditionSelections({})
     setExecutionStepIndex(0)
@@ -1711,6 +1713,7 @@ export default function StoryInspector({ type, data, onClose }) {
 
   function handleOpenWaitingRoundExecution() {
     executedActionKeyRef.current = new Set()
+    setPersistedExecutionActions([])
     setExecutionMode('waiting_round_end')
     setExecutionConditionSelections({})
     setExecutionStepIndex(0)
@@ -1779,8 +1782,8 @@ export default function StoryInspector({ type, data, onClose }) {
     [executionSteps]
   )
   const executionSummaryActions = useMemo(
-    () => executionSteps.flatMap((step) => step.actions || []),
-    [executionSteps]
+    () => persistedExecutionActions,
+    [persistedExecutionActions]
   )
   const executionSummaryPops = useMemo(
     () => executionSteps.flatMap((step) => step.popItems || []),
@@ -1793,8 +1796,7 @@ export default function StoryInspector({ type, data, onClose }) {
     async function loadExecutionTargetNames() {
       const next = {}
       let contentNameMap = {}
-      const actionTargets = executionSteps
-        .flatMap((step) => step.actions || [])
+      const actionTargets = executionSummaryActions
         .filter((action) => action?.targetType && action?.targetId && action.targetType !== 'card')
 
       try {
@@ -1837,7 +1839,7 @@ export default function StoryInspector({ type, data, onClose }) {
 
     loadExecutionTargetNames()
     return () => { cancelled = true }
-  }, [cardsById, executionSteps])
+  }, [cardsById, executionSummaryActions])
 
   useEffect(() => {
     if (!executionOpen) return
@@ -1853,6 +1855,28 @@ export default function StoryInspector({ type, data, onClose }) {
       if (executedActionKeyRef.current.has(actionKey)) return
       executedActionKeyRef.current.add(actionKey)
       void handleOpenAction(action, index, { autoSelect: false })
+    })
+  }, [executionOpen, executionSteps])
+
+  useEffect(() => {
+    if (!executionOpen) return
+    const nextActions = executionSteps.flatMap((step) => step.actions || [])
+    if (nextActions.length === 0) return
+
+    setPersistedExecutionActions((current) => {
+      const seen = new Set(
+        current.map((action) => `${action.branch || 'direct'}:${action.key || ''}:${action.targetType}:${action.targetId}:${action.text || ''}`)
+      )
+      const merged = [...current]
+
+      nextActions.forEach((action) => {
+        const actionKey = `${action.branch || 'direct'}:${action.key || ''}:${action.targetType}:${action.targetId}:${action.text || ''}`
+        if (seen.has(actionKey)) return
+        seen.add(actionKey)
+        merged.push(action)
+      })
+
+      return merged
     })
   }, [executionOpen, executionSteps])
 
@@ -2550,12 +2574,14 @@ export default function StoryInspector({ type, data, onClose }) {
             setExecutionOpen(false)
             setExecutionMode('normal')
             setExecutionConditionSelections({})
+            setPersistedExecutionActions([])
           }}
           onMarkRead={() => {
             setExecutionStepIndex(Math.max(0, executionSteps.length - 1))
             setExecutionOpen(false)
             setExecutionMode('normal')
             setExecutionConditionSelections({})
+            setPersistedExecutionActions([])
           }}
         />
       )}

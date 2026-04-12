@@ -25,6 +25,7 @@ export default function LootNode({ data, selected }) {
       rare={rare}
       variant="iconTitle"
       onExpand={data.onExpand}
+      onRemove={data.onRemove}
     />
   )
 }

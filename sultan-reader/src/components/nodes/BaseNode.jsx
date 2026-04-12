@@ -2,7 +2,7 @@
 import { useState } from 'react'
 import { Handle, Position } from '@xyflow/react'
 import { useResolvedImage } from '../../services/imageResolver'
-import { CARD_RENDER_CONFIG, getCardFrameHeight, getCardRarityFrameAsset } from '../../resourceConfig'
+import { CARD_RENDER_CONFIG, getCardRarityFrameAsset } from '../../resourceConfig'
 
 /**
  * @param {string} id - 节点 ID
@@ -11,18 +11,29 @@ import { CARD_RENDER_CONFIG, getCardFrameHeight, getCardRarityFrameAsset } from 
  * @param {boolean} selected - 是否被选中
  * @param {string|null} image - 图片资源 key（可选）
  * @param {number|null} rare - 稀有度（卡牌用，可选）
- * @param {'text'|'iconTitle'} variant - 节点展示样式
+ * @param {'text'|'iconTitle'|'heroBackdrop'} variant - 节点展示样式
  * @param {Function|null} onExpand - 右侧签出回调
+ * @param {Function|null} onRemove - 左侧移除子树回调
  */
-export default function BaseNode({ id, label, color, selected, image, rare, variant = 'text', onExpand = null }) {
+export default function BaseNode({
+  id,
+  label,
+  color,
+  selected,
+  image,
+  rare,
+  variant = 'text',
+  onExpand = null,
+  onRemove = null,
+}) {
   const { url: imgUrl } = useResolvedImage(image || null)
   const { url: rareFrameUrl } = useResolvedImage(rare ? getCardRarityFrameAsset(rare) : null)
-  const isCardLike = rare != null
   const [hovered, setHovered] = useState(false)
-  const previewWidth = isCardLike ? 56 : 56
-  const previewHeight = isCardLike ? getCardFrameHeight(56) : 56
+  const isCardLike = rare != null
   const useIconTitle = variant === 'iconTitle' && imgUrl
+  const useHeroBackdrop = variant === 'heroBackdrop'
   const canExpand = typeof onExpand === 'function'
+  const canRemove = typeof onRemove === 'function'
 
   return (
     <div
@@ -30,24 +41,35 @@ export default function BaseNode({ id, label, color, selected, image, rare, vari
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
+      <div style={hoverBridgeLeftStyle} />
+      <div style={hoverBridgeRightStyle} />
       <Handle type="target" position={Position.Left} style={handleStyle} />
 
-      <div style={{
-        ...nodeCardStyle,
-        ...(useIconTitle ? iconTitleNodeStyle : textNodeStyle),
-        border: `${selected ? 2.5 : 2}px solid ${selected ? lighten(color) : color}`,
-        boxShadow: selected
-          ? `0 16px 30px ${withAlpha(color, 0.22)}`
-          : `0 14px 26px ${withAlpha(color, 0.12)}`,
-      }}
-      data-node-body="true"
+      <div
+        style={{
+          ...nodeCardStyle,
+          ...(useHeroBackdrop ? heroBackdropNodeStyle : (useIconTitle ? iconTitleNodeStyle : textNodeStyle)),
+          border: `${selected ? 2.5 : 2}px solid ${selected ? lighten(color) : color}`,
+          boxShadow: selected
+            ? `0 16px 30px ${withAlpha(color, 0.22)}`
+            : `0 14px 26px ${withAlpha(color, 0.12)}`,
+        }}
+        data-node-body="true"
       >
-        {useIconTitle ? (
+        {useHeroBackdrop ? (
           <>
-            <div style={{
-              ...iconThumbWrapStyle,
-              backgroundImage: rareFrameUrl ? `url("${rareFrameUrl}")` : 'none',
-            }}>
+            {imgUrl ? <img src={imgUrl} alt="" style={heroBackdropImageStyle} /> : null}
+            <div style={heroBackdropShadeStyle} />
+            <div style={heroBackdropLabelStyle}>{label}</div>
+          </>
+        ) : useIconTitle ? (
+          <>
+            <div
+              style={{
+                ...iconThumbWrapStyle,
+                backgroundImage: rareFrameUrl ? `url("${rareFrameUrl}")` : 'none',
+              }}
+            >
               <img
                 src={imgUrl}
                 alt=""
@@ -78,9 +100,10 @@ export default function BaseNode({ id, label, color, selected, image, rare, vari
           }}
           className="nodrag nopan"
           style={{
-            ...expandButtonStyle,
+            ...floatingButtonStyle,
+            right: -44,
             opacity: hovered ? 1 : 0,
-            transform: hovered ? 'translate(0, -50%)' : 'translate(12px, -50%)',
+            transform: hovered ? 'translate(0, -50%)' : 'translate(10px, -50%)',
             pointerEvents: hovered ? 'auto' : 'none',
             borderColor: selected ? lighten(color) : color,
             boxShadow: `0 10px 20px ${withAlpha(color, 0.22)}`,
@@ -91,12 +114,34 @@ export default function BaseNode({ id, label, color, selected, image, rare, vari
         </button>
       ) : null}
 
+      {canRemove ? (
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation()
+            onRemove(id)
+          }}
+          className="nodrag nopan"
+          style={{
+            ...floatingButtonStyle,
+            left: -44,
+            opacity: hovered ? 1 : 0,
+            transform: hovered ? 'translate(0, -50%)' : 'translate(-10px, -50%)',
+            pointerEvents: hovered ? 'auto' : 'none',
+            borderColor: selected ? lighten(color) : color,
+            boxShadow: `0 10px 20px ${withAlpha(color, 0.18)}`,
+          }}
+          aria-label="移除节点和子树"
+        >
+          ×
+        </button>
+      ) : null}
+
       <Handle type="source" position={Position.Right} style={handleStyle} />
     </div>
   )
 }
 
-/** 简单亮化颜色：将十六进制颜色各通道提亮 40 */
 function lighten(hex) {
   const n = parseInt(hex.replace('#', ''), 16)
   const r = Math.min(255, (n >> 16) + 40)
@@ -116,7 +161,6 @@ function withAlpha(hex, alpha) {
 const nodeShellStyle = {
   position: 'relative',
   display: 'inline-block',
-  paddingRight: 56,
 }
 
 const nodeCardStyle = {
@@ -141,6 +185,13 @@ const iconTitleNodeStyle = {
   gridTemplateColumns: '56px minmax(0, 1fr)',
   alignItems: 'center',
   gap: 12,
+}
+
+const heroBackdropNodeStyle = {
+  width: 240,
+  minHeight: 132,
+  overflow: 'hidden',
+  position: 'relative',
 }
 
 const iconThumbWrapStyle = {
@@ -183,10 +234,41 @@ const textTitleStyle = {
   overflow: 'hidden',
 }
 
-const expandButtonStyle = {
+const heroBackdropImageStyle = {
+  position: 'absolute',
+  inset: 0,
+  width: '100%',
+  height: '100%',
+  objectFit: 'cover',
+  objectPosition: 'center',
+  display: 'block',
+}
+
+const heroBackdropShadeStyle = {
+  position: 'absolute',
+  inset: 0,
+  background: 'linear-gradient(180deg, rgba(7, 5, 4, 0.12), rgba(8, 6, 4, 0.84))',
+}
+
+const heroBackdropLabelStyle = {
+  position: 'absolute',
+  left: 16,
+  right: 16,
+  bottom: 14,
+  fontSize: 18,
+  lineHeight: 1.35,
+  fontWeight: 700,
+  color: '#f8efde',
+  textShadow: '0 2px 5px rgba(0, 0, 0, 0.72)',
+  display: '-webkit-box',
+  WebkitLineClamp: 3,
+  WebkitBoxOrient: 'vertical',
+  overflow: 'hidden',
+}
+
+const floatingButtonStyle = {
   position: 'absolute',
   top: '50%',
-  right: -42,
   width: 32,
   height: 32,
   borderRadius: 999,
@@ -198,6 +280,22 @@ const expandButtonStyle = {
   fontWeight: 700,
   cursor: 'pointer',
   transition: 'opacity 140ms ease, transform 140ms ease',
+}
+
+const hoverBridgeLeftStyle = {
+  position: 'absolute',
+  top: -8,
+  bottom: -8,
+  left: -56,
+  width: 68,
+}
+
+const hoverBridgeRightStyle = {
+  position: 'absolute',
+  top: -8,
+  bottom: -8,
+  right: -56,
+  width: 68,
 }
 
 const handleStyle = {

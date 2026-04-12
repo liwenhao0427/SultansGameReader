@@ -4,6 +4,7 @@ import {
   Background,
   Controls,
   MiniMap,
+  MarkerType,
   ReactFlow,
   ReactFlowProvider,
   applyNodeChanges,
@@ -24,15 +25,16 @@ import { evaluateCondition } from '../services/conditionEvaluator.js'
 import { buildFocusViewport } from '../services/canvasViewport.js'
 
 const EDGE_COLORS = {
-  success: '#a6e3a1',
-  failed: '#f38ba8',
-  default: '#6c7086',
+  success: '#d3d8a2',
+  failed: '#d9a09a',
+  default: '#d9c7a0',
 }
 
 const AUTO_LAYOUT_NODE_SIZE = {
   rite: { width: 260, height: 86 },
   event: { width: 220, height: 72 },
   loot: { width: 250, height: 86 },
+  over: { width: 240, height: 132 },
   default: { width: 220, height: 72 },
 }
 
@@ -132,8 +134,8 @@ function layoutTreeComponent(nodes, edges, componentNodeIds, offsetX, offsetY) {
     rankdir: 'LR',
     ranker: 'tight-tree',
     nodesep: 44,
-    ranksep: 126,
-    marginx: 40,
+    ranksep: 92,
+    marginx: 24,
     marginy: 40,
   })
 
@@ -215,11 +217,29 @@ function summarize(item, data) {
 }
 
 function buildCanvasEdge(relation) {
+  const stroke = EDGE_COLORS[relation.branchType] ?? EDGE_COLORS.default
   return {
     id: `${relation.source}->${relation.target}:${relation.path}`,
+    type: 'smoothstep',
     source: relation.source,
     target: relation.target,
-    style: { stroke: EDGE_COLORS[relation.branchType] ?? EDGE_COLORS.default },
+    sourcePosition: 'right',
+    targetPosition: 'left',
+    style: {
+      stroke,
+      strokeWidth: 2.4,
+      filter: `drop-shadow(0 0 2px ${stroke})`,
+    },
+    markerEnd: {
+      type: MarkerType.ArrowClosed,
+      width: 16,
+      height: 16,
+      color: stroke,
+    },
+    pathOptions: {
+      borderRadius: 18,
+      offset: 18,
+    },
     data: {
       conditionText: relation.conditionText,
       branchType: relation.branchType,
@@ -452,7 +472,7 @@ function RelationOptionCard({ option, selected, onToggle }) {
 }
 
 function CanvasInner() {
-  const { nodes, edges, selectedNodeId, selectedOpenMode, setSelectedNode, setNodes: setCanvasNodes } = useCanvasStore()
+  const { nodes, edges, selectedNodeId, selectedOpenMode, setSelectedNode, setNodes: setCanvasNodes, removeNodeTree } = useCanvasStore()
   const cardsLite = useConfigStore((s) => s.cardsLite)
   const cardsById = useConfigStore((s) => s.cardsById)
   const { setNodes, screenToFlowPosition, setViewport, getZoom } = useReactFlow()
@@ -573,12 +593,15 @@ function CanvasInner() {
     () => nodes.map((node) => ({
       ...node,
       draggable: false,
+      sourcePosition: 'right',
+      targetPosition: 'left',
       data: {
         ...node.data,
         onExpand: (nodeId) => openRelationPicker(nodeId),
+        onRemove: (nodeId) => removeNodeTree(nodeId),
       },
     })),
-    [nodes, openRelationPicker]
+    [nodes, openRelationPicker, removeNodeTree]
   )
 
   const onDragOver = useCallback((event) => {
@@ -771,6 +794,11 @@ function CanvasInner() {
         fitView
         proOptions={{ hideAttribution: true }}
         style={{ background: 'transparent' }}
+        defaultEdgeOptions={{
+          type: 'smoothstep',
+          animated: false,
+          pathOptions: { borderRadius: 18, offset: 18 },
+        }}
       >
         <Background color="rgba(233, 199, 139, 0.08)" gap={28} />
         <Controls

@@ -98,6 +98,43 @@ const useCanvasStore = create((set, get) => ({
   },
 
   /**
+   * 按当前有向边移除节点及其签出的整棵子树
+   * @param {string} rootId - 根节点 ID（"{type}:{id}" 格式）
+   */
+  removeNodeTree: (rootId) => {
+    const { nodes, edges, nodeIdSet, selectedNodeId } = get();
+    if (!rootId || !nodeIdSet.has(rootId)) return;
+
+    const adjacency = new Map();
+    edges.forEach((edge) => {
+      if (!adjacency.has(edge.source)) adjacency.set(edge.source, []);
+      adjacency.get(edge.source).push(edge.target);
+    });
+
+    const removedIds = new Set();
+    const queue = [rootId];
+
+    while (queue.length > 0) {
+      const currentId = queue.shift();
+      if (!currentId || removedIds.has(currentId)) continue;
+      removedIds.add(currentId);
+      (adjacency.get(currentId) || []).forEach((nextId) => {
+        if (!removedIds.has(nextId)) queue.push(nextId);
+      });
+    }
+
+    const nextNodeIdSet = new Set(nodeIdSet);
+    removedIds.forEach((id) => nextNodeIdSet.delete(id));
+
+    set({
+      nodeIdSet: nextNodeIdSet,
+      nodes: nodes.filter((node) => !removedIds.has(node.id)),
+      edges: edges.filter((edge) => !removedIds.has(edge.source) && !removedIds.has(edge.target)),
+      selectedNodeId: removedIds.has(selectedNodeId) ? null : selectedNodeId,
+    });
+  },
+
+  /**
    * 清空所有节点和边
    */
   clearCanvas: () => {

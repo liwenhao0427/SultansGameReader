@@ -8,5 +8,5 @@ export default function AfterStoryNode({ data, selected }) {
   const label = rawData?.name ?? '—'
   // 取第一个有 pic 的 extra 条目图片
   const firstPic = Array.isArray(rawData?.extra) ? (rawData.extra.find((e) => e?.pic)?.pic || null) : null
-  return <BaseNode id={`after_story:${rawData?.id ?? data.label}`} label={label} color={COLOR} selected={selected} image={firstPic} onExpand={data.onExpand} />
+  return <BaseNode id={`after_story:${rawData?.id ?? data.label}`} label={label} color={COLOR} selected={selected} image={firstPic} onExpand={data.onExpand} onRemove={data.onRemove} />
 }

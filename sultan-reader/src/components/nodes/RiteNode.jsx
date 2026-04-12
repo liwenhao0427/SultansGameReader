@@ -15,6 +15,7 @@ export default function RiteNode({ data, selected }) {
       image={rawData?.icon || null}
       variant="iconTitle"
       onExpand={data.onExpand}
+      onRemove={data.onRemove}
     />
   )
 }
