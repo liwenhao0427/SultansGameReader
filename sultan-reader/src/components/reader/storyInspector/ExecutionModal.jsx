@@ -134,9 +134,9 @@ function ExecutionEffectList({ effects, onOpenCard }) {
     <div style={styles.effectList}>
       {effects.map((effect, index) => (
         <div key={`${effect.label}:${index}`} style={styles.effectItem}>
-          <div style={{ color: '#f1dfbb', fontSize: 13, lineHeight: 1.7 }}>{effect.label}</div>
+          <div style={{ color: '#f1dfbb', fontSize: 13, lineHeight: 1.5 }}>{effect.label}</div>
           {effect.cards?.length > 0 ? (
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
               {effect.cards.map((card) => (
                 <button
                   key={card.id}
@@ -190,7 +190,7 @@ function StoryPopLine({ pop, executionSlotCards }) {
   )
 }
 
-function ConditionGridGroup({ group, selectedId, onSelect }) {
+function LegacyConditionGridGroup({ group, selectedId, onSelect }) {
   return (
     <div style={styles.conditionGroup}>
       <div style={{ display: 'grid', gap: 4 }}>
@@ -220,7 +220,7 @@ function ConditionGridGroup({ group, selectedId, onSelect }) {
   )
 }
 
-function ConditionPagerGroup({ group, selectedId, onSelect, onOpenDetail }) {
+function LegacyConditionPagerGroup({ group, selectedId, onSelect, onOpenDetail }) {
   const selectedIndex = Math.max(0, group.options.findIndex((option) => option.id === selectedId))
   const activeIndex = selectedId ? selectedIndex : 0
   const activeOption = group.options[activeIndex] || group.options[0]
@@ -252,6 +252,102 @@ function ConditionPagerGroup({ group, selectedId, onSelect, onOpenDetail }) {
       </div>
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
         <button type="button" onClick={() => onOpenDetail(group.id)} style={styles.detailButton}>查看所有条件</button>
+      </div>
+    </div>
+  )
+}
+
+function LegacyInlineChoiceStep({ group, selectedId, onSelect, onOpenDetail }) {
+  if (!group) return null
+
+  return group.options.length > 4 ? (
+    <ConditionPagerGroup
+      group={group}
+      selectedId={selectedId}
+      onSelect={onSelect}
+      onOpenDetail={onOpenDetail}
+    />
+  ) : (
+    <ConditionGridGroup
+      group={group}
+      selectedId={selectedId}
+      onSelect={onSelect}
+    />
+  )
+}
+
+function ConditionGroupIntro({ group }) {
+  return (
+    <div style={styles.conditionIntro}>
+      <div style={styles.headerLabel}>{group.title}</div>
+      {group.phaseText ? <div style={styles.conditionLeadText}>{group.phaseText}</div> : null}
+      {group.promptText ? <div style={styles.conditionAccentText}>{group.promptText}</div> : null}
+      {group.description ? <div style={styles.conditionMetaText}>{group.description}</div> : null}
+      {group.tipLines?.length > 0 ? (
+        <div style={styles.conditionTipList}>
+          {group.tipLines.map((tip, index) => (
+            <span key={`${group.id}:tip:${index}`} style={styles.conditionTipChip}>{tip}</span>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+function ConditionGridGroup({ group, selectedId, onSelect }) {
+  return (
+    <div style={styles.conditionGroup}>
+      <ConditionGroupIntro group={group} />
+      <div style={styles.conditionOptionList}>
+        {group.options.map((option) => (
+          <button
+            key={option.id}
+            type="button"
+            onClick={() => onSelect(group.id, option.id === selectedId ? null : option.id)}
+            style={option.id === selectedId ? { ...styles.conditionOption, ...styles.conditionOptionActive } : styles.conditionOption}
+          >
+            <div style={{ fontSize: 13, lineHeight: 1.55, color: '#fff4de', whiteSpace: 'pre-wrap' }}>
+              {option.label}
+            </div>
+            {option.hiddenCount > 0 ? (
+              <div style={styles.conditionOptionHint}>另有 {option.hiddenCount} 条条件</div>
+            ) : null}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function ConditionPagerGroup({ group, selectedId, onSelect, onOpenDetail }) {
+  const selectedIndex = Math.max(0, group.options.findIndex((option) => option.id === selectedId))
+  const activeIndex = selectedId ? selectedIndex : 0
+  const activeOption = group.options[activeIndex] || group.options[0]
+
+  function move(delta) {
+    if (!group.options.length) return
+    const nextIndex = (activeIndex + delta + group.options.length) % group.options.length
+    const nextOption = group.options[nextIndex]
+    onSelect(group.id, nextOption?.id || null)
+  }
+
+  return (
+    <div style={styles.conditionGroup}>
+      <ConditionGroupIntro group={group} />
+      <div style={styles.pagerRow}>
+        <button type="button" onClick={() => move(-1)} style={styles.pagerButton}>{'<'}</button>
+        <button type="button" onClick={() => onOpenDetail(group.id)} style={styles.pagerSummaryButton}>
+          <div style={{ fontSize: 13, color: '#ccb38e' }}>
+            {activeIndex + 1} / {group.options.length}
+          </div>
+          <div style={{ fontSize: 13, lineHeight: 1.55, color: '#f8edd9', whiteSpace: 'pre-wrap' }}>
+            {activeOption?.label}
+          </div>
+          <div style={styles.conditionOptionHint}>
+            {activeOption?.hiddenCount > 0 ? `点击查看全部，另有 ${activeOption.hiddenCount} 条条件` : '点击查看全部条件'}
+          </div>
+        </button>
+        <button type="button" onClick={() => move(1)} style={styles.pagerButton}>{'>'}</button>
       </div>
     </div>
   )
@@ -308,7 +404,7 @@ export default function ExecutionModal({
     const keyword = detailFilterText.trim().toLowerCase()
     if (!keyword) return detailGroup.options
     return detailGroup.options.filter((option) => (
-      `${option.label || ''} ${option.detail || ''}`.toLowerCase().includes(keyword)
+      `${option.fullLabel || option.label || ''} ${option.detail || ''}`.toLowerCase().includes(keyword)
     ))
   }, [detailFilterText, detailGroup])
 
@@ -413,11 +509,15 @@ export default function ExecutionModal({
                 ref={scrollRef}
                 style={styles.narrativeScroll}
               >
-                {visibleSteps.map((step) => (
+                {visibleSteps.map((step, index) => {
+                  const previousStep = visibleSteps[index - 1] || null
+                  const hideRepeatedConditionInfo = step.kind === 'result' && previousStep?.kind === 'choice'
+
+                  return (
                   <div key={step.id} style={styles.narrativeSection}>
-                    <div style={styles.metaTag}>{step.phase}</div>
+                    {!hideRepeatedConditionInfo ? <div style={styles.metaTag}>{step.phase}</div> : null}
                     {step.title ? <div style={styles.stepTitle}>{step.title}</div> : null}
-                    {step.conditions?.length > 0 ? (
+                    {!hideRepeatedConditionInfo && step.conditions?.length > 0 ? (
                       <div style={{ ...styles.contentBlock, ...styles.conditionChips }}>
                         {step.conditions.map((condition, index) => (
                           <span key={`${step.id}:condition:${index}`} style={styles.conditionChip}>{condition}</span>
@@ -471,7 +571,7 @@ export default function ExecutionModal({
                       </div>
                     ) : null}
                   </div>
-                ))}
+                )})}
               </div>
             </div>
           </div>
@@ -512,7 +612,7 @@ export default function ExecutionModal({
                     : styles.conditionOption}
                 >
                   <div style={{ fontSize: 14, lineHeight: 1.7, color: '#fff4de', whiteSpace: 'pre-wrap' }}>
-                    {option.label}
+                    {option.fullLabel || option.label}
                   </div>
                   {option.detail ? (
                     <div style={{ marginTop: 6, fontSize: 12, lineHeight: 1.6, color: '#d8c5a0', whiteSpace: 'pre-wrap' }}>

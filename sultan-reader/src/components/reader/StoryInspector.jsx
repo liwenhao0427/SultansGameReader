@@ -1456,16 +1456,16 @@ export default function StoryInspector({ type, data, onClose }) {
   const currentExecutionStep = executionSteps[executionStepIndex] || null
 
   const executionSummaryEffects = useMemo(
-    () => executionSteps.slice(0, executionStepIndex + 1).flatMap((step) => step.effects || []),
-    [executionStepIndex, executionSteps]
+    () => executionSteps.flatMap((step) => step.effects || []),
+    [executionSteps]
   )
   const executionSummaryActions = useMemo(
-    () => executionSteps.slice(0, executionStepIndex + 1).flatMap((step) => step.actions || []),
-    [executionStepIndex, executionSteps]
+    () => executionSteps.flatMap((step) => step.actions || []),
+    [executionSteps]
   )
   const executionSummaryPops = useMemo(
-    () => executionSteps.slice(0, executionStepIndex + 1).flatMap((step) => step.popItems || []),
-    [executionStepIndex, executionSteps]
+    () => executionSteps.flatMap((step) => step.popItems || []),
+    [executionSteps]
   )
 
   useEffect(() => {

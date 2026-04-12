@@ -80,6 +80,28 @@ function buildConditionLabel(condition, cardsMap, counterRegistry = null) {
   return parseConditionObject(condition, cardsMap, counterRegistry)[0] || Object.keys(condition || {})[0] || '未命名条件'
 }
 
+function buildConditionPreviewText(condition, cardsMap, counterRegistry = null, maxItems = 10) {
+  const lines = parseConditionObject(condition, cardsMap, counterRegistry)
+  if (lines.length === 0) {
+    return {
+      previewText: '',
+      fullText: '',
+      lines: [],
+      previewLines: [],
+      hiddenCount: 0,
+    }
+  }
+
+  const previewLines = lines.slice(0, maxItems)
+  return {
+    previewText: previewLines.join(' / '),
+    fullText: lines.join(' / '),
+    lines,
+    previewLines,
+    hiddenCount: Math.max(0, lines.length - previewLines.length),
+  }
+}
+
 function extractAtomicEntries(condition, collector = []) {
   if (!condition || typeof condition !== 'object') return collector
 
@@ -245,6 +267,7 @@ function evaluateAtomicCondition(key, value, context) {
     }
   }
 
+  const stageMeta = /^r\d+$/i.test(groupId) ? (model?.randomTextUp?.[groupId] || {}) : {}
   return {
     status: 'matched',
     groupId: null,
@@ -371,10 +394,7 @@ function buildExecutionStepFromPhase(phase) {
   }
 }
 
-function buildChoiceStep(model, group) {
-  const isDice = /^r\d+$/i.test(group.id)
-  const stageMeta = isDice ? (model?.randomTextUp?.[group.id] || {}) : {}
-
+function buildChoiceStepCompact(model, group) {
   return {
     id: `choice:${group.id}`,
     kind: 'choice',
@@ -385,7 +405,10 @@ function buildChoiceStep(model, group) {
     effects: [],
     actions: [],
     popItems: [],
-    tips: isDice ? [stageMeta.type_tips, stageMeta.low_target_tips].filter(Boolean) : [],
+    phase: /^r\d+$/i.test(group.id) ? `骰子分支 ${group.id.toUpperCase()}` : '条件分支',
+    title: '',
+    text: '',
+    tips: [],
     groupId: group.id,
   }
 }
@@ -403,6 +426,22 @@ function buildDicePromptStep(model, groupId) {
     actions: [],
     popItems: [],
     tips: [stageMeta.type_tips, stageMeta.low_target_tips].filter(Boolean),
+  }
+}
+
+function buildChoiceStep(model, group) {
+  return {
+    id: `choice:${group.id}`,
+    kind: 'choice',
+    phase: /^r\d+$/i.test(group.id) ? `楠板瓙鍒嗘敮 ${group.id.toUpperCase()}` : '鏉′欢鍒嗘敮',
+    title: '',
+    text: '',
+    conditions: [],
+    effects: [],
+    actions: [],
+    popItems: [],
+    tips: [],
+    groupId: group.id,
   }
 }
 
@@ -516,17 +555,24 @@ function collectGroupOptions(model, phases, startIndex, groupId, cardsMap, slotC
     const detail = /^r\d+$/i.test(groupId)
       ? (model?.randomTextUp?.[groupId]?.text || '')
       : ''
+    const preview = buildConditionPreviewText(phaseCondition || (atomic ? { [atomic.key]: atomic.value } : {}), cardsMap, counterRegistry)
 
     options.push({
       id: optionId,
       rawKey: atomic?.key || '__compound__',
       rawValue: isCompositeGroup ? phaseCondition : atomic?.value,
+      previewLines: preview.previewLines,
+      allLines: preview.lines,
+      hiddenCount: preview.hiddenCount,
+      fullLabel: preview.fullText || '',
       label: parseConditionObject(phaseCondition || (atomic ? { [atomic.key]: atomic.value } : {}), cardsMap, counterRegistry).join(' / ')
         || (atomic ? buildConditionLabel({ [atomic.key]: atomic.value }, cardsMap, counterRegistry) : '未命名条件'),
+      label: preview.previewText || (atomic ? buildConditionLabel({ [atomic.key]: atomic.value }, cardsMap, counterRegistry) : '未命名条件'),
       detail,
     })
   }
 
+  const stageMeta = /^r\d+$/i.test(groupId) ? (model?.randomTextUp?.[groupId] || {}) : {}
   return {
     id: groupId,
     title: isCompositeGroup ? '复合条件分支' : buildGroupTitle(groupId, counterRegistry),
@@ -537,6 +583,9 @@ function collectGroupOptions(model, phases, startIndex, groupId, cardsMap, slotC
     isDice: /^r\d+$/i.test(groupId),
     isSlot: /^s\d+$/i.test(groupId),
     stageId: /^r\d+$/i.test(groupId) ? groupId : null,
+    phaseText: /^r\d+$/i.test(groupId) ? (model?.randomText?.[groupId] || '') : '',
+    promptText: stageMeta.text || '',
+    tipLines: [stageMeta.type_tips, stageMeta.low_target_tips].filter(Boolean),
   }
 }
 
