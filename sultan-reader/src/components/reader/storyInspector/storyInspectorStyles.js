@@ -420,7 +420,7 @@ export const actionButtonStyle = {
 export const ritePreparationPanelStyle = {
   borderRadius: 32,
   border: '1px solid rgba(244, 232, 206, 0.2)',
-  backgroundColor: 'rgba(20, 16, 12, 0.78)',
+  backgroundColor: 'rgba(20, 16, 12, 0.2)',
   boxShadow: '0 12px 28px rgba(0, 0, 0, 0.18)',
   padding: '20px 18px',
   display: 'grid',
@@ -450,7 +450,7 @@ export const ritePreparationInfoPanelStyle = {
   borderRadius: 32,
   border: '1px solid rgba(244, 232, 206, 0.2)',
   boxShadow: '0 16px 34px rgba(0, 0, 0, 0.18)',
-  backgroundColor: 'rgba(22, 17, 13, 0.78)',
+  backgroundColor: 'rgba(22, 17, 13, 0.2)',
   overflow: 'hidden',
   display: 'flex',
   flexDirection: 'column',
