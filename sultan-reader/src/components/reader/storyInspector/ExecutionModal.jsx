@@ -431,13 +431,6 @@ export default function ExecutionModal({
             <button type="button" style={styles.closeIconButton} onClick={onClose} aria-label="关闭结算">x</button>
           </div>
 
-          <div style={styles.floatingIntro}>
-            <div style={{ ...styles.headerLabel, color: '#d8b477' }}>仪式结算</div>
-            <div style={styles.introText}>
-              按当前准备状态预览仪式结算。
-            </div>
-          </div>
-
           <div style={styles.bodyGrid}>
             <div style={styles.leftPane}>
               <div style={styles.slotPreviewWrap}>
@@ -504,73 +497,75 @@ export default function ExecutionModal({
                 <div style={styles.title}>{model?.title}</div>
               </div>
 
-              <div
-                ref={scrollRef}
-                style={styles.narrativeScroll}
-              >
-                {visibleSteps.map((step, index) => {
-                  const previousStep = visibleSteps[index - 1] || null
-                  const hideRepeatedConditionInfo = step.kind === 'result' && previousStep?.kind === 'choice'
+              <div style={styles.paperTextPanel}>
+                <div
+                  ref={scrollRef}
+                  style={styles.narrativeScroll}
+                >
+                  {visibleSteps.map((step, index) => {
+                    const previousStep = visibleSteps[index - 1] || null
+                    const hideRepeatedConditionInfo = step.kind === 'result' && previousStep?.kind === 'choice'
 
-                  return (
-                  <div key={step.id} style={styles.narrativeSection}>
-                    {!hideRepeatedConditionInfo && step.phase ? <div style={styles.metaTag}>{step.phase}</div> : null}
-                    {step.title ? <div style={styles.stepTitle}>{step.title}</div> : null}
-                    {!hideRepeatedConditionInfo && step.conditions?.length > 0 ? (
-                      <div style={{ ...styles.contentBlock, ...styles.conditionChips }}>
-                        {step.conditions.map((condition, index) => (
-                          <span key={`${step.id}:condition:${index}`} style={styles.conditionChip}>{condition}</span>
-                        ))}
-                      </div>
-                    ) : null}
-                    {step.text ? (
-                      <div style={styles.textBlock}>
-                        <div style={styles.text}>{step.text}</div>
-                      </div>
-                    ) : null}
-                    {(step.tips || []).map((tip, index) => (
-                      <div key={`${step.id}:tip:${index}`} style={styles.tipBlock}>
-                        <div style={styles.tipText}>{tip}</div>
-                      </div>
-                    ))}
-                    {step.kind === 'choice' ? (
-                      <InlineChoiceStep
-                        group={executionConditionGroups.find((group) => group.id === step.groupId)}
-                        selectedId={executionConditionSelections[step.groupId] || null}
-                        onSelect={handleSelectAndResume}
-                        onOpenDetail={setDetailGroupId}
-                      />
-                    ) : null}
-                    {step.effects?.length > 0 ? (
-                      <div style={styles.inlineSection}>
-                        <ExecutionEffectList effects={step.effects} onOpenCard={onOpenCard} />
-                      </div>
-                    ) : null}
-                    {step.actions?.length > 0 ? (
-                      <div style={styles.inlineSection}>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                          {step.actions.map((action, index) => (
-                            <button
-                              key={`${step.id}:action:${index}`}
-                              type="button"
-                              onClick={() => onOpenAction?.(action, index)}
-                              style={styles.detailButton}
-                            >
-                              {formatExecutionActionLabel(action, executionTargetNameMap)}
-                            </button>
+                    return (
+                    <div key={step.id} style={styles.narrativeSection}>
+                      {!hideRepeatedConditionInfo && step.phase ? <div style={styles.metaTag}>{step.phase}</div> : null}
+                      {step.title ? <div style={styles.stepTitle}>{step.title}</div> : null}
+                      {!hideRepeatedConditionInfo && step.conditions?.length > 0 ? (
+                        <div style={{ ...styles.contentBlock, ...styles.conditionChips }}>
+                          {step.conditions.map((condition, index) => (
+                            <span key={`${step.id}:condition:${index}`} style={styles.conditionChip}>{condition}</span>
                           ))}
                         </div>
-                      </div>
-                    ) : null}
-                    {step.popItems?.length > 0 ? (
-                      <div style={{ display: 'grid', gap: 10 }}>
-                        {step.popItems.map((pop, index) => (
-                          <StoryPopLine key={`${step.id}:pop:${index}`} pop={pop} executionSlotCards={executionSlotCards} />
-                        ))}
-                      </div>
-                    ) : null}
-                  </div>
-                )})}
+                      ) : null}
+                      {step.text ? (
+                        <div style={styles.textBlock}>
+                          <div style={styles.text}>{step.text}</div>
+                        </div>
+                      ) : null}
+                      {(step.tips || []).map((tip, index) => (
+                        <div key={`${step.id}:tip:${index}`} style={styles.tipBlock}>
+                          <div style={styles.tipText}>{tip}</div>
+                        </div>
+                      ))}
+                      {step.kind === 'choice' ? (
+                        <InlineChoiceStep
+                          group={executionConditionGroups.find((group) => group.id === step.groupId)}
+                          selectedId={executionConditionSelections[step.groupId] || null}
+                          onSelect={handleSelectAndResume}
+                          onOpenDetail={setDetailGroupId}
+                        />
+                      ) : null}
+                      {step.effects?.length > 0 ? (
+                        <div style={styles.inlineSection}>
+                          <ExecutionEffectList effects={step.effects} onOpenCard={onOpenCard} />
+                        </div>
+                      ) : null}
+                      {step.actions?.length > 0 ? (
+                        <div style={styles.inlineSection}>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                            {step.actions.map((action, index) => (
+                              <button
+                                key={`${step.id}:action:${index}`}
+                                type="button"
+                                onClick={() => onOpenAction?.(action, index)}
+                                style={styles.detailButton}
+                              >
+                                {formatExecutionActionLabel(action, executionTargetNameMap)}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
+                      {step.popItems?.length > 0 ? (
+                        <div style={{ display: 'grid', gap: 10 }}>
+                          {step.popItems.map((pop, index) => (
+                            <StoryPopLine key={`${step.id}:pop:${index}`} pop={pop} executionSlotCards={executionSlotCards} />
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  )})}
+                </div>
               </div>
             </div>
           </div>
