@@ -67,6 +67,33 @@ export const EVENT_READER_DEFAULTS = {
 }
 
 /**
+ * 后日谈角色默认立绘映射。
+ *
+ * 说明：
+ * - 后日谈有一部分条目不会显式写 `pic`，但阅读器仍然需要展示固定角色立绘。
+ * - 这里优先使用明确的角色资源，而不是模糊匹配 cards.json，避免把“妻子”“主角”错映射成别的卡面。
+ * - key 允许写多个同义名，比较时会做去标点和空白的标准化。
+ */
+export const AFTER_STORY_CHARACTER_DEFAULTS = {
+  妻子: {
+    image: '1_char_5',
+    rare: 3,
+  },
+  梅姬: {
+    image: '1_char_5',
+    rare: 3,
+  },
+  主角: {
+    image: '1_char_7',
+    rare: 3,
+  },
+  阿尔图: {
+    image: '1_char_7',
+    rare: 3,
+  },
+}
+
+/**
  * 卡牌展示比例与裁切规则。
  *
  * 原始卡牌底板采用 194 x 422 的纵向长比例。

@@ -111,7 +111,15 @@ export default function LootDetail({ data }) {
     async function loadTargetNames() {
       const next = {}
       for (const item of items) {
-        if ((item?.type !== 'rite' && item?.type !== 'event') || item.id == null) continue
+        if (!item?.type || item.id == null) continue
+        if (item.type === 'card') {
+          const linkedCard = cardsById?.[String(item.id)] || null
+          if (linkedCard?.name) {
+            next[`${item.type}:${String(item.id)}`] = linkedCard.name
+          }
+          continue
+        }
+        if (item.type !== 'rite' && item.type !== 'event' && item.type !== 'loot' && item.type !== 'over' && item.type !== 'after_story') continue
         try {
           const targetData = await window.electronAPI.configReadCache(item.type, String(item.id))
           if (targetData?.name || targetData?.text) {
@@ -127,7 +135,7 @@ export default function LootDetail({ data }) {
 
     void loadTargetNames()
     return () => { cancelled = true }
-  }, [items])
+  }, [cardsById, items])
 
   useEffect(() => {
     if (!selectedNodeId || autoCanvasItems.length === 0) return

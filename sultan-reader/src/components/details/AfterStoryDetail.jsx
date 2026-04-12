@@ -3,6 +3,8 @@ import { useResolvedImage } from '../../services/imageResolver'
 import { getAfterStoryRelations } from '../../services/afterStoryRelations'
 import useConfigStore from '../../stores/useConfigStore'
 import { AfterStoryVariantModal, buildAfterStoryVariantGroup } from './AfterStoryVariantViewer'
+import { resolveAfterStoryFallbackCard } from '../../services/afterStoryImageFallback'
+import { getCardRarityFrameAsset } from '../../resourceConfig'
 
 const S = {
   titleRow: {
@@ -65,12 +67,19 @@ const S = {
   },
 }
 
-function HeaderImage({ pic }) {
+function HeaderImage({ pic, rare = null }) {
   const { url, loading } = useResolvedImage(pic)
+  const { url: rareFrameUrl } = useResolvedImage(rare ? getCardRarityFrameAsset(rare) : null)
   if (!pic) return null
 
   return (
-    <div style={S.imageWrap}>
+    <div style={{
+      ...S.imageWrap,
+      backgroundImage: rareFrameUrl ? `url("${rareFrameUrl}")` : S.imageWrap.background,
+      backgroundSize: rareFrameUrl ? '100% 100%' : undefined,
+      backgroundRepeat: rareFrameUrl ? 'no-repeat' : undefined,
+      backgroundPosition: rareFrameUrl ? 'center' : undefined,
+    }}>
       {loading && <div style={S.imagePlaceholder}>加载中...</div>}
       {!loading && !url && <div style={S.imagePlaceholder}>暂无配图</div>}
       {!loading && url && <img src={url} alt="" style={S.image} />}
@@ -153,6 +162,10 @@ export default function AfterStoryDetail({ data }) {
     })
   }, [cardsById, data, linkedOvers, relations.overToAfterStories])
 
+  const fallbackCard = useMemo(
+    () => resolveAfterStoryFallbackCard(data?.name || '', cardsById),
+    [cardsById, data?.name]
+  )
   const defaultImage = Array.isArray(data?.extra)
     ? (data.extra.find((item) => item?.pic)?.pic || null)
     : null
@@ -173,7 +186,7 @@ export default function AfterStoryDetail({ data }) {
         </button>
       </div>
 
-      <HeaderImage pic={defaultImage} />
+      <HeaderImage pic={defaultImage || fallbackCard?.image || null} rare={defaultImage ? null : (fallbackCard?.rare ?? null)} />
 
       <div style={S.desc}>
         当前后日谈支持按结局分组阅读。

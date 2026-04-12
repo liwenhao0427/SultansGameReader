@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useResolvedImage } from '../../services/imageResolver'
 import { buildAfterStoryVariantAnalysis } from '../../services/afterStoryDiff'
-import { resolveAfterStoryFallbackImage } from '../../services/afterStoryImageFallback'
+import { resolveAfterStoryFallbackCard } from '../../services/afterStoryImageFallback'
 import { parseAfterStoryConditionObject } from '../../services/afterStoryCondition'
+import { getCardRarityFrameAsset } from '../../resourceConfig'
 import RawFileView from '../RawFileView'
 
 export const AFTER_STORY_TONE_STYLE = {
@@ -198,11 +199,19 @@ const actionButtonStyle = {
   fontSize: 14,
 }
 
-function VariantImage({ pic, style, height = 120 }) {
+function VariantImage({ pic, rare = null, style, height = 120 }) {
   const { url, loading } = useResolvedImage(pic)
+  const { url: rareFrameUrl } = useResolvedImage(rare ? getCardRarityFrameAsset(rare) : null)
 
   return (
-    <div style={{ ...style.imageWrap, height }}>
+    <div style={{
+      ...style.imageWrap,
+      height,
+      backgroundImage: rareFrameUrl ? `url("${rareFrameUrl}")` : style.imageWrap.background,
+      backgroundSize: rareFrameUrl ? '100% 100%' : undefined,
+      backgroundRepeat: rareFrameUrl ? 'no-repeat' : undefined,
+      backgroundPosition: rareFrameUrl ? 'center' : undefined,
+    }}>
       {loading && <div style={{ ...style.imagePlaceholder, height }}>加载中...</div>}
       {!loading && !url && <div style={{ ...style.imagePlaceholder, height }}>后日谈配图</div>}
       {!loading && url && <img src={url} alt="" style={style.image} />}
@@ -263,7 +272,7 @@ export function buildAfterStoryVariantGroup(group, cardsById, overMap = {}) {
 
   return {
     ...group,
-    fallbackImage: resolveAfterStoryFallbackImage(group.afterStoryName, cardsById),
+    fallbackCard: resolveAfterStoryFallbackCard(group.afterStoryName, cardsById),
     overName: overMap[group.overId]?.name || group.overName || '',
     items: analyzedItems.map((item) => ({
       ...item,
@@ -284,7 +293,8 @@ export function buildAfterStoryVariantGroup(group, cardsById, overMap = {}) {
 
 export function RelatedAfterStoryCard({ group, onOpen, style = AFTER_STORY_VIEWER_STYLE }) {
   const previewItem = group.items[0]
-  const previewImage = previewItem?.pic || group.afterStoryImage || group.fallbackImage || null
+  const previewImage = previewItem?.pic || group.afterStoryImage || group.fallbackCard?.image || null
+  const previewRare = previewItem?.pic ? null : (group.fallbackCard?.rare ?? null)
 
   return (
     <button
@@ -292,7 +302,7 @@ export function RelatedAfterStoryCard({ group, onOpen, style = AFTER_STORY_VIEWE
       onClick={onOpen}
       style={{ ...style.relatedGroup, textAlign: 'left' }}
     >
-      <VariantImage pic={previewImage} style={style} />
+      <VariantImage pic={previewImage} rare={previewRare} style={style} />
       <div>
         <div style={style.relatedTitle}>{group.afterStoryName}</div>
         <div style={style.previewClamp}>{previewItem?.text || '暂无可读文本'}</div>
@@ -339,7 +349,8 @@ export function AfterStoryVariantModal({
   if (!group) return null
 
   const activeItem = group.items[currentIndex] || group.items[0] || null
-  const activeImage = activeItem?.pic || group.afterStoryImage || group.fallbackImage || null
+  const activeImage = activeItem?.pic || group.afterStoryImage || group.fallbackCard?.image || null
+  const activeRare = activeItem?.pic ? null : (group.fallbackCard?.rare ?? null)
 
   function moveVariant(step) {
     if (!group) return
@@ -407,7 +418,7 @@ export function AfterStoryVariantModal({
           <div style={AFTER_STORY_VIEWER_STYLE.modalBody}>
             <div style={AFTER_STORY_VIEWER_STYLE.modalContent}>
               <div style={AFTER_STORY_VIEWER_STYLE.modalImageWrap}>
-                <VariantImage pic={activeImage} style={AFTER_STORY_VIEWER_STYLE} height={216} />
+                <VariantImage pic={activeImage} rare={activeRare} style={AFTER_STORY_VIEWER_STYLE} height={216} />
               </div>
               <div style={AFTER_STORY_VIEWER_STYLE.modalTextCard}>
                 <div style={AFTER_STORY_VIEWER_STYLE.relatedMetaRow}>

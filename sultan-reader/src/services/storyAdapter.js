@@ -445,9 +445,10 @@ function buildResultEffects(result = {}, cardsMap, cardsById) {
       const extraTokens = sourceValues.filter((item) => !isCardLikeId(item)).map((item) => String(item)).filter(Boolean)
       if (cards.length > 0) {
         const baseLabel = result[`${key}__c`] || result[`${key}__ca`] || (key === 'link_card' ? '关联卡牌' : '获得卡牌')
+        const cardNames = cards.map((card) => card.name).filter(Boolean).join(' / ')
         effects.push({
           type: 'card',
-          label: extraTokens.length > 0 ? `${baseLabel}（${extraTokens.join(' / ')}）` : baseLabel,
+          label: `${baseLabel}${cardNames ? `：${cardNames}` : ''}${extraTokens.length > 0 ? `（${extraTokens.join(' / ')}）` : ''}`,
           cards,
         })
       }

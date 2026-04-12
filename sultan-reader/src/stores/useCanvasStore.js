@@ -98,7 +98,7 @@ const useCanvasStore = create((set, get) => ({
   },
 
   /**
-   * 按当前有向边移除节点签出的所有后续子树，但保留节点自身
+   * 按当前有向边移除节点及其签出的所有后续子树
    * @param {string} rootId - 根节点 ID（"{type}:{id}" 格式）
    */
   removeNodeTree: (rootId) => {
@@ -111,17 +111,17 @@ const useCanvasStore = create((set, get) => ({
       adjacency.get(edge.source).push(edge.target);
     });
 
-    const removedIds = new Set();
-    const queue = [...(adjacency.get(rootId) || [])];
-
-    if (queue.length === 0) return;
+    const removedIds = new Set([rootId]);
+    const queue = [rootId];
 
     while (queue.length > 0) {
       const currentId = queue.shift();
-      if (!currentId || removedIds.has(currentId)) continue;
-      removedIds.add(currentId);
+      if (!currentId) continue;
       (adjacency.get(currentId) || []).forEach((nextId) => {
-        if (!removedIds.has(nextId)) queue.push(nextId);
+        if (!removedIds.has(nextId)) {
+          removedIds.add(nextId);
+          queue.push(nextId);
+        }
       });
     }
 

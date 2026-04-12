@@ -13,6 +13,7 @@ import { useResolvedImage } from '../services/imageResolver'
 import { getCardRarityFrameAsset } from '../resourceConfig'
 import { getContentTypeLabel } from '../constants/gameTerminology'
 import { APP_TITLE_WITH_VERSION } from '../appMeta'
+import { resolveAfterStoryFallbackCard } from '../services/afterStoryImageFallback'
 
 const TYPE_TABS = [
   { key: 'rite', label: '仪式' },
@@ -32,10 +33,14 @@ function chunkSummary(entry) {
 
 function CatalogPreview({ item, activeType, cardsById }) {
   let pic = item.image || null
-  let rare = null
+  let rare = item.rare ?? null
 
   if (!pic && activeType === 'rite') pic = item.icon || null
-  if (!pic && activeType === 'after_story') pic = item.pic || null
+  if (activeType === 'after_story') {
+    const fallbackCard = resolveAfterStoryFallbackCard(item.name || item.title || '', cardsById)
+    pic = item.pic || fallbackCard?.image || null
+    rare = item.pic ? null : (fallbackCard?.rare ?? null)
+  }
 
   if (!pic && activeType === 'card') {
     const card = cardsById?.[String(item.id)]
@@ -45,7 +50,7 @@ function CatalogPreview({ item, activeType, cardsById }) {
 
   const { url } = useResolvedImage(pic)
   const { url: rareFrameUrl } = useResolvedImage(rare ? getCardRarityFrameAsset(rare) : null)
-  const isCardLike = activeType === 'card' || activeType === 'loot'
+  const isCardLike = activeType === 'card' || activeType === 'loot' || activeType === 'after_story'
 
   return (
     <div style={{
