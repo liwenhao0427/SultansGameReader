@@ -35,7 +35,73 @@ const AUTO_LAYOUT_NODE_SIZE = {
   default: { width: 150, height: 90 },
 }
 
-function layoutNodesWithDagre(nodes, edges) {
+function getNodeLayoutSize(node) {
+  return AUTO_LAYOUT_NODE_SIZE[node.type] || AUTO_LAYOUT_NODE_SIZE.default
+}
+
+function buildConnectedComponents(nodes, edges) {
+  const adjacency = new Map(nodes.map((node) => [node.id, new Set()]))
+
+  edges.forEach((edge) => {
+    if (!adjacency.has(edge.source) || !adjacency.has(edge.target)) return
+    adjacency.get(edge.source).add(edge.target)
+    adjacency.get(edge.target).add(edge.source)
+  })
+
+  const visited = new Set()
+  const components = []
+
+  nodes.forEach((node) => {
+    if (visited.has(node.id)) return
+
+    const queue = [node.id]
+    const componentIds = []
+    visited.add(node.id)
+
+    while (queue.length > 0) {
+      const currentId = queue.shift()
+      componentIds.push(currentId)
+      adjacency.get(currentId)?.forEach((nextId) => {
+        if (visited.has(nextId)) return
+        visited.add(nextId)
+        queue.push(nextId)
+      })
+    }
+
+    components.push(componentIds)
+  })
+
+  return components
+}
+
+function layoutComponent(nodes, edges, componentNodeIds, offsetX, offsetY) {
+  const componentNodes = componentNodeIds
+    .map((nodeId) => nodes.find((node) => node.id === nodeId))
+    .filter(Boolean)
+  const componentNodeIdSet = new Set(componentNodeIds)
+  const componentEdges = edges.filter((edge) => (
+    componentNodeIdSet.has(edge.source) && componentNodeIdSet.has(edge.target)
+  ))
+
+  if (componentNodes.length <= 1) {
+    const node = componentNodes[0]
+    if (!node) {
+      return { nodes: [], width: 0, height: 0 }
+    }
+    const size = getNodeLayoutSize(node)
+    return {
+      nodes: [{
+        ...node,
+        position: {
+          x: Math.round(offsetX),
+          y: Math.round(offsetY),
+        },
+      }],
+      width: size.width,
+      height: size.height,
+    }
+  }
+
   const graph = new dagre.graphlib.Graph()
   graph.setDefaultEdgeLabel(() => ({}))
   graph.setGraph({
@@ -46,31 +112,77 @@ function layoutNodesWithDagre(nodes, edges) {
     marginy: 40,
   })
 
-  nodes.forEach((node) => {
-    const size = AUTO_LAYOUT_NODE_SIZE[node.type] || AUTO_LAYOUT_NODE_SIZE.default
+  componentNodes.forEach((node) => {
+    const size = getNodeLayoutSize(node)
     graph.setNode(node.id, {
       width: node.measured?.width || size.width,
       height: node.measured?.height || size.height,
     })
   })
 
-  edges.forEach((edge) => {
+  componentEdges.forEach((edge) => {
     graph.setEdge(edge.source, edge.target)
   })
 
   dagre.layout(graph)
 
-  return nodes.map((node) => {
+  const positionedNodes = componentNodes.map((node) => {
     const positioned = graph.node(node.id)
     if (!positioned) return node
     return {
       ...node,
       position: {
-        x: Math.round(positioned.x - positioned.width / 2),
-        y: Math.round(positioned.y - positioned.height / 2),
+        x: Math.round(offsetX + positioned.x - positioned.width / 2),
+        y: Math.round(offsetY + positioned.y - positioned.height / 2),
       },
     }
   })
+
+  let maxRight = offsetX
+  let maxBottom = offsetY
+  positionedNodes.forEach((node) => {
+    const size = getNodeLayoutSize(node)
+    maxRight = Math.max(maxRight, node.position.x + (node.measured?.width || size.width))
+    maxBottom = Math.max(maxBottom, node.position.y + (node.measured?.height || size.height))
+  })
+
+  return {
+    nodes: positionedNodes,
+    width: Math.max(0, maxRight - offsetX),
+    height: Math.max(0, maxBottom - offsetY),
+  }
+}
+
+function layoutNodesWithDagre(nodes, edges) {
+  const components = buildConnectedComponents(nodes, edges)
+  const positionedNodeMap = new Map()
+  let componentOffsetX = 40
+  let isolatedOffsetY = 40
+
+  components.forEach((componentNodeIds) => {
+    const isIsolated = componentNodeIds.length <= 1
+    const result = layoutComponent(
+      nodes,
+      edges,
+      componentNodeIds,
+      componentOffsetX,
+      isIsolated ? isolatedOffsetY : 40
+    )
+
+    result.nodes.forEach((node) => {
+      positionedNodeMap.set(node.id, node)
+    })
+
+    if (isIsolated) {
+      isolatedOffsetY += result.height + 56
+      componentOffsetX = Math.max(componentOffsetX, 40 + result.width + 120)
+      return
+    }
+
+    componentOffsetX += result.width + 160
+  })
+
+  return nodes.map((node) => positionedNodeMap.get(node.id) || node)
 }
 
 function summarize(item, data) {

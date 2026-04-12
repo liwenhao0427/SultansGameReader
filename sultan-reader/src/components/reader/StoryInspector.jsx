@@ -139,6 +139,22 @@ function truncateDisplayText(text, maxLength = 120) {
   return `${content.slice(0, maxLength)}...`
 }
 
+function summarizeActionTarget(targetType, targetId, data = {}) {
+  if (!data || typeof data !== 'object') return String(targetId || '')
+
+  if (targetType === 'event') {
+    return data.text || data.name || data.title || String(targetId || '')
+  }
+  if (targetType === 'over') {
+    return data.name || data.sub_name || data.title || String(targetId || '')
+  }
+  if (targetType === 'loot') {
+    return data.name || data.title || data.type__c || String(targetId || '')
+  }
+
+  return data.name || data.title || data.text || String(targetId || '')
+}
+
 const CONDITION_BUTTON_MAX_LENGTH = 26
 const CONDITION_PREVIEW_MAX_LENGTH = 72
 
@@ -1305,7 +1321,6 @@ export default function StoryInspector({ type, data, onClose }) {
 
   function handleSelectSlot(slotId) {
     setActiveSlotId(slotId)
-    setConditionFilterText('')
     setCandidatePage(1)
     setSelectedConditionId(slotConditionSelections[slotId] || null)
     setConditionSelectorOpen(false)
@@ -1491,7 +1506,7 @@ export default function StoryInspector({ type, data, onClose }) {
 
         if (cachedTarget) {
           next[key] = {
-            name: cachedTarget.name || cachedTarget.title || String(action.targetId),
+            name: summarizeActionTarget(action.targetType, action.targetId, cachedTarget),
             image: cachedTarget.image || cachedTarget.icon || null,
           }
           continue
@@ -1500,7 +1515,7 @@ export default function StoryInspector({ type, data, onClose }) {
         try {
           const result = await window.electronAPI.configReadCache(action.targetType, String(action.targetId))
           next[key] = {
-            name: result?.name || result?.title || String(action.targetId),
+            name: summarizeActionTarget(action.targetType, action.targetId, result),
             image: resolveExecutionTargetImage(action.targetType, result, cardsById),
           }
         } catch {
@@ -1522,18 +1537,20 @@ export default function StoryInspector({ type, data, onClose }) {
 
   useEffect(() => {
     if (!executionOpen) return
-    const actions = (currentExecutionStep?.actions || []).filter((action) => (
+    const actions = executionSteps
+      .flatMap((step) => step.actions || [])
+      .filter((action) => (
       AUTO_FOLLOWUP_TARGET_TYPES.has(action.targetType)
-    ))
+      ))
     if (actions.length === 0) return
 
     actions.forEach((action, index) => {
-      const actionKey = `${currentExecutionStep.id}:${action.targetType}:${action.targetId}:${index}`
+      const actionKey = `${action.branch || 'direct'}:${action.key || ''}:${action.targetType}:${action.targetId}:${index}`
       if (executedActionKeyRef.current.has(actionKey)) return
       executedActionKeyRef.current.add(actionKey)
       void handleOpenAction(action, index, { autoSelect: false })
     })
-  }, [currentExecutionStep, executionOpen])
+  }, [executionOpen, executionSteps])
 
   const headerBlock = (
     <div style={storyHeaderShellStyle}>

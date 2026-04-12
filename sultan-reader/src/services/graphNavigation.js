@@ -10,12 +10,6 @@ function summarize(item, data) {
   return item.name || item.text || data?.name || data?.text || item.id
 }
 
-function hasRelatedCanvasTarget(data) {
-  return Array.isArray(data?.item) && data.item.some((entry) => (
-    CANVAS_NODE_TYPES.has(entry?.type)
-  ))
-}
-
 export async function mountNodeOnCanvas(item, position, options = {}) {
   const {
     autoSelect = true,
@@ -41,13 +35,6 @@ export async function mountNodeOnCanvas(item, position, options = {}) {
 
   const data = await window.electronAPI.configReadCache(item.type, item.id)
   if (!data) return null
-
-  if (item.type === 'loot' && !hasRelatedCanvasTarget(data)) {
-    if (autoSelect) {
-      store.setSelectedNode(nodeKey, 'panel')
-    }
-    return nodeKey
-  }
 
   const rawData = data?.id != null ? data : { id: String(item.id), ...data }
 
