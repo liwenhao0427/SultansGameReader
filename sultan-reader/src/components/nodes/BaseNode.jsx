@@ -37,7 +37,7 @@ export default function BaseNode({
   const resolvedImgUrl = imgUrl || fallbackImgUrl
   const useIconTitle = variant === 'iconTitle' && resolvedImgUrl
   const useHeroBackdrop = variant === 'heroBackdrop'
-  const canExpand = typeof onExpand === 'function'
+  const canExpand = typeof onExpand === 'function' && expandCount > 0
   const canRemove = typeof onRemove === 'function'
 
   return (
@@ -106,16 +106,24 @@ export default function BaseNode({
           className="nodrag nopan"
           style={{
             ...floatingButtonStyle,
-            right: -44,
+            right: -76,
             opacity: hovered ? 1 : 0,
             transform: hovered ? 'translate(0, -50%)' : 'translate(10px, -50%)',
             pointerEvents: hovered ? 'auto' : 'none',
             borderColor: selected ? lighten(color) : color,
             boxShadow: `0 10px 20px ${withAlpha(color, 0.22)}`,
+            minWidth: 60,
+            width: 'auto',
+            padding: '0 12px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 4,
           }}
           aria-label="签出关联节点"
         >
-          +{expandCount > 0 ? expandCount : ''}
+          <span style={{ fontSize: 22, lineHeight: 1 }}>+</span>
+          <span style={{ fontSize: 17, lineHeight: 1, fontWeight: 800 }}>{expandCount}</span>
         </button>
       ) : null}
 

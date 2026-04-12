@@ -28,12 +28,11 @@ describe('storyAdapter', () => {
 
     const model = adaptStoryData('rite', rite, cardsMap, cardsById)
     const slot = model.slots.find((entry) => entry.id === 's2')
-    const uniqueCardCandidate = slot?.candidates.find((candidate) => candidate.cards?.[0]?.id === '2000123')
 
     expect(slot).toBeTruthy()
-    expect(uniqueCardCandidate).toBeTruthy()
-    expect(uniqueCardCandidate.cards).toHaveLength(1)
-    expect(uniqueCardCandidate.cards[0].id).toBe('2000123')
-    expect(uniqueCardCandidate.label).toContain('莎姬')
+    expect(slot.candidates).toHaveLength(1)
+    expect(slot.candidates[0].cards).toHaveLength(1)
+    expect(slot.candidates[0].cards[0].id).toBe('2000123')
+    expect(slot.candidates[0].label).toContain('莎姬')
   })
 })

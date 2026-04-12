@@ -228,6 +228,13 @@ function collectExplicitConditionCardIds(condition, collector = new Set()) {
   return collector
 }
 
+function hasStrictCardConstraint(condition = {}) {
+  if (!condition || typeof condition !== 'object') return false
+  if (collectExplicitConditionCardIds(condition).size > 0) return true
+  if (Object.keys(FIXED_TAG_CARD_IDS).some((key) => Number(condition[key]) > 0)) return true
+  return false
+}
+
 function isCardLikeId(value) {
   return /^\d{6,}$/.test(String(value ?? ''))
 }
@@ -935,7 +942,9 @@ export function adaptStoryData(type, data, cardsMap, cardsById = {}) {
               : browseCandidates.length > 0
                 ? browseCandidates
                 : [buildFallbackSlotCandidate(slotId, slot, cardsMap, cardsById)]
-            return slot.is_empty ? [...resolved, buildEmptySlotCandidate(slotId, slot)] : resolved
+            return slot.is_empty && !hasStrictCardConstraint(slot.condition || {})
+              ? [...resolved, buildEmptySlotCandidate(slotId, slot)]
+              : resolved
           })(),
           settlementHints: settlementHintsBySlot[slotId] || [],
         })),

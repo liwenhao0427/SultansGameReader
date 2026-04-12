@@ -7,6 +7,39 @@ import { linkNodesOnCanvas, mountNodeOnCanvas } from '../../services/graphNaviga
 
 const AUTO_CANVAS_LIMIT = 3
 
+function collectFollowupActions(node, collector = []) {
+  if (!node || typeof node !== 'object') return collector
+
+  ;(node.actions || []).forEach((action) => {
+    if (!action?.targetType || !action?.targetId) return
+    if (!['rite', 'event', 'loot', 'over'].includes(action.targetType)) return
+    collector.push(action)
+  })
+
+  ;(node.choices || []).forEach((choice) => {
+    if (choice?.branch) collectFollowupActions(choice.branch, collector)
+  })
+
+  return collector
+}
+
+function dedupeActions(actions = []) {
+  const map = new Map()
+  actions.forEach((action, index) => {
+    const key = [
+      action.targetType,
+      action.targetId,
+      action.branch || 'direct',
+      action.key || '',
+      action.text || '',
+    ].join('|')
+    if (!map.has(key)) {
+      map.set(key, { ...action, _dedupeIndex: index })
+    }
+  })
+  return Array.from(map.values())
+}
+
 function normalizeTextContent(text) {
   if (text == null) return ''
   if (typeof text === 'string') return text
@@ -116,14 +149,10 @@ export default function EventDetail({ data }) {
     return Array.from(unique.values()).slice(0, 3)
   }, [currentEventNode?.relatedCards, model?.eventFlow?.relatedCards, model?.fallbackCharacterCard])
 
-  const followupActions = useMemo(() => (
-    (currentEventNode?.actions || []).filter((action) => (
-      action.targetType === 'rite' ||
-      action.targetType === 'over' ||
-      action.targetType === 'event' ||
-      action.targetType === 'loot'
-    ))
-  ), [currentEventNode?.actions])
+  const followupActions = useMemo(
+    () => dedupeActions(collectFollowupActions(model?.eventFlow || null)),
+    [model?.eventFlow]
+  )
 
   const resolvedFollowupActions = useMemo(() => (
     followupActions.map((action) => {
@@ -137,9 +166,7 @@ export default function EventDetail({ data }) {
   ), [contentNameMap, followupActions])
 
   const autoFollowupActions = useMemo(
-    () => (resolvedFollowupActions.length > AUTO_CANVAS_LIMIT
-      ? []
-      : [...resolvedFollowupActions].sort(() => Math.random() - 0.5).slice(0, AUTO_CANVAS_LIMIT)),
+    () => [...resolvedFollowupActions].sort(() => Math.random() - 0.5).slice(0, AUTO_CANVAS_LIMIT),
     [resolvedFollowupActions]
   )
 
@@ -253,9 +280,7 @@ export default function EventDetail({ data }) {
           <div style={S.followupSection}>
             <div style={S.followupTitle}>后续节点</div>
             <div style={S.followupHint}>
-              {resolvedFollowupActions.length > AUTO_CANVAS_LIMIT
-                ? '当前后续节点超过自动带出阈值，已停止自动带出；请在下面手动选择需要展开的节点。'
-                : '默认只随机带出 3 个到画布；这里仍然可以手动继续打开。'}
+              默认会随机带出最多 3 个后续节点到画布，这里仍然可以手动继续打开。
             </div>
             <div style={S.followupList}>
               {resolvedFollowupActions.map((action, index) => (
@@ -300,20 +325,23 @@ const S = {
   },
   heroLayer: {
     position: 'absolute',
-    inset: 0,
+    top: 0,
+    right: 0,
+    bottom: 0,
+    width: 'min(36%, 320px)',
     pointerEvents: 'none',
     overflow: 'hidden',
   },
   figureWrap: {
     position: 'absolute',
     right: 0,
-    bottom: -12,
-    height: '78%',
-    minHeight: 360,
+    bottom: 8,
+    height: '70%',
+    minHeight: 280,
     display: 'flex',
     alignItems: 'flex-end',
     justifyContent: 'flex-end',
-    opacity: 0.94,
+    opacity: 0.26,
   },
   figureImage: {
     height: '100%',
@@ -365,6 +393,7 @@ const S = {
     gap: 18,
     alignContent: 'start',
     overflow: 'visible',
+    paddingRight: 24,
   },
   flowSection: {
     display: 'grid',

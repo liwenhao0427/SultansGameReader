@@ -106,9 +106,7 @@ export default function LootDetail({ data }) {
     [enrichedItems]
   )
   const autoCanvasItems = useMemo(
-    () => (relatedCanvasItems.length > AUTO_CANVAS_LIMIT
-      ? []
-      : [...relatedCanvasItems].sort(() => Math.random() - 0.5).slice(0, AUTO_CANVAS_LIMIT)),
+    () => [...relatedCanvasItems].sort(() => Math.random() - 0.5).slice(0, AUTO_CANVAS_LIMIT),
     [relatedCanvasItems]
   )
 
