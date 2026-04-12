@@ -135,21 +135,13 @@ export default function MainLayout({ onNavigate }) {
 
     let cancelled = false
 
-    async function bootstrapRites() {
+    async function bootstrapDefaultEvent() {
       try {
-        const rites = await window.electronAPI.configListCache('rite')
-        if (!rites?.length || cancelled) return
-
-        const randomRites = [...rites].sort(() => Math.random() - 0.5).slice(0, 3)
-        const positions = [
-          { x: 80, y: 70 },
-          { x: 420, y: 60 },
-          { x: 160, y: 320 },
-        ]
-
-        for (let i = 0; i < randomRites.length; i += 1) {
-          await mountNodeOnCanvas(randomRites[i], positions[i] || { x: 140 + i * 180, y: 120 + i * 110 }, { autoSelect: false })
-        }
+        await mountNodeOnCanvas(
+          { id: '5300066', type: 'event', name: '生成治理家业' },
+          { x: 96, y: 220 },
+          { autoSelect: true, expandRelations: true, autoExpandLimit: 12 }
+        )
 
         if (!cancelled) setBootstrapped(true)
       } catch {
@@ -157,7 +149,7 @@ export default function MainLayout({ onNavigate }) {
       }
     }
 
-    bootstrapRites()
+    bootstrapDefaultEvent()
     return () => {
       cancelled = true
     }

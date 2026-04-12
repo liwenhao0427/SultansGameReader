@@ -1644,7 +1644,6 @@ export default function StoryInspector({ type, data, onClose }) {
     }
 
     setSlotSelections(nextSelections)
-    setCandidatePage(1)
     const nextLines = buildDialogueLines(selectedSlot.id, nextSelections, settlementSelections, globalSettlementSelection)
     setRevealedLineCount(nextLines.length > 0 ? 1 : 0)
     setRevealedSegmentCount(0)

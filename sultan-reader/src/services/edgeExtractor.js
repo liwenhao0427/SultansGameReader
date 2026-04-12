@@ -3,6 +3,8 @@
  * 从节点数据中递归提取关联边（关系）
  */
 
+import { applyTargetOverride } from './targetOverride'
+
 // 字段名 → 目标节点类型的映射表
 const FIELD_TYPE_MAP = {
   event_on: 'event',
@@ -48,6 +50,10 @@ function getBranchType(path) {
 function extractFromObject(source, obj, currentPath, edgeMap) {
   if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return;
 
+  const colonIndex = source.indexOf(':');
+  const sourceType = colonIndex === -1 ? '' : source.slice(0, colonIndex);
+  const sourceId = colonIndex === -1 ? '' : source.slice(colonIndex + 1);
+
   for (const key of Object.keys(obj)) {
     // 跳过元数据字段
     if (isMetaField(key)) continue;
@@ -66,7 +72,8 @@ function extractFromObject(source, obj, currentPath, edgeMap) {
       const ids = Array.isArray(value) ? value : [value];
       for (const id of ids) {
         if (id == null) continue;
-        const target = `${targetType}:${id}`;
+        const overriddenTarget = applyTargetOverride(sourceType, sourceId, targetType, id);
+        const target = `${overriddenTarget.targetType}:${overriddenTarget.targetId}`;
         const edgeId = `${source}->${target}:${fieldPath}`;
         if (!edgeMap.has(edgeId)) {
           edgeMap.set(edgeId, {
@@ -110,6 +117,7 @@ export function extractEdges(nodeType, nodeId, data) {
   if (!data || typeof data !== 'object') return [];
 
   const source = `${nodeType}:${nodeId}`;
+  const normalizedNodeId = String(nodeId);
   // 使用 Map 去重，key 为边 ID
   const edgeMap = new Map();
 
@@ -134,7 +142,8 @@ export function extractEdges(nodeType, nodeId, data) {
       const ids = Array.isArray(value) ? value : [value];
       for (const id of ids) {
         if (id == null) continue;
-        const target = `${targetType}:${id}`;
+        const overriddenTarget = applyTargetOverride(nodeType, normalizedNodeId, targetType, id);
+        const target = `${overriddenTarget.targetType}:${overriddenTarget.targetId}`;
         const edgeId = `${source}->${target}:${key}`;
         if (!edgeMap.has(edgeId)) {
           edgeMap.set(edgeId, {

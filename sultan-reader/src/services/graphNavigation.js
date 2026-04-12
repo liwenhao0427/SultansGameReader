@@ -15,6 +15,7 @@ export async function mountNodeOnCanvas(item, position, options = {}) {
   const {
     autoSelect = true,
     expandRelations = AUTO_EXPAND_SOURCE_TYPES.has(item.type),
+    autoExpandLimit = AUTO_EXPAND_LIMIT,
   } = options
 
   const store = useCanvasStore.getState()
@@ -56,7 +57,7 @@ export async function mountNodeOnCanvas(item, position, options = {}) {
         return AUTO_EXPAND_TARGET_TYPES.has(targetType)
       })
 
-    if (relations.length > AUTO_EXPAND_LIMIT) {
+    if (relations.length > autoExpandLimit) {
       return nodeKey
     }
 

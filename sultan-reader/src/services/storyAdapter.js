@@ -1,6 +1,7 @@
 import { parseConditionObject, parseEffect } from './conditionParser'
 import { EVENT_READER_DEFAULTS, FIXED_ITEM_SLOT_ASSETS, FIXED_SUDAN_SLOT_ASSETS, FIXED_TAG_CARD_IDS } from '../resourceConfig'
 import { getContentTypeLabel } from '../constants/gameTerminology'
+import { applyTargetOverride } from './targetOverride'
 
 function normalizeArray(value) {
   if (!value) return []
@@ -34,8 +35,10 @@ function actionTargetType(key) {
   }
 }
 
-function extractActionTargets(action = {}) {
+function extractActionTargets(action = {}, sourceContext = {}) {
   const results = []
+  const sourceType = sourceContext.sourceType || ''
+  const sourceId = String(sourceContext.sourceId || '')
 
   for (const [key, value] of Object.entries(action)) {
     if (key.endsWith('__c') || key.endsWith('__ca') || key.endsWith('__ci')) continue
@@ -46,12 +49,15 @@ function extractActionTargets(action = {}) {
         if (branchKey.endsWith('__c') || branchKey.endsWith('__ca') || branchKey.endsWith('__ci')) continue
         normalizeArray(branchValue).forEach((item) => {
           const targetType = actionTargetType(branchKey)
+          const overriddenTarget = targetType
+            ? applyTargetOverride(sourceType, sourceId, targetType, item)
+            : { targetType: null, targetId: null }
           results.push({
             branch: key,
             key: branchKey,
             value: item,
-            targetType,
-            targetId: targetType ? String(item) : null,
+            targetType: overriddenTarget.targetType,
+            targetId: overriddenTarget.targetType ? overriddenTarget.targetId : null,
             text: `${key} -> ${branchKey}: ${item}`,
           })
         })
@@ -62,12 +68,15 @@ function extractActionTargets(action = {}) {
     normalizeArray(value).forEach((item) => {
       if (typeof item !== 'object') {
         const targetType = actionTargetType(key)
+        const overriddenTarget = targetType
+          ? applyTargetOverride(sourceType, sourceId, targetType, item)
+          : { targetType: null, targetId: null }
         results.push({
           branch: 'direct',
           key,
           value: item,
-          targetType,
-          targetId: targetType ? String(item) : null,
+          targetType: overriddenTarget.targetType,
+          targetId: overriddenTarget.targetType ? overriddenTarget.targetId : null,
           text: `${key}: ${item}`,
         })
       }
@@ -823,7 +832,7 @@ function extractEventEffects(action = {}, cardsMap, cardsById) {
   return buildResultEffects(filtered, cardsMap, cardsById)
 }
 
-function buildEventActionNode(action = {}, cardsMap, cardsById, nodeId = 'event-root') {
+function buildEventActionNode(action = {}, cardsMap, cardsById, nodeId = 'event-root', sourceContext = {}) {
   const promptEntries = normalizePromptEntries(action.prompt)
   const option = normalizeOptionEntry(action.option)
   const promptCards = promptEntries
@@ -838,7 +847,7 @@ function buildEventActionNode(action = {}, cardsMap, cardsById, nodeId = 'event-
       id: `${nodeId}:${item.tag || item.id}`,
       tag: item.tag || item.id,
       text: item.text,
-      branch: branchAction ? buildEventActionNode(branchAction, cardsMap, cardsById, `${nodeId}:${item.tag || item.id}`) : null,
+      branch: branchAction ? buildEventActionNode(branchAction, cardsMap, cardsById, `${nodeId}:${item.tag || item.id}`, sourceContext) : null,
     }
   })
 
@@ -847,7 +856,7 @@ function buildEventActionNode(action = {}, cardsMap, cardsById, nodeId = 'event-
     promptEntries,
     option,
     choices,
-    actions: extractActionTargets(action).filter((entry) => (
+    actions: extractActionTargets(action, sourceContext).filter((entry) => (
       entry.targetType === 'rite' ||
       entry.targetType === 'loot' ||
       entry.targetType === 'over' ||
@@ -962,7 +971,13 @@ export function adaptStoryData(type, data, cardsMap, cardsById = {}) {
       const eventRootAction = normalizeArray(data.settlement)
         .map((item) => item?.action)
         .find((action) => action && typeof action === 'object') || {}
-      const eventFlow = buildEventActionNode(eventRootAction, cardsMap, cardsById, `event:${data.id}:root`)
+      const eventFlow = buildEventActionNode(
+        eventRootAction,
+        cardsMap,
+        cardsById,
+        `event:${data.id}:root`,
+        { sourceType: 'event', sourceId: data.id }
+      )
       const fallbackCharacterCard = buildCardSummary(EVENT_READER_DEFAULTS.fallbackCharacterCardId, cardsMap, cardsById)
 
       return {
