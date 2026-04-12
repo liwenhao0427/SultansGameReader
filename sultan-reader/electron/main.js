@@ -818,7 +818,8 @@ ipcMain.handle('asset:extract', async (event, { gamePath, outputDir }) => {
  *   4. Sprite/{name}.png.png
  *
  * 特例：
- * - rite_1 资源在当前提取结果里优先使用 `rite_1.png.png`，否则会命中错误的同名图。
+ * - rite_1 资源在当前提取结果里优先使用 `Sprite/rite_1.png.png`，
+ *   否则会先命中错误的 Texture2D 同名图。
  * 返回 sultan-asset:// 协议 URL 或 null
  */
 ipcMain.handle('asset:resolveImage', async (_event, pic) => {
@@ -833,10 +834,10 @@ ipcMain.handle('asset:resolveImage', async (_event, pic) => {
   const prefersDoublePng = name === 'rite_1';
   const candidates = prefersDoublePng
     ? [
-      { rel: `Texture2D/${name}.png.png`,  url: `sultan-asset://Texture2D/${name}.png.png` },
-      { rel: `Texture2D/${name}.png`,      url: `sultan-asset://Texture2D/${name}.png` },
       { rel: `Sprite/${name}.png.png`,     url: `sultan-asset://Sprite/${name}.png.png` },
       { rel: `Sprite/${name}.png`,         url: `sultan-asset://Sprite/${name}.png` },
+      { rel: `Texture2D/${name}.png.png`,  url: `sultan-asset://Texture2D/${name}.png.png` },
+      { rel: `Texture2D/${name}.png`,      url: `sultan-asset://Texture2D/${name}.png` },
     ]
     : [
       { rel: `Texture2D/${name}.png`,      url: `sultan-asset://Texture2D/${name}.png` },
