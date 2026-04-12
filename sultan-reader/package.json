@@ -51,7 +51,6 @@
     },
     "win": {
       "icon": "electron/app-icon.ico",
-      "signAndEditExecutable": false,
       "target": [
         {
           "target": "dir",
@@ -60,6 +59,11 @@
           ]
         }
       ]
+    },
+    "nsis": {
+      "installerIcon": "electron/app-icon.ico",
+      "uninstallerIcon": "electron/app-icon.ico",
+      "installerHeaderIcon": "electron/app-icon.ico"
     }
   }
 }

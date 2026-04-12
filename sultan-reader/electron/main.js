@@ -66,11 +66,17 @@ let searchIndex = [];
 let mainWindow = null;
 
 function resolveAppIconPath() {
-  const candidates = [
-    path.join(__dirname, 'app-icon.png'),
-    path.join(process.resourcesPath || '', 'app-icon.png'),
-    path.join(process.cwd(), 'electron', 'app-icon.png'),
+  const iconFileNames = process.platform === 'win32'
+    ? ['app-icon.ico', 'app-icon.png']
+    : ['app-icon.png'];
+  const baseDirs = [
+    __dirname,
+    process.resourcesPath || '',
+    path.join(process.cwd(), 'electron'),
   ].filter(Boolean);
+  const candidates = baseDirs.flatMap((baseDir) => (
+    iconFileNames.map((fileName) => path.join(baseDir, fileName))
+  ));
 
   return candidates.find((candidate) => fs.existsSync(candidate)) || undefined;
 }
