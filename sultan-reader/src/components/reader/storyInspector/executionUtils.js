@@ -536,7 +536,7 @@ function buildExecutionIntroStep(model) {
   return {
     id: 'execution:intro',
     kind: 'intro',
-    phase: '仪式正文',
+    // phase: '仪式正文',
     title: model?.title || '',
     text: model?.intro || '',
     conditions: [],

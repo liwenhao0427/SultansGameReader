@@ -35,7 +35,7 @@ export const executionStyles = {
   backgroundImage: {
     position: 'absolute',
     left: 0,
-    top: '54%',
+    top: '60%',
     width: '100%',
     height: 'auto',
     minHeight: '100%',
@@ -109,10 +109,10 @@ export const executionStyles = {
   },
   leftPane: {
     position: 'absolute',
-    left: '2.8%',
-    top: '22%',
-    width: '47.5%',
-    height: '66%',
+    left: '10%',
+    top: '0%',
+    width: '35%',
+    height: '80%',
     minHeight: 0,
     borderRadius: 28,
     overflow: 'hidden',
@@ -120,8 +120,8 @@ export const executionStyles = {
   summaryPanel: {
     position: 'absolute',
     left: '2.5%',
-    top: '11%',
-    width: '36%',
+    top: '30%',
+    width: '100%',
     height: '76%',
     minWidth: 240,
     padding: '24px 20px 18px',
@@ -141,7 +141,7 @@ export const executionStyles = {
   },
   slotPreviewWrap: {
     position: 'absolute',
-    top: '-7%',
+    top: '0%',
     right: '20%',
     width: '39%',
     height: '34%',

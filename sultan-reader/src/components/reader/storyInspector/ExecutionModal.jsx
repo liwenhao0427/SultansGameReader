@@ -427,7 +427,7 @@ export default function ExecutionModal({
           </div>
 
           <div style={styles.topActions}>
-            <button type="button" style={styles.readButton} onClick={onMarkRead || onClose}>已读</button>
+            {/* <button type="button" style={styles.readButton} onClick={onMarkRead || onClose}>已读</button> */}
             <button type="button" style={styles.closeIconButton} onClick={onClose} aria-label="关闭结算">x</button>
           </div>
 
@@ -492,10 +492,10 @@ export default function ExecutionModal({
             </div>
 
             <div style={styles.rightPane}>
-              <div style={styles.headerBlock}>
+              {/* <div style={styles.headerBlock}>
                 <div style={styles.headerLabel}>仪式结算</div>
                 <div style={styles.title}>{model?.title}</div>
-              </div>
+              </div> */}
 
               <div style={styles.paperTextPanel}>
                 <div
