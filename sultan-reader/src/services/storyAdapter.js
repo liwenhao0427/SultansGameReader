@@ -655,7 +655,11 @@ function matchesBrowseCondition(card, condition) {
     if (key.endsWith('__c') || key.endsWith('__ca') || key.endsWith('__ci')) return true
     if (key === 'any') {
       if (Array.isArray(value)) return value.some((item) => matchesBrowseCondition(card, item))
-      if (value && typeof value === 'object') return matchesBrowseCondition(card, value)
+      if (value && typeof value === 'object') {
+        return Object.entries(value).some(([subKey, subValue]) => (
+          matchesBrowseCondition(card, { [subKey]: subValue })
+        ))
+      }
       return true
     }
     if (key === 'all') {

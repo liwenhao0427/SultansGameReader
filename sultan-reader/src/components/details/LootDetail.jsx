@@ -76,6 +76,8 @@ export default function LootDetail({ data }) {
   const cardsLite = useConfigStore((s) => s.cardsLite)
   const cardsById = useConfigStore((s) => s.cardsById)
   const selectedNodeId = useCanvasStore((s) => s.selectedNodeId)
+  const nodes = useCanvasStore((s) => s.nodes)
+  const edges = useCanvasStore((s) => s.edges)
   const [targetNames, setTargetNames] = useState({})
   if (!data) return null
 
@@ -109,6 +111,16 @@ export default function LootDetail({ data }) {
     () => [...relatedCanvasItems].sort(() => Math.random() - 0.5).slice(0, AUTO_CANVAS_LIMIT),
     [relatedCanvasItems]
   )
+
+  const currentChildNodeCount = useMemo(() => {
+    if (!selectedNodeId) return 0
+    const childIds = new Set(
+      edges
+        .filter((edge) => edge.source === selectedNodeId)
+        .map((edge) => edge.target)
+    )
+    return Array.from(childIds).filter((targetId) => nodes.some((node) => node.id === targetId)).length
+  }, [edges, nodes, selectedNodeId])
 
   useEffect(() => {
     let cancelled = false
@@ -144,8 +156,18 @@ export default function LootDetail({ data }) {
 
   useEffect(() => {
     if (!selectedNodeId || autoCanvasItems.length === 0) return
+    if (currentChildNodeCount >= AUTO_CANVAS_LIMIT) return
 
-    autoCanvasItems.forEach((item, index) => {
+    const existingChildIds = new Set(
+      edges
+        .filter((edge) => edge.source === selectedNodeId)
+        .map((edge) => edge.target)
+    )
+    const pendingItems = autoCanvasItems
+      .filter((item) => !existingChildIds.has(`${item.type}:${String(item.id)}`))
+      .slice(0, AUTO_CANVAS_LIMIT - currentChildNodeCount)
+
+    pendingItems.forEach((item, index) => {
       void mountNodeOnCanvas(
         { id: String(item.id), type: item.type, name: item.name },
         { x: 460 + index * 60, y: 180 + index * 50 },
@@ -155,7 +177,7 @@ export default function LootDetail({ data }) {
         linkNodesOnCanvas(selectedNodeId, item.type, String(item.id), 'default', item.name || `${item.type}:${item.id}`)
       })
     })
-  }, [autoCanvasItems, selectedNodeId])
+  }, [autoCanvasItems, currentChildNodeCount, edges, selectedNodeId])
 
   async function handleOpenRelatedItem(item, offsetIndex = 0) {
     if (!item?.id || (item.type !== 'rite' && item.type !== 'event' && item.type !== 'loot' && item.type !== 'over')) return

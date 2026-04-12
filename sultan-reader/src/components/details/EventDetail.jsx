@@ -94,6 +94,8 @@ export default function EventDetail({ data }) {
   const cardsById = useConfigStore((s) => s.cardsById)
   const contentNameMap = useConfigStore((s) => s.contentNameMap)
   const selectedNodeId = useCanvasStore((s) => s.selectedNodeId)
+  const nodes = useCanvasStore((s) => s.nodes)
+  const edges = useCanvasStore((s) => s.edges)
   const model = useMemo(() => adaptStoryData('event', data, cardsLite, cardsById), [cardsLite, cardsById, data])
   const [choicePath, setChoicePath] = useState([])
   const autoMountedEventIdRef = useRef(null)
@@ -170,12 +172,34 @@ export default function EventDetail({ data }) {
     [resolvedFollowupActions]
   )
 
+  const currentChildNodeCount = useMemo(() => {
+    if (!selectedNodeId) return 0
+    const childIds = new Set(
+      edges
+        .filter((edge) => edge.source === selectedNodeId)
+        .map((edge) => edge.target)
+    )
+    return Array.from(childIds).filter((targetId) => nodes.some((node) => node.id === targetId)).length
+  }, [edges, nodes, selectedNodeId])
+
   useEffect(() => {
     if (!data?.id || autoFollowupActions.length === 0) return
     if (autoMountedEventIdRef.current === data.id) return
+    if (!selectedNodeId) return
+    if (currentChildNodeCount >= AUTO_CANVAS_LIMIT) return
 
     autoMountedEventIdRef.current = data.id
-    autoFollowupActions.forEach((action, index) => {
+    const existingChildIds = new Set(
+      edges
+        .filter((edge) => edge.source === selectedNodeId)
+        .map((edge) => edge.target)
+    )
+    const remainingSlots = AUTO_CANVAS_LIMIT - currentChildNodeCount
+    const pendingActions = autoFollowupActions
+      .filter((action) => !existingChildIds.has(`${action.targetType}:${action.targetId}`))
+      .slice(0, remainingSlots)
+
+    pendingActions.forEach((action, index) => {
       void mountNodeOnCanvas(
         { id: action.targetId, type: action.targetType, name: action.displayLabel || action.text },
         { x: 460 + index * 60, y: 180 + index * 50 },
@@ -191,7 +215,7 @@ export default function EventDetail({ data }) {
         )
       })
     })
-  }, [autoFollowupActions, data?.id, selectedNodeId])
+  }, [autoFollowupActions, currentChildNodeCount, data?.id, edges, selectedNodeId])
 
   function handleSelectChoice(choiceTag, depth) {
     setChoicePath((current) => {
@@ -325,10 +349,7 @@ const S = {
   },
   heroLayer: {
     position: 'absolute',
-    top: 0,
-    right: 0,
-    bottom: 0,
-    width: 'min(36%, 320px)',
+    inset: 0,
     pointerEvents: 'none',
     overflow: 'hidden',
   },
@@ -336,7 +357,7 @@ const S = {
     position: 'absolute',
     right: 0,
     bottom: 8,
-    height: '70%',
+    height: '74%',
     minHeight: 280,
     display: 'flex',
     alignItems: 'flex-end',
@@ -393,7 +414,6 @@ const S = {
     gap: 18,
     alignContent: 'start',
     overflow: 'visible',
-    paddingRight: 24,
   },
   flowSection: {
     display: 'grid',

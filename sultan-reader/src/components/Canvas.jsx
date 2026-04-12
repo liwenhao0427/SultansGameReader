@@ -731,10 +731,10 @@ function CanvasInner() {
         option.relation.branchType,
         option.conditionText || option.resultTitle || option.resultText || ''
       )
-
-      runAutoLayout()
-      setNodes(useCanvasStore.getState().nodes)
     }
+
+    runAutoLayout()
+    setNodes(useCanvasStore.getState().nodes)
 
     setRelationPicker(null)
   }, [nodeMap, relationPicker, runAutoLayout, setNodes])
@@ -758,7 +758,7 @@ function CanvasInner() {
 
   useEffect(() => {
     if (!selectedNodeId) return
-    const activeNode = nodes.find((node) => node.id === selectedNodeId)
+    const activeNode = useCanvasStore.getState().nodes.find((node) => node.id === selectedNodeId)
     if (!activeNode) return
 
     const width = activeNode.measured?.width || AUTO_LAYOUT_NODE_SIZE[activeNode.type]?.width || AUTO_LAYOUT_NODE_SIZE.default.width
@@ -782,7 +782,7 @@ function CanvasInner() {
     if (!viewport) return
 
     setViewport(viewport, { duration: 420 })
-  }, [getZoom, nodes, selectedNodeId, selectedOpenMode, setViewport])
+  }, [getZoom, selectedNodeId, selectedOpenMode, setViewport])
 
   return (
     <div ref={canvasShellRef} style={{ width: '100%', height: '100%', position: 'relative' }}>
