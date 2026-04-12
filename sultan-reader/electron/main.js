@@ -982,6 +982,19 @@ ipcMain.handle('file:openFolder', async (_event, targetPath) => {
   return { success: true };
 });
 
+ipcMain.handle('app:openExternal', async (_event, targetUrl) => {
+  if (!targetUrl || typeof targetUrl !== 'string') {
+    return { success: false, error: '链接为空' };
+  }
+
+  try {
+    await shell.openExternal(targetUrl);
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
 // ─── IPC Handlers：settings: 组 ──────────────────────────────────────────────
 
 /**

@@ -104,6 +104,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   fileOpenFolder: (targetPath) =>
     ipcRenderer.invoke('file:openFolder', targetPath),
 
+  appOpenExternal: (targetUrl) =>
+    ipcRenderer.invoke('app:openExternal', targetUrl),
+
   // ── settings: 组 ────────────────────────────────────────────────────────────
 
   /** 读取用户设置 */

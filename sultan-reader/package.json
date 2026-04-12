@@ -1,12 +1,14 @@
 {
   "name": "sultan-reader",
   "version": "0.8.0",
+  "author": "liwenhao0427",
   "description": "苏丹的游戏本地剧情阅读器",
   "main": "electron/main.js",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "electron:dev": "electron .",
+    "pack:win": "npm run build && electron-builder --win dir",
     "test": "vitest --run",
     "test:watch": "vitest"
   },
@@ -24,9 +26,38 @@
     "@vitejs/plugin-react": "^4.3.1",
     "@vitest/coverage-v8": "^1.6.1",
     "electron": "^31.3.1",
+    "electron-builder": "^24.13.3",
     "jsdom": "^24.1.3",
     "vite": "^5.4.2",
     "vite-plugin-electron": "^0.28.8",
     "vitest": "^1.6.1"
+  },
+  "build": {
+    "appId": "com.liwenhao.sultanreader",
+    "productName": "SultanReader",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "src/assets/**/*",
+      "appMeta.json",
+      "package.json"
+    ],
+    "extraMetadata": {
+      "main": "electron/main.js"
+    },
+    "win": {
+      "signAndEditExecutable": false,
+      "target": [
+        {
+          "target": "dir",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    }
   }
 }

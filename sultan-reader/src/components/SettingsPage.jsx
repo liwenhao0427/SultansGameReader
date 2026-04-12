@@ -115,7 +115,7 @@ export default function SettingsPage({ onNavigate }) {
   }
 
   function handleOpenGithub() {
-    window.open(GITHUB_REPOSITORY_URL, '_blank', 'noopener,noreferrer')
+    window.electronAPI?.appOpenExternal?.(GITHUB_REPOSITORY_URL)
   }
 
   async function handleRebuildCache() {
@@ -522,7 +522,7 @@ export default function SettingsPage({ onNavigate }) {
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
               <div>
                 <div style={{ fontSize: 16, fontWeight: 600, color: '#f9e2af' }}>支持作者开发</div>
-                <div style={{ marginTop: 4, fontSize: 12, color: '#a6adc8' }}>感谢你的支持，这张图片已随应用一起打包。</div>
+                <div style={{ marginTop: 4, fontSize: 12, color: '#a6adc8' }}>如果这个工具对你有帮助，欢迎请作者喝杯咖啡。</div>
               </div>
               <button
                 type="button"
