@@ -37,6 +37,9 @@ export const READER_RESOURCE_ASSETS = {
   noteBackground: 'note_bg_new',
   titleEmblem: 'nomal_rite_bg',
   defaultRiteBackground: 'nomal_rite_bg',
+  // 仪式节点默认图标。
+  // 回退规则：当仪式自身 icon 缺失或对应资源未导出时，统一使用 rite_0 兜底，避免节点左侧出现黑块。
+  defaultRiteNodeIcon: 'rite_0',
   // 节点图背景地图。
   // 优先使用桌面地图底图，给节点画布提供固定的叙事氛围背景。
   nodeMapBackground: 'table-map',

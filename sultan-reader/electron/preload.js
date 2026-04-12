@@ -98,6 +98,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   fileReadRaw: (filePath) =>
     ipcRenderer.invoke('file:readRaw', filePath),
 
+  filePickPath: (options) =>
+    ipcRenderer.invoke('file:pickPath', options),
+
+  fileOpenFolder: (targetPath) =>
+    ipcRenderer.invoke('file:openFolder', targetPath),
+
   // ── settings: 组 ────────────────────────────────────────────────────────────
 
   /** 读取用户设置 */

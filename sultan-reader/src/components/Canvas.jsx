@@ -792,6 +792,7 @@ function CanvasInner() {
         onNodeDragStop={onNodeDragStop}
         nodesDraggable={false}
         fitView
+        fitViewOptions={{ padding: 0.34, minZoom: 0.22, maxZoom: 1 }}
         proOptions={{ hideAttribution: true }}
         style={{ background: 'transparent' }}
         defaultEdgeOptions={{

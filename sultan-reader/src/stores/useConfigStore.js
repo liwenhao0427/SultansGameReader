@@ -12,6 +12,9 @@ const useConfigStore = create((set) => ({
   // 卡牌完整数据，供阅读器展示手牌图片与标题
   cardsById: {},
 
+  // 全局内容名称映射，供不同阅读器快速把 rite/event/over 等目标 id 解析为标题
+  contentNameMap: {},
+
   // 计数器注册表：id → { id, comment, displayName, defaultValue, scope, sources }
   counterRegistry: new Map(),
 
@@ -29,6 +32,12 @@ const useConfigStore = create((set) => ({
     const stats = await window.electronAPI.configBuildIndex();
     // 获取 id→name 精简卡牌映射
     const cardsObj = await window.electronAPI.configGetCardsLite();
+    let contentNameMap = {}
+    try {
+      contentNameMap = await window.electronAPI.configGetContentNameMap();
+    } catch {
+      contentNameMap = {}
+    }
     const cardsFull = await window.electronAPI.configReadCache('single', 'cards');
     const fallbackCardsLite = Object.fromEntries(
       Object.values(cardsFull || {})
@@ -41,6 +50,7 @@ const useConfigStore = create((set) => ({
       cardsLite: new Map(Object.entries(
         cardsObj && Object.keys(cardsObj).length > 0 ? cardsObj : fallbackCardsLite
       )),
+      contentNameMap: contentNameMap || {},
       cardsById: cardsFull || {},
       isLoaded: true,
     });

@@ -59,6 +59,7 @@ function EventFigure({ card, index, total }) {
 export default function EventDetail({ data }) {
   const cardsLite = useConfigStore((s) => s.cardsLite)
   const cardsById = useConfigStore((s) => s.cardsById)
+  const contentNameMap = useConfigStore((s) => s.contentNameMap)
   const selectedNodeId = useCanvasStore((s) => s.selectedNodeId)
   const model = useMemo(() => adaptStoryData('event', data, cardsLite, cardsById), [cardsLite, cardsById, data])
   const [choicePath, setChoicePath] = useState([])
@@ -119,11 +120,22 @@ export default function EventDetail({ data }) {
     (currentEventNode?.actions || []).filter((action) => action.targetType === 'rite' || action.targetType === 'over' || action.targetType === 'event')
   ), [currentEventNode?.actions])
 
+  const resolvedFollowupActions = useMemo(() => (
+    followupActions.map((action) => {
+      const key = `${action.targetType}:${action.targetId}`
+      const mapped = contentNameMap?.[key] || null
+      return {
+        ...action,
+        displayLabel: summarizeFollowupAction(action, mapped),
+      }
+    })
+  ), [contentNameMap, followupActions])
+
   const autoFollowupActions = useMemo(
-    () => (followupActions.length > AUTO_CANVAS_LIMIT
+    () => (resolvedFollowupActions.length > AUTO_CANVAS_LIMIT
       ? []
-      : [...followupActions].sort(() => Math.random() - 0.5).slice(0, AUTO_CANVAS_LIMIT)),
-    [followupActions]
+      : [...resolvedFollowupActions].sort(() => Math.random() - 0.5).slice(0, AUTO_CANVAS_LIMIT)),
+    [resolvedFollowupActions]
   )
 
   useEffect(() => {
@@ -133,7 +145,7 @@ export default function EventDetail({ data }) {
     autoMountedEventIdRef.current = data.id
     autoFollowupActions.forEach((action, index) => {
       void mountNodeOnCanvas(
-        { id: action.targetId, type: action.targetType, name: action.text },
+        { id: action.targetId, type: action.targetType, name: action.displayLabel || action.text },
         { x: 460 + index * 60, y: 180 + index * 50 },
         { autoSelect: false, expandRelations: false }
       ).then((targetNodeKey) => {
@@ -161,7 +173,7 @@ export default function EventDetail({ data }) {
     if (!action?.targetType || !action?.targetId) return
 
     const targetNodeKey = await mountNodeOnCanvas(
-      { id: action.targetId, type: action.targetType, name: action.text },
+      { id: action.targetId, type: action.targetType, name: action.displayLabel || action.text },
       { x: 460 + offsetIndex * 60, y: 180 + offsetIndex * 50 },
       { autoSelect: true, expandRelations: false }
     )
@@ -232,23 +244,23 @@ export default function EventDetail({ data }) {
           <div style={S.emptyText}>这个幕后没有可直接阅读的正文，主要承担触发与分支作用。</div>
         )}
 
-        {followupActions.length > 0 ? (
+        {resolvedFollowupActions.length > 0 ? (
           <div style={S.followupSection}>
             <div style={S.followupTitle}>后续节点</div>
             <div style={S.followupHint}>
-              {followupActions.length > AUTO_CANVAS_LIMIT
+              {resolvedFollowupActions.length > AUTO_CANVAS_LIMIT
                 ? '当前后续节点超过自动带出阈值，已停止自动带出；请在下面手动选择需要展开的节点。'
                 : '默认只随机带出 3 个到画布；这里仍然可以手动继续打开。'}
             </div>
             <div style={S.followupList}>
-              {followupActions.map((action, index) => (
+              {resolvedFollowupActions.map((action, index) => (
                 <button
                   key={`${action.targetType}:${action.targetId}:${index}`}
                   type="button"
                   style={S.followupButton}
                   onClick={() => handleOpenAction(action, index)}
                 >
-                  {action.targetType === 'rite' ? '仪式' : action.targetType === 'event' ? '幕后' : '结局'}：{action.text || action.targetId}
+                  {action.targetType === 'rite' ? '仪式' : action.targetType === 'event' ? '幕后' : '结局'}：{action.displayLabel}
                 </button>
               ))}
             </div>
@@ -257,6 +269,21 @@ export default function EventDetail({ data }) {
       </div>
     </div>
   )
+}
+
+function summarizeFollowupAction(action, mappedTarget) {
+  if (mappedTarget) {
+    if (action.targetType === 'event') {
+      return mappedTarget.text || mappedTarget.name || mappedTarget.title || String(action.targetId)
+    }
+    return mappedTarget.name || mappedTarget.title || mappedTarget.text || String(action.targetId)
+  }
+
+  if (action.targetType === 'event' && action.text && !action.text.includes('event_on')) {
+    return action.text
+  }
+
+  return String(action.targetId || action.text || '')
 }
 
 const S = {
@@ -303,7 +330,6 @@ const S = {
   header: {
     position: 'relative',
     zIndex: 1,
-    paddingRight: 180,
   },
   title: {
     color: '#fff1d6',
@@ -330,7 +356,6 @@ const S = {
     position: 'relative',
     zIndex: 1,
     marginTop: 18,
-    paddingRight: 210,
     display: 'grid',
     gap: 18,
     alignContent: 'start',
@@ -345,12 +370,14 @@ const S = {
     fontSize: 17,
     lineHeight: 1.95,
     whiteSpace: 'pre-wrap',
+    textShadow: '0 2px 8px rgba(8, 6, 4, 0.82)',
   },
   leadParagraph: {
     color: '#fff4df',
     fontSize: 18,
     lineHeight: 1.95,
     whiteSpace: 'pre-wrap',
+    textShadow: '0 2px 8px rgba(8, 6, 4, 0.82)',
   },
   effectRow: {
     display: 'flex',
@@ -422,7 +449,7 @@ const S = {
     padding: '10px 12px',
     borderRadius: 12,
     border: '1px solid rgba(212, 184, 126, 0.14)',
-    background: 'rgba(212, 184, 126, 0.06)',
+    background: 'rgba(24, 18, 12, 0.58)',
     color: '#efe2c7',
     fontSize: 14,
     lineHeight: 1.6,

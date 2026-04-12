@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import SettingsPage from './components/SettingsPage'
 import MainLayout from './components/MainLayout'
+import { APP_TITLE_WITH_VERSION } from './appMeta'
 
 /**
  * 应用根组件
@@ -8,6 +9,10 @@ import MainLayout from './components/MainLayout'
  */
 export default function App() {
   const [page, setPage] = useState('main')
+
+  useEffect(() => {
+    document.title = APP_TITLE_WITH_VERSION
+  }, [])
 
   useEffect(() => {
     async function decideEntry() {

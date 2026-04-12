@@ -10,11 +10,12 @@
  *   5. 主进程内存搜索索引（避免 IPC 传输全量数据）
  */
 
-const { app, BrowserWindow, ipcMain, protocol, net, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, protocol, net, dialog, shell } = require('electron');
 const path   = require('path');
 const fs     = require('fs');
 const { pathToFileURL } = require('url');
 const { spawn, exec } = require('child_process');
+const appMeta = require('../appMeta.json');
 
 // 动态 require electron-store（ESM 包，需要用 import() 或 createRequire）
 let Store;
@@ -380,6 +381,7 @@ async function createWindow() {
     height: 800,
     minWidth:  900,
     minHeight: 600,
+    title: `${appMeta.title} ${appMeta.version}`,
     webPreferences: {
       preload:         path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -927,6 +929,45 @@ ipcMain.handle('file:readRaw', async (_event, filePath) => {
   } catch (e) {
     throw new Error(`读取文件失败: ${e.message}`);
   }
+});
+
+ipcMain.handle('file:pickPath', async (_event, options = {}) => {
+  const {
+    kind = 'directory',
+    title = '选择路径',
+    defaultPath = '',
+    filters = [],
+  } = options || {};
+
+  const properties = kind === 'file'
+    ? ['openFile']
+    : ['openDirectory', 'createDirectory'];
+
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title,
+    defaultPath: defaultPath || undefined,
+    properties,
+    filters: kind === 'file' ? filters : undefined,
+  });
+
+  if (result.canceled || !result.filePaths?.length) return null;
+  return result.filePaths[0];
+});
+
+ipcMain.handle('file:openFolder', async (_event, targetPath) => {
+  if (!targetPath) return { success: false, error: '路径为空' };
+
+  const normalizedPath = path.normalize(targetPath);
+  const folderPath = fs.existsSync(normalizedPath) && fs.statSync(normalizedPath).isDirectory()
+    ? normalizedPath
+    : path.dirname(normalizedPath);
+
+  const error = await shell.openPath(folderPath);
+  if (error) {
+    return { success: false, error };
+  }
+
+  return { success: true };
 });
 
 // ─── IPC Handlers：settings: 组 ──────────────────────────────────────────────

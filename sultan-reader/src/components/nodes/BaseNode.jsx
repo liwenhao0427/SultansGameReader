@@ -21,16 +21,19 @@ export default function BaseNode({
   color,
   selected,
   image,
+  fallbackImage = null,
   rare,
   variant = 'text',
   onExpand = null,
   onRemove = null,
 }) {
   const { url: imgUrl } = useResolvedImage(image || null)
+  const { url: fallbackImgUrl } = useResolvedImage(fallbackImage || null)
   const { url: rareFrameUrl } = useResolvedImage(rare ? getCardRarityFrameAsset(rare) : null)
   const [hovered, setHovered] = useState(false)
   const isCardLike = rare != null
-  const useIconTitle = variant === 'iconTitle' && imgUrl
+  const resolvedImgUrl = imgUrl || fallbackImgUrl
+  const useIconTitle = variant === 'iconTitle' && resolvedImgUrl
   const useHeroBackdrop = variant === 'heroBackdrop'
   const canExpand = typeof onExpand === 'function'
   const canRemove = typeof onRemove === 'function'
@@ -58,7 +61,7 @@ export default function BaseNode({
       >
         {useHeroBackdrop ? (
           <>
-            {imgUrl ? <img src={imgUrl} alt="" style={heroBackdropImageStyle} /> : null}
+            {resolvedImgUrl ? <img src={resolvedImgUrl} alt="" style={heroBackdropImageStyle} /> : null}
             <div style={heroBackdropShadeStyle} />
             <div style={heroBackdropLabelStyle}>{label}</div>
           </>
@@ -71,7 +74,7 @@ export default function BaseNode({
               }}
             >
               <img
-                src={imgUrl}
+                src={resolvedImgUrl}
                 alt=""
                 style={{
                   width: '100%',

@@ -1,6 +1,6 @@
 {
   "name": "sultan-reader",
-  "version": "0.1.0",
+  "version": "0.8.0",
   "description": "苏丹的游戏本地剧情阅读器",
   "main": "electron/main.js",
   "scripts": {

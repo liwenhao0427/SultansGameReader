@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import useReadingStateStore from '../stores/useReadingStateStore'
+import { APP_TITLE_WITH_VERSION } from '../appMeta'
 
 /**
  * 设置页组件
@@ -27,6 +28,10 @@ export default function SettingsPage({ onNavigate }) {
   // 资源提取状态
   const [extracting, setExtracting] = useState(false)
   const [extractLog, setExtractLog] = useState([])
+
+  useEffect(() => {
+    document.title = APP_TITLE_WITH_VERSION
+  }, [])
 
   useEffect(() => {
     async function loadSettings() {
@@ -69,22 +74,40 @@ export default function SettingsPage({ onNavigate }) {
     }
   }
 
-  function handleCliFileChange(event) {
-    const file = event.target.files[0]
-    if (!file) return
-
-    const path = file.path || file.name
-    setCliPath(path)
-    window.electronAPI.settingsSet('cliPath', path)
-    window.electronAPI.assetSetCliPath(path)
-  }
-
   async function handleResourceDirBlur() {
     await window.electronAPI.settingsSet('resourceDir', resourceDir)
   }
 
   async function handleCacheDirBlur() {
     await window.electronAPI.settingsSet('cacheDir', cacheDir)
+  }
+
+  async function handleBrowsePath(kind, currentValue, setter, options = {}) {
+    const {
+      settingKey,
+      onPick,
+      ...dialogOptions
+    } = options
+
+    const selectedPath = await window.electronAPI.filePickPath({
+      kind,
+      defaultPath: currentValue,
+      ...dialogOptions,
+    })
+    if (!selectedPath) return
+    setter(selectedPath)
+
+    if (settingKey) {
+      await window.electronAPI.settingsSet(settingKey, selectedPath)
+    }
+    if (onPick) {
+      await onPick(selectedPath)
+    }
+  }
+
+  async function handleOpenFolder(targetPath) {
+    if (!targetPath) return
+    await window.electronAPI.fileOpenFolder(targetPath)
   }
 
   async function handleRebuildCache() {
@@ -187,7 +210,7 @@ export default function SettingsPage({ onNavigate }) {
     <div style={{ width: '100vw', height: '100vh', overflowY: 'auto', background: '#11111b', color: '#cdd6f4' }}>
       <div style={{ maxWidth: 680, margin: '0 auto', padding: '32px 24px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 28 }}>
-          <h2 style={{ margin: 0, fontSize: 20, color: '#cba6f7' }}>⚙ 设置</h2>
+          <h2 style={{ margin: 0, fontSize: 20, color: '#cba6f7' }}>{APP_TITLE_WITH_VERSION}</h2>
           <button
             style={{ ...btnStyle, background: '#89b4fa', color: '#1e1e2e' }}
             onClick={() => onNavigate('main')}
@@ -207,6 +230,27 @@ export default function SettingsPage({ onNavigate }) {
               onBlur={handleGamePathBlur}
               placeholder={`例：C:\\Games\\Sultan's Game`}
             />
+            <button
+              type="button"
+              style={{ ...btnStyle, background: '#45475a', color: '#cdd6f4', whiteSpace: 'nowrap' }}
+              onClick={() => handleBrowsePath('directory', gamePath, setGamePath, {
+                title: '选择游戏安装目录',
+                settingKey: 'gamePath',
+                onPick: async (selectedPath) => {
+                  const result = await window.electronAPI.configSetGameDir(selectedPath)
+                  setGamePathValid(Boolean(result?.success))
+                },
+              })}
+            >
+              浏览
+            </button>
+            <button
+              type="button"
+              style={{ ...btnStyle, background: '#313244', color: '#cdd6f4', whiteSpace: 'nowrap' }}
+              onClick={() => handleOpenFolder(gamePath)}
+            >
+              打开文件夹
+            </button>
           </div>
           {gamePathValid === true && (
             <div style={{ marginTop: 6, color: '#a6e3a1', fontSize: 12 }}>✓ 路径有效，已找到配置目录</div>
@@ -230,15 +274,27 @@ export default function SettingsPage({ onNavigate }) {
               }}
               placeholder="例：C:\Tools\AssetStudio.CLI.exe"
             />
-            <label style={{ ...btnStyle, background: '#45475a', color: '#cdd6f4', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+            <button
+              type="button"
+              style={{ ...btnStyle, background: '#45475a', color: '#cdd6f4', whiteSpace: 'nowrap' }}
+              onClick={() => handleBrowsePath('file', cliPath, setCliPath, {
+                title: '选择 AssetStudio CLI',
+                settingKey: 'cliPath',
+                filters: [{ name: '可执行文件', extensions: ['exe'] }],
+                onPick: async (selectedPath) => {
+                  await window.electronAPI.assetSetCliPath(selectedPath)
+                },
+              })}
+            >
               浏览
-              <input
-                type="file"
-                accept=".exe"
-                style={{ display: 'none' }}
-                onChange={handleCliFileChange}
-              />
-            </label>
+            </button>
+            <button
+              type="button"
+              style={{ ...btnStyle, background: '#313244', color: '#cdd6f4', whiteSpace: 'nowrap' }}
+              onClick={() => handleOpenFolder(cliPath)}
+            >
+              打开文件夹
+            </button>
           </div>
 
           <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -264,21 +320,59 @@ export default function SettingsPage({ onNavigate }) {
         <div style={sectionStyle}>
           <h3 style={{ margin: '0 0 14px', fontSize: 14, color: '#89b4fa' }}>目录配置</h3>
           <label style={labelStyle}>资源目录（AssetStudio 提取输出目录）</label>
-          <input
-            style={{ ...inputStyle, marginBottom: 12 }}
-            value={resourceDir}
-            onChange={(event) => setResourceDir(event.target.value)}
-            onBlur={handleResourceDirBlur}
-            placeholder="默认：<appData>/resource/"
-          />
+          <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+            <input
+              style={{ ...inputStyle, flex: 1 }}
+              value={resourceDir}
+              onChange={(event) => setResourceDir(event.target.value)}
+              onBlur={handleResourceDirBlur}
+              placeholder="默认：<appData>/resource/"
+            />
+            <button
+              type="button"
+              style={{ ...btnStyle, background: '#45475a', color: '#cdd6f4', whiteSpace: 'nowrap' }}
+              onClick={() => handleBrowsePath('directory', resourceDir, setResourceDir, {
+                title: '选择资源目录',
+                settingKey: 'resourceDir',
+              })}
+            >
+              浏览
+            </button>
+            <button
+              type="button"
+              style={{ ...btnStyle, background: '#313244', color: '#cdd6f4', whiteSpace: 'nowrap' }}
+              onClick={() => handleOpenFolder(resourceDir)}
+            >
+              打开文件夹
+            </button>
+          </div>
           <label style={labelStyle}>缓存目录（解析结果存储目录）</label>
-          <input
-            style={{ ...inputStyle, marginBottom: 6 }}
-            value={cacheDir}
-            onChange={(event) => setCacheDir(event.target.value)}
-            onBlur={handleCacheDirBlur}
-            placeholder="默认：<appData>/cache/"
-          />
+          <div style={{ display: 'flex', gap: 8, marginBottom: 6 }}>
+            <input
+              style={{ ...inputStyle, flex: 1 }}
+              value={cacheDir}
+              onChange={(event) => setCacheDir(event.target.value)}
+              onBlur={handleCacheDirBlur}
+              placeholder="默认：<appData>/cache/"
+            />
+            <button
+              type="button"
+              style={{ ...btnStyle, background: '#45475a', color: '#cdd6f4', whiteSpace: 'nowrap' }}
+              onClick={() => handleBrowsePath('directory', cacheDir, setCacheDir, {
+                title: '选择缓存目录',
+                settingKey: 'cacheDir',
+              })}
+            >
+              浏览
+            </button>
+            <button
+              type="button"
+              style={{ ...btnStyle, background: '#313244', color: '#cdd6f4', whiteSpace: 'nowrap' }}
+              onClick={() => handleOpenFolder(cacheDir)}
+            >
+              打开文件夹
+            </button>
+          </div>
           <div style={{ fontSize: 11, color: '#6c7086' }}>
             提示：如果搜索无结果，请确认缓存目录路径正确，或点击“更新配置缓存”重新生成。
           </div>

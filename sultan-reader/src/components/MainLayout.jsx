@@ -12,6 +12,7 @@ import { mountNodeOnCanvas } from '../services/graphNavigation'
 import { useResolvedImage } from '../services/imageResolver'
 import { getCardRarityFrameAsset } from '../resourceConfig'
 import { getContentTypeLabel } from '../constants/gameTerminology'
+import { APP_TITLE_WITH_VERSION } from '../appMeta'
 
 const TYPE_TABS = [
   { key: 'rite', label: '仪式' },
@@ -194,22 +195,15 @@ export default function MainLayout({ onNavigate }) {
     <div style={shellStyle}>
       <div style={heroBarStyle}>
         <div>
-          <div style={eyebrowStyle}>Sultan&apos;s Game Reader</div>
-          <div style={titleStyle}>仪式优先的剧情阅读工作台</div>
-          <div style={subTitleStyle}>
-            默认加载几个仪式到画布，画布负责导航，选中节点后直接进入阅读。
-          </div>
+          <div style={titleStyle}>{APP_TITLE_WITH_VERSION}</div>
         </div>
         <div style={{ display: 'flex', gap: 10 }}>
           <button
             type="button"
             style={secondaryActionStyle}
-            onClick={() => {
-              clearCanvas()
-              setBootstrapped(false)
-            }}
+            onClick={clearCanvas}
           >
-            换一组仪式
+            清空
           </button>
           <button type="button" style={secondaryActionStyle} onClick={() => onNavigate('settings')}>
             设置
@@ -402,31 +396,17 @@ const loadingScreenStyle = {
 const heroBarStyle = {
   display: 'flex',
   justifyContent: 'space-between',
-  alignItems: 'flex-start',
+  alignItems: 'center',
   gap: 16,
-  padding: '22px 28px 18px',
+  padding: '20px 28px 18px',
   borderBottom: '1px solid rgba(212, 184, 126, 0.14)',
   background: 'linear-gradient(180deg, rgba(27, 21, 16, 0.92), rgba(20, 16, 12, 0.8))',
 }
 
-const eyebrowStyle = {
-  color: '#b99759',
-  fontSize: 11,
-  letterSpacing: '0.28em',
-  textTransform: 'uppercase',
-}
-
 const titleStyle = {
-  marginTop: 8,
-  fontSize: 28,
+  fontSize: 24,
   fontWeight: 700,
   lineHeight: 1.2,
-}
-
-const subTitleStyle = {
-  marginTop: 8,
-  fontSize: 13,
-  color: 'rgba(241, 232, 213, 0.7)',
 }
 
 const secondaryActionStyle = {
