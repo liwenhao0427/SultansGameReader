@@ -99,6 +99,33 @@ function extractAtomicEntries(condition, collector = []) {
   return collector
 }
 
+function collectConditionStructureTokens(condition, collector = []) {
+  if (!condition || typeof condition !== 'object') return collector
+
+  Object.entries(condition).forEach(([key, value]) => {
+    if (isDisplayMetaKey(key)) return
+
+    if (key === 'any' || key === 'all') {
+      collector.push(key)
+      if (Array.isArray(value)) {
+        value.forEach((item) => collectConditionStructureTokens(item, collector))
+      } else if (isPlainObject(value)) {
+        collectConditionStructureTokens(value, collector)
+      }
+      return
+    }
+
+    const groupId = extractGroupIdFromKey(key)
+    collector.push(groupId || String(key).replace(/^!/, ''))
+  })
+
+  return collector
+}
+
+function hasMultipleStructureTokens(condition) {
+  return collectConditionStructureTokens(condition, []).length > 1
+}
+
 function extractGroupIdFromKey(key) {
   const rMatch = String(key).match(/^(r\d+):(.*)$/i)
   if (rMatch) return rMatch[1].toLowerCase()
@@ -113,6 +140,10 @@ function extractGroupIdFromKey(key) {
 
   const prefix = String(target).split(/[.:]/)[0]?.trim()
   return prefix ? prefix.toLowerCase() : null
+}
+
+function buildCompositeConditionOptionId(groupId, condition) {
+  return `${groupId}::condition::${JSON.stringify(condition || {})}`
 }
 
 function evaluateAtomicCondition(key, value, context) {
@@ -266,6 +297,34 @@ function analyzeAllCondition(condition, context) {
 
 function analyzeConditionNode(condition, context) {
   if (!condition || typeof condition !== 'object') return { status: 'matched' }
+
+  const compositeGroupId = buildConditionGroupKey(condition)
+  const firstAtomicGroupId = extractGroupIdFromKey(extractFirstAtomic(condition)?.key || '')
+  if (hasMultipleStructureTokens(condition) && compositeGroupId && compositeGroupId !== firstAtomicGroupId) {
+    const optionId = buildCompositeConditionOptionId(compositeGroupId, condition)
+    if (!context.branchSelections?.[compositeGroupId]) {
+      return {
+        status: 'pending',
+        groupId: compositeGroupId,
+        key: '__compound__',
+        value: condition,
+      }
+    }
+    if (isSkipOptionId(compositeGroupId, context.branchSelections[compositeGroupId])) {
+      return {
+        status: 'unmatched',
+        groupId: compositeGroupId,
+        key: '__compound__',
+        value: condition,
+      }
+    }
+    return {
+      status: context.branchSelections[compositeGroupId] === optionId ? 'matched' : 'unmatched',
+      groupId: compositeGroupId,
+      key: '__compound__',
+      value: condition,
+    }
+  }
 
   let pending = null
   for (const [key, value] of Object.entries(condition)) {
@@ -424,7 +483,15 @@ function extractFirstAtomic(condition) {
   return extractAtomicEntries(condition)[0] || null
 }
 
+export function buildConditionGroupKey(condition = {}) {
+  const tokens = collectConditionStructureTokens(condition, [])
+  if (tokens.length === 0) return null
+  if (tokens.length === 1) return tokens[0]
+  return tokens.join('')
+}
+
 function collectGroupOptions(model, phases, startIndex, groupId, cardsMap, slotCards, counterRegistry = null) {
+  const isCompositeGroup = hasMultipleStructureTokens(phases[startIndex]?.raw?.condition || {})
   const options = [{
     id: buildSkipOptionId(groupId),
     rawKey: null,
@@ -435,14 +502,15 @@ function collectGroupOptions(model, phases, startIndex, groupId, cardsMap, slotC
 
   for (let index = startIndex; index < phases.length; index += 1) {
     const phase = phases[index]
-    const firstAtomic = extractFirstAtomic(phase.raw?.condition || {})
-    if (!firstAtomic) break
+    const phaseCondition = phase.raw?.condition || {}
+    const phaseGroupId = buildConditionGroupKey(phaseCondition)
+    if (!phaseGroupId) break
+    if (phaseGroupId !== groupId) break
 
-    const firstGroupId = extractGroupIdFromKey(firstAtomic.key)
-    if (firstGroupId !== groupId) break
-
-    const atomic = findFirstAtomicForGroup(phase.raw?.condition || {}, groupId) || firstAtomic
-    const optionId = buildConditionOptionId(groupId, atomic.key, atomic.value)
+    const atomic = findFirstAtomicForGroup(phaseCondition, groupId) || extractFirstAtomic(phaseCondition)
+    const optionId = isCompositeGroup
+      ? buildCompositeConditionOptionId(groupId, phaseCondition)
+      : buildConditionOptionId(groupId, atomic.key, atomic.value)
     if (options.some((option) => option.id === optionId)) continue
 
     const detail = /^r\d+$/i.test(groupId)
@@ -451,18 +519,20 @@ function collectGroupOptions(model, phases, startIndex, groupId, cardsMap, slotC
 
     options.push({
       id: optionId,
-      rawKey: atomic.key,
-      rawValue: atomic.value,
-      label: parseConditionObject(phase.raw?.condition || { [atomic.key]: atomic.value }, cardsMap, counterRegistry).join(' / ')
-        || buildConditionLabel({ [atomic.key]: atomic.value }, cardsMap, counterRegistry),
+      rawKey: atomic?.key || '__compound__',
+      rawValue: isCompositeGroup ? phaseCondition : atomic?.value,
+      label: parseConditionObject(phaseCondition || (atomic ? { [atomic.key]: atomic.value } : {}), cardsMap, counterRegistry).join(' / ')
+        || (atomic ? buildConditionLabel({ [atomic.key]: atomic.value }, cardsMap, counterRegistry) : '未命名条件'),
       detail,
     })
   }
 
   return {
     id: groupId,
-    title: buildGroupTitle(groupId, counterRegistry),
-    description: buildGroupDescription(model, groupId, slotCards, counterRegistry),
+    title: isCompositeGroup ? '复合条件分支' : buildGroupTitle(groupId, counterRegistry),
+    description: isCompositeGroup
+      ? '这组结果由多项条件组合决定，选择后会一次性对应到完整结算分支。'
+      : buildGroupDescription(model, groupId, slotCards, counterRegistry),
     options,
     isDice: /^r\d+$/i.test(groupId),
     isSlot: /^s\d+$/i.test(groupId),
@@ -521,8 +591,7 @@ export function buildExecutionFlow(model, context = {}) {
 
   while (index < phases.length) {
     const phase = phases[index]
-    const firstAtomic = extractFirstAtomic(phase.raw?.condition || {})
-    const blockGroupId = firstAtomic ? extractGroupIdFromKey(firstAtomic.key) : null
+    const blockGroupId = buildConditionGroupKey(phase.raw?.condition || {})
 
     if (blockGroupId && !renderedChoiceGroups.has(blockGroupId)) {
       const group = collectGroupOptions(model, phases, index, blockGroupId, context.cardsMap, context.slotCards || {}, context.counterRegistry)
