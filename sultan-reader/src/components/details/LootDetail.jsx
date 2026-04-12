@@ -96,6 +96,10 @@ export default function LootDetail({ data }) {
     () => enrichedItems.filter((item) => (item.type === 'rite' || item.type === 'event') && item.id != null),
     [enrichedItems]
   )
+  const autoCanvasItems = useMemo(
+    () => [...relatedCanvasItems].sort(() => Math.random() - 0.5).slice(0, 3),
+    [relatedCanvasItems]
+  )
 
   useEffect(() => {
     let cancelled = false
@@ -122,9 +126,9 @@ export default function LootDetail({ data }) {
   }, [items])
 
   useEffect(() => {
-    if (!selectedNodeId || relatedCanvasItems.length === 0) return
+    if (!selectedNodeId || autoCanvasItems.length === 0) return
 
-    relatedCanvasItems.forEach((item, index) => {
+    autoCanvasItems.forEach((item, index) => {
       void mountNodeOnCanvas(
         { id: String(item.id), type: item.type, name: item.name },
         { x: 460 + index * 60, y: 180 + index * 50 },
@@ -134,7 +138,7 @@ export default function LootDetail({ data }) {
         linkNodesOnCanvas(selectedNodeId, item.type, String(item.id), 'default', item.name || `${item.type}:${item.id}`)
       })
     })
-  }, [relatedCanvasItems, selectedNodeId])
+  }, [autoCanvasItems, selectedNodeId])
 
   return (
     <div style={S.shell}>

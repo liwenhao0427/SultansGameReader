@@ -134,16 +134,15 @@ export default function MainLayout({ onNavigate }) {
         const rites = await window.electronAPI.configListCache('rite')
         if (!rites?.length || cancelled) return
 
-        const randomRites = [...rites].sort(() => Math.random() - 0.5).slice(0, 4)
+        const randomRites = [...rites].sort(() => Math.random() - 0.5).slice(0, 3)
         const positions = [
           { x: 80, y: 70 },
           { x: 420, y: 60 },
           { x: 160, y: 320 },
-          { x: 520, y: 300 },
         ]
 
         for (let i = 0; i < randomRites.length; i += 1) {
-          await mountNodeOnCanvas(randomRites[i], positions[i] || { x: 140 + i * 180, y: 120 + i * 110 }, { autoSelect: i === 0 })
+          await mountNodeOnCanvas(randomRites[i], positions[i] || { x: 140 + i * 180, y: 120 + i * 110 }, { autoSelect: false })
         }
 
         if (!cancelled) setBootstrapped(true)

@@ -17,45 +17,39 @@ function normalizeTextContent(text) {
   return String(text)
 }
 
-function NoteBg({ children }) {
-  const { url } = useResolvedImage('note_bg_new')
-
-  return (
-    <div style={noteShellStyle}>
-      <div style={{ ...noteHalfStyle, backgroundImage: url ? `url("${url}")` : noteFallbackStyle.backgroundImage }} />
-      <div style={{ ...noteHalfStyle, backgroundImage: url ? `url("${url}")` : noteFallbackStyle.backgroundImage, transform: 'scaleX(-1)' }} />
-      <div style={noteContentStyle}>
-        {children}
-      </div>
-    </div>
-  )
-}
-
 function EventChoiceButton({ option, active, onSelect }) {
   return (
     <button
       type="button"
       onClick={onSelect}
-      style={{
-        ...choiceButtonStyle,
-        ...(active ? choiceButtonActiveStyle : null),
-      }}
+      style={active ? { ...S.choiceButton, ...S.choiceButtonActive } : S.choiceButton}
     >
-      {option.text}
+      <div style={S.choiceId}>{option.tag || option.id || '选项'}</div>
+      <div style={S.choiceText}>{option.text || '未命名选项'}</div>
     </button>
   )
 }
 
-function EventSideFigure({ card }) {
+function EventFigure({ card, index, total }) {
   const { url, loading } = useResolvedImage(card?.image)
-
-  if (!card) return null
+  const width = total > 1 ? 172 : 208
 
   return (
-    <div style={figureWrapStyle}>
-      {loading && <div style={figureFallbackStyle}>载入中…</div>}
-      {!loading && url && <img src={url} alt={card.name || ''} style={figureImageStyle} />}
-      {!loading && !url && <div style={figureFallbackStyle}>{card.name || '角色'}</div>}
+    <div
+      style={{
+        ...S.figureWrap,
+        width,
+        right: `${index * 96}px`,
+        zIndex: total - index,
+      }}
+    >
+      {loading ? (
+        <div style={S.figureFallback}>载入中…</div>
+      ) : url ? (
+        <img src={url} alt={card?.name || ''} style={S.figureImage} />
+      ) : (
+        <div style={S.figureFallback}>{card?.name || '角色'}</div>
+      )}
     </div>
   )
 }
@@ -92,47 +86,64 @@ export default function EventDetail({ data }) {
 
   const currentEventNode = eventNodeHistory[eventNodeHistory.length - 1] || model?.eventFlow || null
 
-  const narrativeBlocks = useMemo(() => (
-    eventNodeHistory.flatMap((node) => {
-      const promptBlocks = (node?.promptEntries || []).map((entry) => normalizeTextContent(entry.text)).filter(Boolean)
-      const optionBlock = normalizeTextContent(node?.option?.text)
-      return optionBlock ? [...promptBlocks, optionBlock] : promptBlocks
-    })
+  const visibleSections = useMemo(() => (
+    eventNodeHistory.map((node, depth) => ({
+      id: `${node?.id || 'event'}:${depth}`,
+      texts: [
+        ...(node?.promptEntries || []).map((entry) => normalizeTextContent(entry.text)).filter(Boolean),
+        normalizeTextContent(node?.option?.text),
+      ].filter(Boolean),
+      choices: node?.choices || [],
+      effects: node?.effects || [],
+    }))
   ), [eventNodeHistory])
 
-  const visualCard = useMemo(() => {
-    const candidates = [
+  const visualCards = useMemo(() => {
+    const allCards = [
       ...(currentEventNode?.relatedCards || []),
       ...(model?.eventFlow?.relatedCards || []),
       model?.fallbackCharacterCard || null,
     ].filter(Boolean)
-    return candidates[0] || null
+
+    const unique = new Map()
+    allCards.forEach((card) => {
+      const key = String(card.id || card.name || Math.random())
+      if (!unique.has(key)) unique.set(key, card)
+    })
+    return Array.from(unique.values()).slice(0, 3)
   }, [currentEventNode?.relatedCards, model?.eventFlow?.relatedCards, model?.fallbackCharacterCard])
 
   const followupActions = useMemo(() => (
     (currentEventNode?.actions || []).filter((action) => action.targetType === 'rite' || action.targetType === 'over' || action.targetType === 'event')
   ), [currentEventNode?.actions])
 
-  const followupRites = useMemo(() => (
-    followupActions.filter((action) => action.targetType === 'rite')
-  ), [followupActions])
+  const autoFollowupActions = useMemo(
+    () => [...followupActions].sort(() => Math.random() - 0.5).slice(0, 3),
+    [followupActions]
+  )
 
   useEffect(() => {
-    if (!data?.id || followupRites.length === 0) return
+    if (!data?.id || autoFollowupActions.length === 0) return
     if (autoMountedEventIdRef.current === data.id) return
 
     autoMountedEventIdRef.current = data.id
-    followupRites.forEach((action, index) => {
+    autoFollowupActions.forEach((action, index) => {
       void mountNodeOnCanvas(
         { id: action.targetId, type: action.targetType, name: action.text },
         { x: 460 + index * 60, y: 180 + index * 50 },
         { autoSelect: false, expandRelations: false }
       ).then((targetNodeKey) => {
         if (!targetNodeKey || !selectedNodeId) return
-        linkNodesOnCanvas(selectedNodeId, action.targetType, action.targetId, action.branch === 'success' ? 'success' : action.branch === 'failed' ? 'failed' : 'default', action.text)
+        linkNodesOnCanvas(
+          selectedNodeId,
+          action.targetType,
+          action.targetId,
+          action.branch === 'success' ? 'success' : action.branch === 'failed' ? 'failed' : 'default',
+          action.text
+        )
       })
     })
-  }, [data?.id, followupRites, selectedNodeId])
+  }, [autoFollowupActions, data?.id, selectedNodeId])
 
   function handleSelectChoice(choiceTag, depth) {
     setChoicePath((current) => {
@@ -152,374 +163,266 @@ export default function EventDetail({ data }) {
     )
 
     if (targetNodeKey && selectedNodeId) {
-      linkNodesOnCanvas(selectedNodeId, action.targetType, action.targetId, action.branch === 'success' ? 'success' : action.branch === 'failed' ? 'failed' : 'default', action.text)
+      linkNodesOnCanvas(
+        selectedNodeId,
+        action.targetType,
+        action.targetId,
+        action.branch === 'success' ? 'success' : action.branch === 'failed' ? 'failed' : 'default',
+        action.text
+      )
     }
   }
 
   if (!model) return null
 
-  const hasNarrative = narrativeBlocks.length > 0
-
   return (
-    <div style={wrapStyle}>
-      <div style={titleStyle}>{model.title}</div>
+    <div style={S.shell}>
+      <div style={S.heroLayer}>
+        {visualCards.map((card, index) => (
+          <EventFigure key={`${card.id || card.name}:${index}`} card={card} index={index} total={visualCards.length} />
+        ))}
+      </div>
 
-      {model.meta.length > 0 && (
-        <div style={metaWrapStyle}>
-          {model.meta.map((item) => (
-            <span key={item} style={metaChipStyle}>{item}</span>
-          ))}
-        </div>
-      )}
+      <div style={S.header}>
+        <div style={S.title}>{model.title}</div>
+        {model.meta.length > 0 ? (
+          <div style={S.metaRow}>
+            {model.meta.map((item) => (
+              <span key={item} style={S.metaChip}>{item}</span>
+            ))}
+          </div>
+        ) : null}
+      </div>
 
-      {hasNarrative ? (
-        <NoteBg>
-          <div style={readerGridStyle}>
-            <div style={readerTextStageStyle}>
-              <div style={readerScrollStyle}>
-                {narrativeBlocks.map((text, index) => (
-                  <div key={`${index}:${text.slice(0, 24)}`} style={paragraphStyle}>{text}</div>
-                ))}
-
-                {currentEventNode?.effects?.length > 0 && (
-                  <div style={sectionBlockStyle}>
-                    <div style={sectionTitleStyle}>触发结果</div>
-                    <div style={effectWrapStyle}>
-                      {currentEventNode.effects.map((effect, index) => (
-                        <span key={`${effect.type}-${index}`} style={effectChipStyle}>{effect.label}</span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {followupActions.length > 0 && (
-                  <div style={sectionBlockStyle}>
-                    <div style={sectionTitleStyle}>后续节点</div>
-                    <div style={actionWrapStyle}>
-                      {followupActions.map((action, index) => (
-                        <button key={`${action.targetType}:${action.targetId}:${index}`} type="button" style={actionButtonStyle} onClick={() => handleOpenAction(action, index)}>
-                          打开{action.targetType === 'rite' ? '仪式' : action.targetType === 'event' ? '幕后' : '结局'} {action.targetId}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
+      <div style={S.contentColumn}>
+        {visibleSections.length > 0 ? visibleSections.map((section, depth) => (
+          <div key={section.id} style={S.flowSection}>
+            {section.texts.map((text, index) => (
+              <div key={`${section.id}:text:${index}`} style={index === section.texts.length - 1 ? S.leadParagraph : S.paragraph}>
+                {text}
               </div>
+            ))}
 
-              {eventNodeHistory.map((node, depth) => {
-                const activeChoices = node.choices || []
-                if (activeChoices.length === 0) return null
-                const selectedChoice = choicePath[depth] || null
+            {section.effects.length > 0 ? (
+              <div style={S.effectRow}>
+                {section.effects.map((effect, index) => (
+                  <span key={`${section.id}:effect:${effect.type}:${index}`} style={S.effectChip}>{effect.label}</span>
+                ))}
+              </div>
+            ) : null}
 
-                return (
-                  <div key={`${node.id}:choices`} style={choiceWrapStyle}>
-                    {activeChoices.map((choice) => (
-                      <EventChoiceButton
-                        key={choice.id}
-                        option={choice}
-                        active={selectedChoice === choice.tag}
-                        onSelect={() => handleSelectChoice(choice.tag, depth)}
-                      />
-                    ))}
-                  </div>
-                )
-              })}
-            </div>
+            {section.choices.length > 0 ? (
+              <div style={S.choiceList}>
+                {section.choices.map((choice) => (
+                  <EventChoiceButton
+                    key={`${section.id}:${choice.id}`}
+                    option={choice}
+                    active={choicePath[depth] === choice.tag}
+                    onSelect={() => handleSelectChoice(choice.tag, depth)}
+                  />
+                ))}
+              </div>
+            ) : null}
+          </div>
+        )) : (
+          <div style={S.emptyText}>这个幕后没有可直接阅读的正文，主要承担触发与分支作用。</div>
+        )}
 
-            <div style={figureStageStyle}>
-              <EventSideFigure card={visualCard} />
+        {followupActions.length > 0 ? (
+          <div style={S.followupSection}>
+            <div style={S.followupTitle}>后续节点</div>
+            <div style={S.followupHint}>默认只随机带出 3 个到画布；这里仍然可以手动继续打开。</div>
+            <div style={S.followupList}>
+              {followupActions.map((action, index) => (
+                <button
+                  key={`${action.targetType}:${action.targetId}:${index}`}
+                  type="button"
+                  style={S.followupButton}
+                  onClick={() => handleOpenAction(action, index)}
+                >
+                  {action.targetType === 'rite' ? '仪式' : action.targetType === 'event' ? '幕后' : '结局'}：{action.text || action.targetId}
+                </button>
+              ))}
             </div>
           </div>
-        </NoteBg>
-      ) : (
-        <div style={triggerWrapStyle}>
-          <div style={triggerTextStyle}>此事件仅作为触发器，无正文内容。</div>
-          {currentEventNode?.effects?.length > 0 && (
-            <div style={sectionBlockStyle}>
-              <div style={sectionTitleStyle}>触发结果</div>
-              <div style={effectWrapStyle}>
-                {currentEventNode.effects.map((effect, index) => (
-                  <span key={`${effect.type}-${index}`} style={effectChipStyle}>{effect.label}</span>
-                ))}
-              </div>
-            </div>
-          )}
-          {followupActions.length > 0 && (
-            <div style={sectionBlockStyle}>
-              <div style={sectionTitleStyle}>后续节点</div>
-              <div style={smallTextStyle}>点击事件时已自动将对应仪式加入画布。</div>
-              <div style={actionWrapStyle}>
-                {followupActions.map((action, index) => (
-                  <button key={`${action.targetType}:${action.targetId}:${index}`} type="button" style={actionButtonStyle} onClick={() => handleOpenAction(action, index)}>
-                    打开{action.targetType === 'rite' ? '仪式' : action.targetType === 'event' ? '幕后' : '结局'} {action.targetId}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {model.segments.length > 0 && (
-        <div style={segmentListStyle}>
-          {model.segments.map((segment, index) => {
-            const blockText = [segment.title, segment.text].filter(Boolean).join('\n')
-            const hasSameText = blockText && narrativeBlocks.some((item) => item.includes(blockText) || blockText.includes(item))
-            if (hasSameText && (!segment.effects || segment.effects.length === 0) && (!segment.actions || segment.actions.length === 0)) {
-              return null
-            }
-
-            return (
-              <div key={`${segment.phase}-${index}`} style={segmentCardStyle}>
-                <div style={sectionTitleStyle}>{segment.phase}</div>
-                {segment.title && <div style={segmentTitleStyle}>{segment.title}</div>}
-                {segment.conditions?.length > 0 && (
-                  <div style={metaWrapStyle}>
-                    {segment.conditions.map((item) => (
-                      <span key={item} style={metaChipStyle}>{item}</span>
-                    ))}
-                  </div>
-                )}
-                {segment.text && <div style={segmentTextStyle}>{segment.text}</div>}
-                {segment.effects?.length > 0 && (
-                  <div style={effectWrapStyle}>
-                    {segment.effects.map((effect, effectIndex) => (
-                      <span key={`${effect.type}-${effectIndex}`} style={effectChipStyle}>{effect.label}</span>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )
-          })}
-        </div>
-      )}
+        ) : null}
+      </div>
     </div>
   )
 }
 
-const wrapStyle = {
-  display: 'grid',
-  gap: 14,
-}
-
-const titleStyle = {
-  color: '#fff0d3',
-  fontSize: 20,
-  fontWeight: 700,
-}
-
-const metaWrapStyle = {
-  display: 'flex',
-  flexWrap: 'wrap',
-  gap: 8,
-}
-
-const metaChipStyle = {
-  padding: '4px 10px',
-  borderRadius: 999,
-  border: '1px solid rgba(92, 62, 31, 0.12)',
-  backgroundColor: 'rgba(126, 93, 53, 0.12)',
-  color: '#dcc9a6',
-  fontSize: 11,
-  lineHeight: 1.4,
-}
-
-const noteFallbackStyle = {
-  backgroundImage: 'linear-gradient(180deg, rgba(51, 39, 25, 0.92), rgba(17, 13, 10, 0.98))',
-}
-
-const noteShellStyle = {
-  position: 'relative',
-  display: 'flex',
-  minHeight: 360,
-  borderRadius: 16,
-  overflow: 'hidden',
-}
-
-const noteHalfStyle = {
-  flex: 1,
-  backgroundSize: '100% 100%',
-  backgroundPosition: 'center',
-  backgroundRepeat: 'no-repeat',
-}
-
-const noteContentStyle = {
-  position: 'absolute',
-  inset: 0,
-  padding: '16px 16px 18px',
-  background: 'rgba(8, 6, 4, 0.62)',
-}
-
-const readerGridStyle = {
-  display: 'grid',
-  gridTemplateColumns: 'minmax(0, 1fr) 160px',
-  gap: 12,
-  minHeight: 326,
-}
-
-const readerTextStageStyle = {
-  minHeight: 0,
-  display: 'grid',
-  gridTemplateRows: 'minmax(0, 1fr) auto',
-  gap: 12,
-}
-
-const readerScrollStyle = {
-  minHeight: 0,
-  overflowY: 'auto',
-  padding: '10px 10px 6px 8px',
-  display: 'grid',
-  alignContent: 'start',
-  gap: 14,
-}
-
-const paragraphStyle = {
-  color: '#f4ead6',
-  fontSize: 15,
-  lineHeight: 1.95,
-  whiteSpace: 'pre-wrap',
-  textShadow: '0 1px 6px rgba(0, 0, 0, 0.24)',
-}
-
-const choiceWrapStyle = {
-  display: 'grid',
-  gap: 8,
-}
-
-const choiceButtonStyle = {
-  width: '100%',
-  padding: '10px 14px',
-  borderRadius: 12,
-  border: '1px solid rgba(212, 184, 126, 0.2)',
-  background: 'linear-gradient(180deg, rgba(52, 44, 30, 0.86), rgba(23, 18, 13, 0.94))',
-  color: '#efe2c7',
-  fontSize: 14,
-  lineHeight: 1.6,
-  textAlign: 'center',
-  cursor: 'pointer',
-}
-
-const choiceButtonActiveStyle = {
-  border: '1px solid rgba(239, 215, 169, 0.52)',
-  background: 'linear-gradient(180deg, rgba(95, 73, 43, 0.96), rgba(42, 31, 19, 0.96))',
-}
-
-const figureStageStyle = {
-  minHeight: 0,
-  display: 'flex',
-  alignItems: 'flex-end',
-  justifyContent: 'flex-end',
-  overflow: 'hidden',
-}
-
-const figureWrapStyle = {
-  width: '100%',
-  height: '100%',
-  display: 'flex',
-  alignItems: 'flex-end',
-  justifyContent: 'flex-end',
-}
-
-const figureImageStyle = {
-  maxWidth: '170%',
-  maxHeight: '96%',
-  objectFit: 'contain',
-  objectPosition: 'right bottom',
-  filter: 'drop-shadow(0 16px 26px rgba(0, 0, 0, 0.34))',
-}
-
-const figureFallbackStyle = {
-  color: '#cdb28a',
-  fontSize: 14,
-}
-
-const sectionBlockStyle = {
-  display: 'grid',
-  gap: 8,
-}
-
-const sectionTitleStyle = {
-  fontSize: 12,
-  letterSpacing: '0.22em',
-  textTransform: 'uppercase',
-  color: '#d4b87e',
-}
-
-const effectWrapStyle = {
-  display: 'flex',
-  flexWrap: 'wrap',
-  gap: 8,
-}
-
-const effectChipStyle = {
-  display: 'inline-flex',
-  alignItems: 'center',
-  gap: 4,
-  padding: '5px 10px',
-  borderRadius: 999,
-  border: '1px solid rgba(212, 184, 126, 0.16)',
-  background: 'rgba(45, 34, 23, 0.74)',
-  color: '#ead7b2',
-  fontSize: 12,
-  lineHeight: 1.5,
-}
-
-const actionWrapStyle = {
-  display: 'flex',
-  flexWrap: 'wrap',
-  gap: 10,
-}
-
-const actionButtonStyle = {
-  padding: '8px 12px',
-  borderRadius: 999,
-  border: '1px solid rgba(212, 184, 126, 0.18)',
-  background: 'rgba(212, 184, 126, 0.08)',
-  color: '#f1e8d5',
-  cursor: 'pointer',
-}
-
-const triggerWrapStyle = {
-  display: 'grid',
-  gap: 14,
-  padding: '14px 0 4px',
-}
-
-const triggerTextStyle = {
-  color: 'rgba(241,232,213,0.68)',
-  fontSize: 14,
-  lineHeight: 1.8,
-}
-
-const smallTextStyle = {
-  color: 'rgba(241,232,213,0.68)',
-  fontSize: 12,
-  lineHeight: 1.7,
-}
-
-const segmentListStyle = {
-  display: 'grid',
-  gap: 12,
-}
-
-const segmentCardStyle = {
-  padding: '14px 16px',
-  borderRadius: 18,
-  background: 'rgba(20, 16, 12, 0.92)',
-  border: '1px solid rgba(212, 184, 126, 0.12)',
-  display: 'grid',
-  gap: 10,
-}
-
-const segmentTitleStyle = {
-  fontSize: 16,
-  fontWeight: 700,
-  color: '#fff0d3',
-}
-
-const segmentTextStyle = {
-  color: '#f1e8d5',
-  fontSize: 14,
-  lineHeight: 1.8,
-  whiteSpace: 'pre-wrap',
+const S = {
+  shell: {
+    position: 'relative',
+    minHeight: 520,
+    padding: '6px 0 20px',
+    overflow: 'hidden',
+  },
+  heroLayer: {
+    position: 'absolute',
+    inset: 0,
+    pointerEvents: 'none',
+    overflow: 'hidden',
+  },
+  figureWrap: {
+    position: 'absolute',
+    right: 0,
+    bottom: -12,
+    height: '78%',
+    minHeight: 360,
+    display: 'flex',
+    alignItems: 'flex-end',
+    justifyContent: 'flex-end',
+    opacity: 0.94,
+  },
+  figureImage: {
+    height: '100%',
+    width: '100%',
+    objectFit: 'contain',
+    objectPosition: 'bottom center',
+    display: 'block',
+    filter: 'drop-shadow(0 20px 28px rgba(0, 0, 0, 0.42))',
+  },
+  figureFallback: {
+    width: '100%',
+    height: '100%',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    color: 'rgba(241, 232, 213, 0.42)',
+    fontSize: 12,
+  },
+  header: {
+    position: 'relative',
+    zIndex: 1,
+    paddingRight: 180,
+  },
+  title: {
+    color: '#fff1d6',
+    fontSize: 36,
+    fontWeight: 800,
+    lineHeight: 1.08,
+    letterSpacing: '-0.02em',
+  },
+  metaRow: {
+    marginTop: 10,
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  metaChip: {
+    padding: '4px 10px',
+    borderRadius: 999,
+    background: 'rgba(212, 184, 126, 0.08)',
+    color: '#d9be88',
+    fontSize: 11,
+    lineHeight: 1.4,
+  },
+  contentColumn: {
+    position: 'relative',
+    zIndex: 1,
+    marginTop: 18,
+    paddingRight: 210,
+    display: 'grid',
+    gap: 18,
+    alignContent: 'start',
+  },
+  flowSection: {
+    display: 'grid',
+    gap: 12,
+  },
+  paragraph: {
+    color: '#f1e8d5',
+    fontSize: 17,
+    lineHeight: 1.95,
+    whiteSpace: 'pre-wrap',
+  },
+  leadParagraph: {
+    color: '#fff4df',
+    fontSize: 18,
+    lineHeight: 1.95,
+    whiteSpace: 'pre-wrap',
+  },
+  effectRow: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  effectChip: {
+    padding: '5px 10px',
+    borderRadius: 999,
+    background: 'rgba(212, 184, 126, 0.08)',
+    color: '#d8bd89',
+    fontSize: 12,
+    lineHeight: 1.5,
+  },
+  choiceList: {
+    display: 'grid',
+    gap: 10,
+    marginTop: 4,
+  },
+  choiceButton: {
+    width: '100%',
+    textAlign: 'left',
+    padding: '12px 14px',
+    borderRadius: 14,
+    border: '1px solid rgba(212, 184, 126, 0.18)',
+    background: 'rgba(22, 17, 12, 0.46)',
+    color: '#f2e8d7',
+    cursor: 'pointer',
+    transition: 'border-color 120ms ease, background 120ms ease, transform 120ms ease',
+  },
+  choiceButtonActive: {
+    border: '1px solid rgba(221, 196, 136, 0.42)',
+    background: 'rgba(64, 48, 30, 0.56)',
+    transform: 'translateX(6px)',
+  },
+  choiceId: {
+    color: 'rgba(217, 190, 136, 0.72)',
+    fontSize: 11,
+    marginBottom: 4,
+    letterSpacing: '0.08em',
+  },
+  choiceText: {
+    fontSize: 15,
+    lineHeight: 1.7,
+  },
+  followupSection: {
+    marginTop: 10,
+    display: 'grid',
+    gap: 10,
+  },
+  followupTitle: {
+    color: '#f0d6a0',
+    fontSize: 13,
+    fontWeight: 700,
+    letterSpacing: '0.08em',
+  },
+  followupHint: {
+    color: 'rgba(241, 232, 213, 0.56)',
+    fontSize: 12,
+    lineHeight: 1.7,
+  },
+  followupList: {
+    display: 'grid',
+    gap: 8,
+  },
+  followupButton: {
+    width: '100%',
+    textAlign: 'left',
+    padding: '10px 12px',
+    borderRadius: 12,
+    border: '1px solid rgba(212, 184, 126, 0.14)',
+    background: 'rgba(212, 184, 126, 0.06)',
+    color: '#efe2c7',
+    fontSize: 14,
+    lineHeight: 1.6,
+    cursor: 'pointer',
+  },
+  emptyText: {
+    color: 'rgba(241, 232, 213, 0.72)',
+    fontSize: 15,
+    lineHeight: 1.85,
+    whiteSpace: 'pre-wrap',
+  },
 }
