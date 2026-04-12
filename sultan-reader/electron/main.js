@@ -74,6 +74,58 @@ function getDataRoot() {
   return path.join(app.getPath('appData'), 'sultan-reader-data');
 }
 
+function getRuntimeBundleRoots() {
+  const roots = new Set();
+
+  if (process.resourcesPath) {
+    roots.add(process.resourcesPath);
+    roots.add(path.dirname(process.resourcesPath));
+  }
+
+  if (process.execPath) {
+    roots.add(path.dirname(process.execPath));
+  }
+
+  if (WORKSPACE_ROOT) {
+    roots.add(WORKSPACE_ROOT);
+    roots.add(path.join(WORKSPACE_ROOT, 'sultan-reader'));
+  }
+
+  roots.add(process.cwd());
+
+  return [...roots].filter(Boolean);
+}
+
+function findRuntimeBundleDir(dirName) {
+  for (const root of getRuntimeBundleRoots()) {
+    const candidate = path.join(root, dirName);
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+function findBundledAssetStudioCli() {
+  const executableNames = process.platform === 'win32'
+    ? ['AssetStudio.CLI.exe']
+    : ['AssetStudio.CLI'];
+
+  for (const root of getRuntimeBundleRoots()) {
+    const bundleDir = path.join(root, 'AssetStudio-net8.0-win');
+    if (!fs.existsSync(bundleDir)) continue;
+
+    for (const executableName of executableNames) {
+      const cliPath = path.join(bundleDir, executableName);
+      if (fs.existsSync(cliPath)) {
+        return cliPath;
+      }
+    }
+  }
+
+  return '';
+}
+
 function getPersistentDataDir() {
   const dir = path.join(getDataRoot(), 'persistent');
   ensureDir(dir);
@@ -302,6 +354,7 @@ async function initStore() {
   const dataRoot = getDataRoot();
   const defaultCacheDir    = path.join(dataRoot, 'cache');
   const defaultResourceDir = path.join(dataRoot, 'resource');
+  const bundledCliPath = findBundledAssetStudioCli();
 
   try {
     const { default: ElectronStore } = await import('electron-store');
@@ -309,7 +362,7 @@ async function initStore() {
       name: 'sultan-reader-settings',
       defaults: {
         gamePath:    '',
-        cliPath:     '',
+        cliPath:     bundledCliPath,
         resourceDir: defaultResourceDir,
         cacheDir:    defaultCacheDir,
       },
@@ -333,9 +386,14 @@ async function initStore() {
       settings.set('resourceDir', defaultResourceDir);
     }
 
+    const savedCliPath = settings.get('cliPath');
+    if ((!savedCliPath || !fs.existsSync(savedCliPath)) && bundledCliPath) {
+      settings.set('cliPath', bundledCliPath);
+    }
+
   } catch (e) {
     console.warn('electron-store 加载失败，使用 JSON 降级存储:', e.message);
-    settings = createFallbackStore(defaultCacheDir, defaultResourceDir);
+    settings = createFallbackStore(defaultCacheDir, defaultResourceDir, bundledCliPath);
   }
   return settings;
 }
@@ -343,12 +401,12 @@ async function initStore() {
 /**
  * 降级存储：基于 JSON 文件的简单 key-value store
  */
-function createFallbackStore(defaultCacheDir, defaultResourceDir) {
+function createFallbackStore(defaultCacheDir, defaultResourceDir, bundledCliPath = '') {
   const storePath = path.join(app.getPath('userData'), 'settings.json');
   let data = {};
   const defaults = {
     gamePath:    '',
-    cliPath:     '',
+    cliPath:     bundledCliPath,
     resourceDir: defaultResourceDir || path.join(app.getPath('userData'), 'resource'),
     cacheDir:    defaultCacheDir    || path.join(app.getPath('userData'), 'cache'),
   };
@@ -1062,42 +1120,65 @@ function copyDirSync(src, dest) {
   }
 }
 
-/**
- * 启动时自动迁移缓存：
- * 如果新 cacheDir 为空，但工作区 cache/ 有数据，复制过去
- */
-async function migrateCacheIfNeeded() {
-  if (!settings) return;
-  const currentCacheDir = settings.get('cacheDir');
-  if (hasJsonFiles(currentCacheDir)) return; // 已有缓存，不需要迁移
-
-  // 查找工作区根目录的 cache/
-  const candidates = [
-    path.resolve(__dirname, '..', '..', 'cache'),
-    path.resolve(__dirname, '..', 'cache'),
-    path.resolve(process.cwd(), 'cache'),
-  ];
-
-  for (const srcCache of candidates) {
-    if (hasJsonFiles(srcCache)) {
-      console.log(`[迁移] 发现缓存：${srcCache} → ${currentCacheDir}`);
-      try {
-        copyDirSync(srcCache, currentCacheDir);
-        console.log('[迁移] 缓存复制完成');
-      } catch (e) {
-        console.warn('[迁移] 复制失败:', e.message);
-      }
-      break;
-    }
+function hasFiles(dir) {
+  if (!fs.existsSync(dir)) return false;
+  try {
+    return fs.readdirSync(dir).length > 0;
+  } catch {
+    return false;
   }
+}
+
+function hasResourceFiles(dir) {
+  if (!fs.existsSync(dir)) return false;
+  try {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (entry.isFile()) return true;
+      if (entry.isDirectory()) {
+        const subDir = path.join(dir, entry.name);
+        if (hasFiles(subDir)) return true;
+      }
+    }
+  } catch {}
+  return false;
+}
+
+function migrateBundledDirectoryIfNeeded(label, sourceDir, targetDir, hasContent) {
+  if (!sourceDir || !fs.existsSync(sourceDir)) return;
+  if (hasContent(targetDir)) return;
+  if (!hasContent(sourceDir)) return;
+
+  console.log(`[迁移] 发现${label}：${sourceDir} → ${targetDir}`);
+  try {
+    copyDirSync(sourceDir, targetDir);
+    console.log(`[迁移] ${label}复制完成`);
+  } catch (error) {
+    console.warn(`[迁移] ${label}复制失败:`, error.message);
+  }
+}
+
+/**
+ * 启动时自动迁移整合包附带的数据目录：
+ * 如果 appData 下对应目录为空，但运行目录中存在 cache/resource/persistent，则复制过去
+ */
+async function migrateBundledDataIfNeeded() {
+  if (!settings) return;
+
+  const currentCacheDir = settings.get('cacheDir');
+  const currentResourceDir = settings.get('resourceDir');
+  const currentPersistentDir = getPersistentDataDir();
+
+  migrateBundledDirectoryIfNeeded('缓存目录', findRuntimeBundleDir('cache'), currentCacheDir, hasJsonFiles);
+  migrateBundledDirectoryIfNeeded('资源目录', findRuntimeBundleDir('resource'), currentResourceDir, hasResourceFiles);
+  migrateBundledDirectoryIfNeeded('持久化目录', findRuntimeBundleDir('persistent'), currentPersistentDir, hasFiles);
 }
 
 app.whenReady().then(async () => {
   // 初始化 store
   await initStore();
 
-  // 自动迁移缓存：如果 userData/cache 为空但运行目录下有 cache/，复制过去并更新设置
-  await migrateCacheIfNeeded();
+  // 自动迁移整合包自带数据：如果 appData 对应目录为空，则从运行目录复制 cache/resource/persistent
+  await migrateBundledDataIfNeeded();
 
   // 注册自定义协议 handler（必须在 app.ready 之后）
   registerAssetProtocol();
