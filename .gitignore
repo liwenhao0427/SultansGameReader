@@ -22,3 +22,5 @@ Thumbs.db
 *.log
 /sultan-reader/dist-electron/
 codex_reverse_pack
+dist-electron
+dist-electron
