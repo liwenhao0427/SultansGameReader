@@ -723,6 +723,7 @@ function ReaderDetailPanel({ detail, cardsById, onOpenDetail, onClose }) {
 
 function SlotButton({ slot, active, candidate, tags, onClick, slotBgKey }) {
   const { url: slotBgUrl } = useResolvedImage(slotBgKey)
+  const { url: slotLockedUrl } = useResolvedImage(READER_RESOURCE_ASSETS.slotLocked)
   const previewCard = candidate?.cards?.[0] || slot.defaultCards?.[0] || null
   const slotCaption = candidate?.label || slot.defaultCards?.[0]?.name || slot.title
 
@@ -783,6 +784,23 @@ function SlotButton({ slot, active, candidate, tags, onClick, slotBgKey }) {
               border: '1px solid rgba(244, 232, 206, 0.1)',
             }} />
           )}
+          {slot.lockedCard && slotLockedUrl ? (
+            <img
+              src={slotLockedUrl}
+              alt=""
+              style={{
+                position: 'absolute',
+                left: '50%',
+                top: '50%',
+                width: READER_CHROME.assets.slotFrame.width,
+                height: 'auto',
+                transform: 'translate(-50%, -50%)',
+                pointerEvents: 'none',
+                opacity: 0.92,
+                filter: 'drop-shadow(0 8px 14px rgba(0, 0, 0, 0.22))',
+              }}
+            />
+          ) : null}
           <div style={{
             position: 'absolute',
             left: 8,
@@ -1427,23 +1445,19 @@ export default function StoryInspector({ type, data, onClose }) {
   }, [cardsById, model, settlementSelections, slotSelections])
   const executionFlow = useMemo(() => {
     if (executionMode === 'waiting_round_end') {
-      if (!model?.waitingRoundEnd) return []
-      return {
-        steps: [{
-          id: 'waiting-round-end',
-          phase: '超时结算',
-          title: '等待回合结束',
-          text: model.waitingRoundEnd.raw?.result_text || model.waitingRoundEnd.raw?.tips_text || '',
-          effects: model.waitingRoundEnd.effects || [],
-          actions: (model.waitingRoundEnd.actions || []).filter((action) => action?.targetType && action?.targetId),
-          conditions: [],
-          popItems: [],
-          tips: [],
-        }],
-        conditionGroups: [],
-        autoSelections: {},
-        isComplete: true,
-      }
+      if (!model?.waitingRoundEnd?.rawPhases?.length) return []
+      return buildExecutionFlow({
+        title: model.waitingRoundEnd.title || '等待回合结束',
+        intro: '',
+        tipsText: [],
+        rawPhases: model.waitingRoundEnd.rawPhases,
+        randomText: model.randomText || {},
+        randomTextUp: model.randomTextUp || {},
+      }, {
+        branchSelections: executionConditionSelections,
+        slotCards: executionSlotCards,
+        cardsMap: cardsLite,
+      })
     }
 
     return buildExecutionFlow(model, {
@@ -2084,18 +2098,41 @@ export default function StoryInspector({ type, data, onClose }) {
                 <div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
                     <div style={{ ...smallLineStyle, paddingTop: 8 }}>
-                      当前槽位：{selectedSlot?.title || '未选择槽位'}
+                      当前槽位：{selectedSlot?.title || '未选择槽位'}{selectedSlot?.text ? ` / ${selectedSlot.text}` : ''}
                     </div>
                     <div style={{ ...candidateToolbarStyle, width: '100%', alignItems: 'stretch' }}>
                       <div style={{ ...candidateToolbarGroupStyle, justifyContent: 'space-between', alignItems: 'center', width: '100%', flexWrap: 'wrap' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                          <button
+                            type="button"
+                            style={{ ...secondaryButtonStyle, minWidth: 44, padding: '10px 12px' }}
+                            onClick={() => setCandidatePage((page) => Math.max(1, page - 1))}
+                            disabled={candidatePage === 1}
+                            aria-label="上一页"
+                          >
+                            {'<'}
+                          </button>
+                          <span style={{ ...smallLineStyle, whiteSpace: 'nowrap', flexShrink: 0 }}>{candidatePage} / {selectedSlotPageCount}</span>
+                          <button
+                            type="button"
+                            style={{ ...secondaryButtonStyle, minWidth: 44, padding: '10px 12px' }}
+                            onClick={() => setCandidatePage((page) => Math.min(selectedSlotPageCount, page + 1))}
+                            disabled={candidatePage === selectedSlotPageCount}
+                            aria-label="下一页"
+                          >
+                            {'>'}
+                          </button>
+                        </div>
+
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', minWidth: 0, position: 'relative' }}>
                           <button
                             type="button"
-                            style={secondaryButtonStyle}
+                            style={{ ...secondaryButtonStyle, minWidth: 44, padding: '10px 12px' }}
                             onClick={() => handleStepCondition(-1)}
                             disabled={visibleConditionGroups.length <= 1}
+                            aria-label="上一个条件"
                           >
-                            上一个条件
+                            {'<'}
                           </button>
                           <div
                             style={{ position: 'relative', minWidth: 0, maxWidth: 'min(460px, 48vw)' }}
@@ -2135,40 +2172,23 @@ export default function StoryInspector({ type, data, onClose }) {
                           </div>
                           <button
                             type="button"
-                            style={secondaryButtonStyle}
+                            style={{ ...secondaryButtonStyle, minWidth: 44, padding: '10px 12px' }}
                             onClick={() => handleStepCondition(1)}
                             disabled={visibleConditionGroups.length <= 1}
+                            aria-label="下一个条件"
                           >
-                            下一个条件
+                            {'>'}
                           </button>
                         </div>
-
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                          <input
-                            type="text"
-                            value={candidateCardFilterText}
-                            onChange={(event) => setCandidateCardFilterText(event.target.value)}
-                            placeholder="搜索卡牌"
-                            style={candidateSearchInputStyle}
-                          />
-                          <button
-                            type="button"
-                            style={secondaryButtonStyle}
-                            onClick={() => setCandidatePage((page) => Math.max(1, page - 1))}
-                            disabled={candidatePage === 1}
-                          >
-                            上一页
-                          </button>
-                          <span style={{ ...smallLineStyle, whiteSpace: 'nowrap', flexShrink: 0 }}>{candidatePage} / {selectedSlotPageCount}</span>
-                          <button
-                            type="button"
-                            style={secondaryButtonStyle}
-                            onClick={() => setCandidatePage((page) => Math.min(selectedSlotPageCount, page + 1))}
-                            disabled={candidatePage === selectedSlotPageCount}
-                          >
-                            下一页
-                          </button>
-                        </div>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                        <input
+                          type="text"
+                          value={candidateCardFilterText}
+                          onChange={(event) => setCandidateCardFilterText(event.target.value)}
+                          placeholder="搜索卡牌"
+                          style={candidateSearchInputStyle}
+                        />
                       </div>
                     </div>
                 </div>

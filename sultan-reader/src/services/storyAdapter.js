@@ -434,7 +434,7 @@ function buildResultEffects(result = {}, cardsMap, cardsById) {
 
   for (const [key, value] of Object.entries(result)) {
     if (key.endsWith('__c') || key.endsWith('__ca') || key.endsWith('__ci')) continue
-    if (key === 'choose' || key.startsWith('pop.')) continue
+    if (key === 'choose' || key === 'prompt' || key === 'option' || key.startsWith('pop.')) continue
     if (value == null) continue
 
     if (key === 'card' || key === 'link_card') {
@@ -559,7 +559,11 @@ function buildPhaseItem(item, cardsMap, cardsById, phase, slotIds = []) {
     choiceActions: extractActionTargets(item.action).filter((entry) => entry.targetType === 'event' || entry.targetType === 'rite' || entry.targetType === 'over'),
     options: extractChoiceOptions(item.result?.choose || item.action?.choose),
     effects: buildResultEffects(item.result, cardsMap, cardsById),
-    popItems: extractSettlementPopItems(item.result),
+    popItems: [
+      ...extractSettlementPopItems(item.result),
+      ...buildPromptItems(item.result?.prompt, cardsMap, cardsById, 'result_prompt'),
+      ...buildPromptItems(item.action?.prompt, cardsMap, cardsById, 'action_prompt'),
+    ],
     note: item.__ca || item.__c || '',
   }
 }
@@ -692,6 +696,14 @@ function pickCardImage(card) {
   return resource || null
 }
 
+function pickPromptIcon(icon) {
+  if (typeof icon === 'string') return icon
+  if (Array.isArray(icon) && icon.length > 0) {
+    return icon.find((item) => typeof item === 'string' && item) || null
+  }
+  return null
+}
+
 function extractCardIdFromIcon(icon) {
   if (typeof icon !== 'string') return null
   const match = icon.match(/cards\/(\d+)/)
@@ -699,7 +711,7 @@ function extractCardIdFromIcon(icon) {
 }
 
 function buildCardSummaryFromIcon(icon, cardsMap, cardsById) {
-  const cardId = extractCardIdFromIcon(icon)
+  const cardId = extractCardIdFromIcon(pickPromptIcon(icon))
   if (!cardId) return null
   return buildCardSummary(cardId, cardsMap, cardsById)
 }
@@ -724,6 +736,49 @@ function normalizePromptEntries(promptValue) {
       }
     })
     .filter((entry) => entry && (entry.text || entry.icon))
+}
+
+function buildPromptItems(promptValue, cardsMap, cardsById, source = 'prompt') {
+  return normalizePromptEntries(promptValue)
+    .map((entry, index) => {
+      const promptCard = buildCardSummaryFromIcon(entry.icon, cardsMap, cardsById)
+      const promptIcon = pickPromptIcon(entry.icon)
+      return {
+        key: `${source}:${entry.id || index}`,
+        slotId: null,
+        speakerKey: entry.id || `${source}:${index}`,
+        text: entry.text || '',
+        card: promptCard || (promptIcon ? {
+          id: `${source}:icon:${entry.id || index}`,
+          name: '提示',
+          rare: null,
+          image: promptIcon,
+        } : null),
+      }
+    })
+    .filter((entry) => entry.text || entry.card)
+}
+
+function extractLockedSlotCard(condition, cardsMap, cardsById) {
+  if (!condition || typeof condition !== 'object') return null
+
+  const fixedSudanCard = condition.type === 'sudan' ? buildFixedSudanCard(condition) : null
+  if (fixedSudanCard) return fixedSudanCard
+
+  const fixedItemCard = condition.type === 'item' ? buildFixedItemCard(condition) : null
+  if (fixedItemCard) return fixedItemCard
+
+  const directIs = normalizeArray(condition.is)
+  if (directIs.length === 1 && isCardLikeId(directIs[0])) {
+    return buildCardSummary(directIs[0], cardsMap, cardsById)
+  }
+
+  const fixedTag = Object.keys(FIXED_TAG_CARD_IDS).find((tag) => Number(condition[tag]) > 0)
+  if (fixedTag) {
+    return buildCardSummary(FIXED_TAG_CARD_IDS[fixedTag], cardsMap, cardsById)
+  }
+
+  return null
 }
 
 function normalizeOptionEntry(optionValue) {
@@ -842,6 +897,7 @@ export function adaptStoryData(type, data, cardsMap, cardsById = {}) {
           text: slot.text || '',
           rawCondition: slot.condition || {},
           canBeEmpty: Boolean(slot.is_empty),
+          lockedCard: !slot.is_empty ? extractLockedSlotCard(slot.condition || {}, cardsMap, cardsById) : null,
           hasExplicitCandidates: normalizeArray(slot.pops).length > 0,
           conditions: parseConditionObject(slot.condition, cardsMap),
           defaultCards: extractConditionCards(slot.condition || {}, cardsMap, cardsById),
@@ -863,11 +919,15 @@ export function adaptStoryData(type, data, cardsMap, cardsById = {}) {
         randomText: data.random_text || {},
         randomTextUp: data.random_text_up || {},
         tipsText: data.tips_text || '',
-        waitingRoundEnd: data.waiting_round_end_action && Object.keys(data.waiting_round_end_action).length > 0
+        waitingRoundEnd: normalizeArray(data.waiting_round_end_action).length > 0
           ? {
-            effects: buildResultEffects(data.waiting_round_end_action, cardsMap, cardsById),
-            actions: extractActionTargets(data.waiting_round_end_action),
-            raw: data.waiting_round_end_action,
+            title: '等待回合结束',
+            rawPhases: normalizeArray(data.waiting_round_end_action).map((item, index) => ({
+              phaseKey: 'waiting_round_end_action',
+              phaseLabel: '超时结算',
+              index,
+              ...buildPhaseItem(item, cardsMap, cardsById, '超时结算', riteSlotIds),
+            })),
           }
           : null,
         rawPhases: [

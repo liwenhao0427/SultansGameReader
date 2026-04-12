@@ -42,6 +42,10 @@ export const READER_RESOURCE_ASSETS = {
   riteTitlePlate: 'rite_title_bg',
   riteTitleLine: 'rite_title_short',
   slotFrame: 'nomal_slot_bg',
+  // 固定卡槽锁定装饰。
+  // 用于 `is_empty = 0` 且槽位条件已经限定为固定卡牌时，在槽位中央额外显示锁定提示。
+  // 回退规则：找不到时不显示，不影响原有卡槽内容。
+  slotLocked: 'slot_locked',
   dialogueFrame: '1-3',
 }
 

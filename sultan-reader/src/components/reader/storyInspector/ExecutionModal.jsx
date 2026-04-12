@@ -178,6 +178,7 @@ function formatExecutionActionLabel(action, targetNameMap = {}) {
 }
 
 function resolvePopCard(pop, executionSlotCards) {
+  if (pop?.card) return pop.card
   if (!pop?.slotId) return null
   return executionSlotCards?.[pop.slotId] || null
 }
@@ -493,7 +494,7 @@ export default function ExecutionModal({
 
           <div style={styles.topActions}>
             {/* <button type="button" style={styles.readButton} onClick={onMarkRead || onClose}>已读</button> */}
-            <button type="button" style={styles.closeIconButton} onClick={onClose} aria-label="关闭结算">x</button>
+            <button type="button" style={styles.closeIconButton} onClick={onClose} aria-label="关闭结算">×</button>
           </div>
 
           <div style={styles.bodyGrid}>
