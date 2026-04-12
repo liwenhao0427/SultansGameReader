@@ -361,8 +361,18 @@ function summarizeLabel(name, fallbackPrefix = '') {
   return fallbackPrefix ? `${fallbackPrefix}${name}` : name
 }
 
-function buildSlotCandidate(slotId, pop, index, cardsMap, cardsById) {
-  const condition = pop?.condition || {}
+function hasMeaningfulCondition(condition = {}) {
+  if (!condition || typeof condition !== 'object') return false
+  return Object.keys(condition).some((key) => !key.endsWith('__c') && !key.endsWith('__ca') && !key.endsWith('__ci'))
+}
+
+function hasCompositeCondition(condition = {}) {
+  if (!condition || typeof condition !== 'object') return false
+  return Object.keys(condition).some((key) => key === 'any' || key === 'all')
+}
+
+function buildSlotCandidate(slotId, pop, index, cardsMap, cardsById, fallbackCondition = {}) {
+  const condition = hasMeaningfulCondition(pop?.condition) ? (pop?.condition || {}) : (fallbackCondition || {})
   const anyCondition = condition.any && typeof condition.any === 'object' ? condition.any : null
   const explicitIds = Array.from(collectExplicitConditionCardIds(condition))
   const parsedConditionText = parseConditionObject(condition, cardsMap).join(' / ')
@@ -418,9 +428,10 @@ function buildBrowseCandidateEntry(slotId, card, cardsMap, cardsById, extra = {}
   }
 }
 
-function buildSlotCandidates(slotId, pop, index, cardsMap, cardsById) {
-  const baseCandidate = buildSlotCandidate(slotId, pop, index, cardsMap, cardsById)
-  const condition = pop?.condition || {}
+function buildSlotCandidates(slotId, slot, pop, index, cardsMap, cardsById) {
+  const fallbackCondition = slot?.condition || {}
+  const condition = hasMeaningfulCondition(pop?.condition) ? (pop?.condition || {}) : fallbackCondition
+  const baseCandidate = buildSlotCandidate(slotId, pop, index, cardsMap, cardsById, fallbackCondition)
   const actionChoiceTexts = extractChoiceOptions(pop?.action?.choose)
   const actionPopItems = extractSettlementPopItems(pop?.action)
   const bubbleText = baseCandidate.bubbleText || actionPopItems[0]?.text || actionChoiceTexts[0]?.text || ''
@@ -432,7 +443,7 @@ function buildSlotCandidates(slotId, pop, index, cardsMap, cardsById) {
     rawAction: pop?.action || null,
   }
 
-  if (baseCandidate.cards?.length > 0) {
+  if (baseCandidate.cards?.length > 0 && !hasCompositeCondition(condition)) {
     return [basePayload]
   }
 
@@ -938,7 +949,7 @@ export function adaptStoryData(type, data, cardsMap, cardsById = {}) {
           defaultCards: extractConditionCards(slot.condition || {}, cardsMap, cardsById),
           candidates: (() => {
             const pops = normalizeArray(slot.pops).flatMap((pop, index) => (
-              buildSlotCandidates(slotId, pop, index, cardsMap, cardsById)
+              buildSlotCandidates(slotId, slot, pop, index, cardsMap, cardsById)
             ))
             const browseCandidates = pops.length === 0 ? buildBrowseCandidates(slotId, slot, cardsMap, cardsById) : []
             const resolved = pops.length > 0

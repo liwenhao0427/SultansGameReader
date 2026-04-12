@@ -73,4 +73,58 @@ describe('storyAdapter', () => {
     expect(new Set(candidateIds)).toEqual(new Set(['2000525', '3000001', '3000002']))
     expect(slot.candidates.every((candidate) => candidate.conditionText === slot.candidates[0].conditionText)).toBe(true)
   })
+
+  test('5002006 的 s3 槽位在 pop 条件为空时应回退使用槽位条件筛选候选卡', () => {
+    const cardsMap = new Map([
+      ['2000525', '借书证'],
+      ['2000029', '金币'],
+      ['2000123', '莎姬'],
+    ])
+    const cardsById = {
+      '2000525': { id: 2000525, name: '借书证', type: 'item', rare: 2, resource: ['cards/2000525.png'] },
+      '2000029': { id: 2000029, name: '金币', type: 'item', rare: 1, resource: ['cards/2000029.png'], tag: { 金币: 1 } },
+      '2000123': { id: 2000123, name: '莎姬', type: 'char', rare: 1, resource: ['cards/2000123.png'] },
+    }
+    const rite = {
+      id: 5002006,
+      name: '书店营业',
+      cards_slot: {
+        s3: {
+          condition: {
+            type: 'item',
+            any: {
+              'cost.金币': 1,
+              is: 2000525,
+            },
+          },
+          is_empty: 1,
+          text: '你可以置入1金币买书，或置入借书证借阅。当然，你也可以什么都不带，只是看看。',
+          pops: [
+            {
+              condition: {},
+              action: {
+                choose: {
+                  'pop.5002006_s3_02.s5': '今日亦有新书入库',
+                  'pop.5002006_s3_03.s5': '想引鱼儿上钩，有时无需饵料',
+                  'pop.5002006_s3_04.s5': '挑选书籍，最见一个人的品味',
+                },
+              },
+            },
+          ],
+        },
+      },
+    }
+
+    const model = adaptStoryData('rite', rite, cardsMap, cardsById)
+    const slot = model.slots.find((entry) => entry.id === 's3')
+    const nonEmptyCandidates = slot.candidates.filter((candidate) => !candidate.isEmpty)
+    const candidateIds = nonEmptyCandidates.flatMap((candidate) => candidate.cards.map((card) => card.id))
+    const conditionGroupCount = new Set(
+      nonEmptyCandidates.map((candidate) => candidate.conditionText || candidate.label)
+    ).size
+
+    expect(slot).toBeTruthy()
+    expect(conditionGroupCount).toBe(1)
+    expect(candidateIds).toEqual(['2000525', '2000029'])
+  })
 })
