@@ -80,7 +80,7 @@ function buildConditionLabel(condition, cardsMap, counterRegistry = null) {
   return parseConditionObject(condition, cardsMap, counterRegistry)[0] || Object.keys(condition || {})[0] || '未命名条件'
 }
 
-function buildConditionPreviewText(condition, cardsMap, counterRegistry = null, maxItems = 10) {
+function buildConditionPreviewText(condition, cardsMap, counterRegistry = null, maxItems = 20) {
   const lines = parseConditionObject(condition, cardsMap, counterRegistry)
   if (lines.length === 0) {
     return {

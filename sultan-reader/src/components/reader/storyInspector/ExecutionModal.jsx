@@ -134,7 +134,7 @@ function ExecutionEffectList({ effects, onOpenCard }) {
     <div style={styles.effectList}>
       {effects.map((effect, index) => (
         <div key={`${effect.label}:${index}`} style={styles.effectItem}>
-          <div style={{ color: '#f1dfbb', fontSize: 13, lineHeight: 1.5 }}>{effect.label}</div>
+          <div style={{ color: '#4f3927', fontSize: 13, lineHeight: 1.5, fontWeight: 700 }}>{effect.label}</div>
           {effect.cards?.length > 0 ? (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
               {effect.cards.map((card) => (
@@ -276,12 +276,6 @@ function LegacyInlineChoiceStep({ group, selectedId, onSelect, onOpenDetail }) {
   )
 }
 
-function truncateConditionLabel(text, maxLength = 10) {
-  const raw = String(text || '').replace(/\s+/g, ' ').trim()
-  if (!raw) return ''
-  return raw.length > maxLength ? `${raw.slice(0, maxLength)}…` : raw
-}
-
 function ConditionGroupIntro({ group }) {
   return (
     <div style={styles.conditionIntro}>
@@ -303,7 +297,7 @@ function ConditionGridGroup({ group, selectedId, onSelect }) {
             style={option.id === selectedId ? { ...styles.conditionOption, ...styles.conditionOptionActive } : styles.conditionOption}
           >
             <div style={styles.conditionOptionLabel} title={option.fullLabel || option.label}>
-              {truncateConditionLabel(option.label)}
+              {option.fullLabel || option.label}
             </div>
             {option.hiddenCount > 0 ? (
               <div style={styles.conditionOptionHint}>另有 {option.hiddenCount} 条条件</div>
@@ -333,11 +327,11 @@ function ConditionPagerGroup({ group, selectedId, onSelect, onOpenDetail }) {
       <div style={styles.pagerRow}>
         <button type="button" onClick={() => move(-1)} style={styles.pagerButton}>{'<'}</button>
         <button type="button" onClick={() => onOpenDetail(group.id)} style={styles.pagerSummaryButton}>
-          <div style={{ fontSize: 13, color: '#ccb38e' }}>
+          <div style={{ fontSize: 13, color: '#9a7347', fontWeight: 700 }}>
             {activeIndex + 1} / {group.options.length}
           </div>
           <div style={styles.pagerSummaryLabel} title={activeOption?.fullLabel || activeOption?.label || ''}>
-            {truncateConditionLabel(activeOption?.label)}
+            {activeOption?.fullLabel || activeOption?.label}
           </div>
           <div style={styles.conditionOptionHint}>
             {activeOption?.hiddenCount > 0 ? `点击查看全部，另有 ${activeOption.hiddenCount} 条条件` : '点击查看全部条件'}
@@ -605,7 +599,7 @@ export default function ExecutionModal({
                     ? { ...styles.conditionOption, ...styles.conditionOptionActive }
                     : styles.conditionOption}
                 >
-                  <div style={{ fontSize: 14, lineHeight: 1.7, color: '#fff4de', whiteSpace: 'pre-wrap' }}>
+                  <div style={{ fontSize: 14, lineHeight: 1.7, color: '#f4ead6', whiteSpace: 'pre-wrap' }}>
                     {option.fullLabel || option.label}
                   </div>
                   {option.detail ? (
