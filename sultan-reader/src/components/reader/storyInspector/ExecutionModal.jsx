@@ -101,6 +101,61 @@ function CardPortrait({ card, showName = true, widthOverride = null }) {
   )
 }
 
+function PopPortrait({ card, width = 54, height = 78 }) {
+  const { url } = useResolvedImage(resolveCardImageKey(card))
+  const { url: rareFrameUrl } = useResolvedImage(getCardRarityFrameAsset(card?.rare))
+
+  return (
+    <div
+      style={{
+        width,
+        height,
+        borderRadius: 16,
+        overflow: 'hidden',
+        position: 'relative',
+        flexShrink: 0,
+        backgroundColor: 'rgba(18, 15, 11, 0.92)',
+        backgroundImage: rareFrameUrl ? `url("${rareFrameUrl}")` : 'none',
+        backgroundRepeat: 'no-repeat',
+        backgroundSize: '100% 100%',
+        backgroundPosition: 'center',
+        boxShadow: '0 12px 22px rgba(0, 0, 0, 0.24)',
+      }}
+    >
+      {url ? (
+        <img
+          src={url}
+          alt={card?.name || ''}
+          style={{
+            position: 'absolute',
+            inset: '4px 5px 10px',
+            width: 'calc(100% - 10px)',
+            height: 'calc(100% - 14px)',
+            objectFit: 'cover',
+            objectPosition: 'center top',
+            display: 'block',
+          }}
+        />
+      ) : (
+        <div style={{
+          width: '100%',
+          height: '100%',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: 8,
+          textAlign: 'center',
+          color: '#f4e9cd',
+          fontSize: 11,
+          lineHeight: 1.5,
+        }}>
+          {card?.name || '未知卡牌'}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function formatExecutionActionLabel(action, targetNameMap = {}) {
   if (!action) return ''
 
@@ -127,7 +182,7 @@ function resolvePopCard(pop, executionSlotCards) {
   return executionSlotCards?.[pop.slotId] || null
 }
 
-function ExecutionEffectList({ effects, onOpenCard }) {
+function ExecutionEffectList({ effects, onInspectCard }) {
   if (!effects?.length) return null
 
   return (
@@ -143,11 +198,11 @@ function ExecutionEffectList({ effects, onOpenCard }) {
                   type="button"
                   onClick={(event) => {
                     event.stopPropagation()
-                    onOpenCard?.(card)
+                    onInspectCard?.(card)
                   }}
                   style={styles.effectCardButton}
                 >
-                  <CardPortrait card={card} showName={false} widthOverride={52} />
+                  <PopPortrait card={card} width={52} height={76} />
                 </button>
               ))}
             </div>
@@ -158,11 +213,15 @@ function ExecutionEffectList({ effects, onOpenCard }) {
   )
 }
 
-function ExecutionActionBadge({ action, targetData }) {
+function ExecutionActionBadge({ action, targetData, onInspectAction }) {
   const { url } = useResolvedImage(targetData?.image)
 
   return (
-    <div style={styles.effectChip}>
+    <button
+      type="button"
+      onClick={() => onInspectAction?.(action)}
+      style={{ ...styles.effectChip, cursor: 'pointer' }}
+    >
       {url ? (
         <img
           src={url}
@@ -171,19 +230,31 @@ function ExecutionActionBadge({ action, targetData }) {
         />
       ) : null}
       <span>{formatExecutionActionLabel(action, targetData ? { [`${action.targetType}:${action.targetId}`]: targetData.name } : {})}</span>
-    </div>
+    </button>
   )
 }
 
-function StoryPopLine({ pop, executionSlotCards }) {
+function StoryPopLine({ pop, executionSlotCards, tone = 'paper' }) {
   const card = resolvePopCard(pop, executionSlotCards)
+  const isLightTone = tone === 'light'
 
   return (
     <div style={styles.popLine}>
       <div style={{ paddingTop: 2 }}>
-        <CardPortrait card={card} showName={false} widthOverride={48} />
+        <PopPortrait card={card} width={50} height={72} />
       </div>
-      <div style={{ ...styles.contentBlock, ...styles.text }}>
+      <div style={{
+        ...styles.contentBlock,
+        padding: '10px 12px',
+        borderRadius: 16,
+        background: isLightTone ? 'rgba(7, 6, 5, 0.56)' : 'rgba(244, 237, 224, 0.28)',
+        border: isLightTone ? '1px solid rgba(244, 232, 206, 0.12)' : '1px solid rgba(137, 110, 75, 0.12)',
+        color: isLightTone ? '#f6edd9' : '#4b3d33',
+        fontSize: 15,
+        lineHeight: 1.85,
+        whiteSpace: 'pre-wrap',
+        textShadow: isLightTone ? '0 1px 4px rgba(0, 0, 0, 0.38)' : 'none',
+      }}>
         {pop.text}
       </div>
     </div>
@@ -376,8 +447,8 @@ export default function ExecutionModal({
   executionConditionGroups,
   executionConditionSelections,
   onSelectCondition,
-  onOpenCard,
-  onOpenAction,
+  onInspectCard,
+  onInspectAction,
   onClose,
   onMarkRead,
 }) {
@@ -441,7 +512,7 @@ export default function ExecutionModal({
                     }}
                     onClick={(event) => {
                       event.stopPropagation()
-                      onOpenCard?.(card, index)
+                      onInspectCard?.(card, index)
                     }}
                   >
                     <CardPortrait card={card} widthOverride={96} />
@@ -453,7 +524,7 @@ export default function ExecutionModal({
                 <div style={styles.summaryTitle}>结算获取</div>
                 {executionSummaryEffects.length > 0 ? (
                   <div style={{ marginTop: 12 }}>
-                    <ExecutionEffectList effects={executionSummaryEffects} onOpenCard={onOpenCard} />
+                    <ExecutionEffectList effects={executionSummaryEffects} onInspectCard={onInspectCard} />
                   </div>
                 ) : null}
 
@@ -464,6 +535,7 @@ export default function ExecutionModal({
                         key={`${action.key}:${action.targetId || ''}:${index}`}
                         action={action}
                         targetData={executionTargetNameMap[`${action.targetType}:${action.targetId}`]}
+                        onInspectAction={onInspectAction}
                       />
                     ))}
                   </div>
@@ -472,7 +544,7 @@ export default function ExecutionModal({
                 {executionSummaryPops.length > 0 ? (
                   <div style={{ marginTop: 14, display: 'grid', gap: 10 }}>
                     {executionSummaryPops.map((pop, index) => (
-                      <StoryPopLine key={`${pop.key}:${index}`} pop={pop} executionSlotCards={executionSlotCards} />
+                      <StoryPopLine key={`${pop.key}:${index}`} pop={pop} executionSlotCards={executionSlotCards} tone="light" />
                     ))}
                   </div>
                 ) : null}
@@ -531,7 +603,7 @@ export default function ExecutionModal({
                       ) : null}
                       {step.effects?.length > 0 ? (
                         <div style={styles.inlineSection}>
-                          <ExecutionEffectList effects={step.effects} onOpenCard={onOpenCard} />
+                          <ExecutionEffectList effects={step.effects} onInspectCard={onInspectCard} />
                         </div>
                       ) : null}
                       {step.actions?.length > 0 ? (
@@ -541,7 +613,7 @@ export default function ExecutionModal({
                               <button
                                 key={`${step.id}:action:${index}`}
                                 type="button"
-                                onClick={() => onOpenAction?.(action, index)}
+                                onClick={() => onInspectAction?.(action, index)}
                                 style={styles.detailButton}
                               >
                                 {formatExecutionActionLabel(action, executionTargetNameMap)}
@@ -599,11 +671,11 @@ export default function ExecutionModal({
                     ? { ...styles.conditionOption, ...styles.conditionOptionActive }
                     : styles.conditionOption}
                 >
-                  <div style={{ fontSize: 14, lineHeight: 1.7, color: '#f4ead6', whiteSpace: 'pre-wrap' }}>
+                  <div style={{ fontSize: 14, lineHeight: 1.7, color: '#4b3828', fontWeight: 700, whiteSpace: 'pre-wrap' }}>
                     {option.fullLabel || option.label}
                   </div>
                   {option.detail ? (
-                    <div style={{ marginTop: 6, fontSize: 12, lineHeight: 1.6, color: '#d8c5a0', whiteSpace: 'pre-wrap' }}>
+                    <div style={{ marginTop: 6, fontSize: 12, lineHeight: 1.7, color: '#6c533a', whiteSpace: 'pre-wrap' }}>
                       {option.detail}
                     </div>
                   ) : null}

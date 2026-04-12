@@ -156,7 +156,6 @@ function summarizeActionTarget(targetType, targetId, data = {}) {
 }
 
 const CONDITION_BUTTON_MAX_LENGTH = 26
-const CONDITION_PREVIEW_MAX_LENGTH = 72
 
 function CardPortrait({ card, compact = false, showName = true, widthOverride = null }) {
   const { url } = useResolvedImage(card?.image)
@@ -469,13 +468,254 @@ function ActionSummary({ actions, onOpenAction }) {
 }
 
 function StoryPopLine({ pop, card }) {
+  const popImageKey = card?.image || (Array.isArray(card?.resource) ? card.resource[0] || null : (card?.resource || null))
+  const { url } = useResolvedImage(popImageKey)
+  const { url: rareFrameUrl } = useResolvedImage(getCardRarityFrameAsset(card?.rare))
+
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '48px minmax(0,1fr)', gap: 12, alignItems: 'start' }}>
       <div style={{ paddingTop: 2 }}>
-        <CardPortrait card={card} compact showName={false} widthOverride={48} />
+        <div style={{
+          width: 48,
+          height: 72,
+          borderRadius: 16,
+          overflow: 'hidden',
+          border: '1px solid rgba(244, 232, 206, 0.22)',
+          boxShadow: '0 10px 22px rgba(0, 0, 0, 0.2)',
+          background: 'rgba(18, 15, 11, 0.92)',
+          backgroundImage: rareFrameUrl ? `url("${rareFrameUrl}")` : 'none',
+          backgroundRepeat: 'no-repeat',
+          backgroundSize: '100% 100%',
+          backgroundPosition: 'center',
+          position: 'relative',
+        }}>
+          {url ? (
+            <img
+              src={url}
+              alt={card?.name || ''}
+              style={{
+                position: 'absolute',
+                inset: '4px 5px 10px',
+                width: 'calc(100% - 10px)',
+                height: 'calc(100% - 14px)',
+                objectFit: 'cover',
+                objectPosition: 'center top',
+                display: 'block',
+              }}
+            />
+          ) : (
+            <div style={{
+              width: '100%',
+              height: '100%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              textAlign: 'center',
+              color: '#f4e9cd',
+              fontSize: 11,
+              lineHeight: 1.5,
+              padding: 6,
+            }}>
+              {card?.name || '未知角色'}
+            </div>
+          )}
+        </div>
       </div>
-      <div style={{ color: '#f5ecd9', fontSize: 14, lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>
+      <div style={{
+        padding: '10px 12px',
+        borderRadius: 16,
+        background: 'rgba(10, 9, 7, 0.56)',
+        border: '1px solid rgba(244, 232, 206, 0.12)',
+        color: '#f7eedb',
+        fontSize: 14,
+        lineHeight: 1.85,
+        whiteSpace: 'pre-wrap',
+        textShadow: '0 1px 4px rgba(0, 0, 0, 0.34)',
+      }}>
         {pop.text}
+      </div>
+    </div>
+  )
+}
+
+function ReaderDetailPanel({ detail, cardsById, onOpenDetail, onClose }) {
+  const data = detail?.data || null
+  const detailType = detail?.type || ''
+  const detailId = detail?.id || ''
+  const previewKey = data ? resolveExecutionTargetImage(detailType, data, cardsById) : null
+  const { url: previewUrl, loading: previewLoading } = useResolvedImage(previewKey)
+  const { url: rareFrameUrl } = useResolvedImage(detailType === 'card' ? getCardRarityFrameAsset(data?.rare) : null)
+
+  if (!detail) return null
+
+  const title = data?.name || data?.title || data?.sub_name || normalizeTextContent(data?.text).slice(0, 30) || `${detailType} ${detailId}`
+  const subtitle = [
+    detailType === 'card' ? '卡牌' : detailType === 'rite' ? '仪式' : detailType === 'event' ? '幕后' : detailType === 'loot' ? '掉落池' : detailType === 'over' ? '结局' : detailType,
+    detailId ? `#${detailId}` : null,
+  ].filter(Boolean).join(' ')
+  const textBlocks = [
+    { title: detailType === 'card' ? '描述' : '正文', text: normalizeTextContent(data?.text) },
+    { title: '结算文本', text: normalizeTextContent(data?.result_text) },
+    { title: '提示', text: normalizeTextContent(data?.tips_text || data?.description) },
+  ].filter((item) => item.text)
+  const tagEntries = data?.tag && typeof data.tag === 'object' ? Object.entries(data.tag) : []
+  const lootItems = detailType === 'loot' && Array.isArray(data?.item)
+    ? data.item.map((item, index) => {
+      const linkedCard = item?.type === 'card' ? cardsById?.[String(item.id)] : null
+      return {
+        key: `${item?.type || 'item'}:${item?.id || index}:${index}`,
+        type: item?.type || '未知',
+        id: item?.id ?? '',
+        name: linkedCard?.name || `${item?.type || '未知'} ${item?.id || ''}`.trim(),
+        num: item?.num,
+        weight: item?.weight,
+      }
+    })
+    : []
+
+  return (
+    <div style={{
+      position: 'fixed',
+      top: 32,
+      right: 32,
+      bottom: 32,
+      width: 'min(430px, calc(100vw - 64px))',
+      zIndex: 110,
+      borderRadius: 28,
+      overflow: 'hidden',
+      border: '1px solid rgba(212, 184, 126, 0.18)',
+      background: 'linear-gradient(180deg, rgba(24, 18, 13, 0.98), rgba(14, 11, 8, 0.98))',
+      boxShadow: '0 28px 64px rgba(0, 0, 0, 0.42)',
+      display: 'grid',
+      gridTemplateRows: 'auto minmax(0, 1fr)',
+    }}>
+      <div style={{
+        padding: '18px 20px',
+        borderBottom: '1px solid rgba(212, 184, 126, 0.12)',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'flex-start',
+        gap: 12,
+      }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ color: '#d4b87e', fontSize: 12, letterSpacing: '0.22em', textTransform: 'uppercase' }}>{subtitle}</div>
+          <div style={{ marginTop: 8, color: '#fff0d3', fontSize: 28, fontWeight: 900, lineHeight: 1.2, wordBreak: 'break-word' }}>
+            {title}
+          </div>
+        </div>
+        <button type="button" onClick={onClose} style={closeButtonStyle}>关闭</button>
+      </div>
+
+      <div style={{ minHeight: 0, overflowY: 'auto', padding: '18px 20px 22px', display: 'grid', gap: 18 }}>
+        {detail.loading && !data ? (
+          <div style={{ color: '#cbb391', fontSize: 14, lineHeight: 1.8 }}>详情载入中…</div>
+        ) : null}
+
+        {data ? (
+          <>
+            {previewKey ? (
+              <div style={{
+                borderRadius: 22,
+                overflow: 'hidden',
+                border: '1px solid rgba(212, 184, 126, 0.12)',
+                background: 'rgba(11, 9, 7, 0.9)',
+                minHeight: 220,
+                position: 'relative',
+              }}>
+                {previewLoading ? (
+                  <div style={{ ...imageFallbackStyle, display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 220 }}>载入图片中…</div>
+                ) : previewUrl ? (
+                  detailType === 'card' ? (
+                    <div style={{
+                      width: 168,
+                      height: getCardFrameHeight(168),
+                      margin: '18px auto',
+                      borderRadius: 24,
+                      overflow: 'hidden',
+                      position: 'relative',
+                      backgroundColor: 'rgba(18, 15, 11, 0.92)',
+                      backgroundImage: rareFrameUrl ? `url("${rareFrameUrl}")` : 'none',
+                      backgroundRepeat: 'no-repeat',
+                      backgroundSize: '100% 100%',
+                      backgroundPosition: 'center',
+                    }}>
+                      <img
+                        src={previewUrl}
+                        alt=""
+                        style={{
+                          position: 'absolute',
+                          inset: '6px 7px 26px',
+                          width: 'calc(100% - 14px)',
+                          height: 'calc(100% - 32px)',
+                          objectFit: CARD_RENDER_CONFIG.imageObjectFit,
+                          objectPosition: CARD_RENDER_CONFIG.imageObjectPosition,
+                          display: 'block',
+                        }}
+                      />
+                    </div>
+                  ) : (
+                    <img src={previewUrl} alt="" style={{ width: '100%', height: '100%', minHeight: 220, objectFit: 'contain', display: 'block' }} />
+                  )
+                ) : (
+                  <div style={{ ...imageFallbackStyle, display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 220 }}>暂无图片</div>
+                )}
+              </div>
+            ) : null}
+
+            {textBlocks.map((block) => (
+              <div key={block.title}>
+                <div style={sectionTitleStyle}>{block.title}</div>
+                <div style={{ ...translucentTextBlockStyle, marginTop: 10 }}>{block.text}</div>
+              </div>
+            ))}
+
+            {lootItems.length > 0 ? (
+              <div>
+                <div style={sectionTitleStyle}>掉落内容</div>
+                <div style={{ marginTop: 10, display: 'grid', gap: 10 }}>
+                  {lootItems.map((item) => {
+                    const canOpen = ['card', 'rite', 'event', 'loot', 'over'].includes(item.type) && item.id !== ''
+                    return (
+                      <button
+                        key={item.key}
+                        type="button"
+                        disabled={!canOpen}
+                        onClick={() => canOpen && onOpenDetail?.(item.type, item.id)}
+                        style={{
+                          padding: '12px 14px',
+                          borderRadius: 16,
+                          border: '1px solid rgba(212, 184, 126, 0.14)',
+                          background: 'rgba(45, 34, 23, 0.72)',
+                          color: '#f3ead8',
+                          textAlign: 'left',
+                          cursor: canOpen ? 'pointer' : 'default',
+                        }}
+                      >
+                        <div style={{ fontSize: 15, fontWeight: 700, lineHeight: 1.5 }}>{item.name}</div>
+                        <div style={{ marginTop: 4, color: '#cbb391', fontSize: 12, lineHeight: 1.6 }}>
+                          {item.type}:{item.id} / 数量 {item.num ?? '-'} / 权重 {item.weight ?? '-'}
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            ) : null}
+
+            {tagEntries.length > 0 ? (
+              <div>
+                <div style={sectionTitleStyle}>标签</div>
+                <div style={{ marginTop: 10, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                  {tagEntries.map(([key, value]) => (
+                    <span key={key} style={effectChipStyle}>
+                      {key}{value !== 1 ? ` ${value}` : ''}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </>
+        ) : null}
       </div>
     </div>
   )
@@ -752,9 +992,11 @@ export default function StoryInspector({ type, data, onClose }) {
   const [hideReaderUi, setHideReaderUi] = useState(false)
   const [executionStepIndex, setExecutionStepIndex] = useState(0)
   const [eventChoicePath, setEventChoicePath] = useState([])
+  const [readerDetail, setReaderDetail] = useState(null)
   const readerBodyRef = useRef(null)
   const autoMountedEventIdRef = useRef(null)
   const executedActionKeyRef = useRef(new Set())
+  const readerDetailRequestRef = useRef(0)
   const { url: templateBgUrl } = useResolvedImage(templateData?.bg || READER_RESOURCE_ASSETS.defaultRiteBackground)
   const { url: settlementBgUrl } = useResolvedImage(READER_RESOURCE_ASSETS.settlementBackground)
   const { url: settlementDiceBgUrl } = useResolvedImage(READER_RESOURCE_ASSETS.settlementDiceBackground)
@@ -799,6 +1041,7 @@ export default function StoryInspector({ type, data, onClose }) {
     setHideReaderUi(false)
     setExecutionStepIndex(0)
     setEventChoicePath([])
+    setReaderDetail(null)
     autoMountedEventIdRef.current = null
   }, [type, data?.id, data?._source_path])
 
@@ -1294,6 +1537,44 @@ export default function StoryInspector({ type, data, onClose }) {
     )
   }
 
+  async function openReaderDetail(typeKey, id, fallbackData = null) {
+    if (!typeKey || id == null) return
+    const requestId = readerDetailRequestRef.current + 1
+    readerDetailRequestRef.current = requestId
+    setReaderDetail({ type: typeKey, id: String(id), data: fallbackData, loading: true })
+
+    try {
+      const loaded = await window.electronAPI.configReadCache(typeKey, String(id))
+      if (readerDetailRequestRef.current !== requestId) return
+      setReaderDetail({
+        type: typeKey,
+        id: String(id),
+        data: loaded || fallbackData || null,
+        loading: false,
+      })
+    } catch {
+      if (readerDetailRequestRef.current !== requestId) return
+      setReaderDetail({
+        type: typeKey,
+        id: String(id),
+        data: fallbackData || null,
+        loading: false,
+      })
+    }
+  }
+
+  function handleInspectExecutionCard(card) {
+    if (!card?.id) return
+    const fallbackCard = cardsById?.[String(card.id)] || card
+    void openReaderDetail('card', card.id, fallbackCard)
+  }
+
+  function handleInspectExecutionAction(action) {
+    if (!action?.targetType || !action?.targetId) return
+    const fallbackTarget = executionTargetNameMap[`${action.targetType}:${action.targetId}`] || null
+    void openReaderDetail(action.targetType, action.targetId, fallbackTarget)
+  }
+
   function branchActions(segment, branch) {
     return (segment.choiceActions || []).filter((action) => action.branch === branch)
   }
@@ -1765,13 +2046,6 @@ export default function StoryInspector({ type, data, onClose }) {
             }}>
               {model.slots.length > 0 && (
                 <div style={ritePreparationPanelStyle}>
-                  <div>
-                    <div style={sectionTitleStyle}>卡牌槽位</div>
-                    <div style={{ ...smallLineStyle, marginTop: 8 }}>
-                      固定槽位会直接显示指定卡牌，条件槽位可在下方分页浏览满足条件的卡牌。
-                    </div>
-                  </div>
-
                   <div style={riteSlotScrollerStyle}>
                     {model.slots.map((slot) => {
                       const currentCandidate = slot.candidates?.find((candidate) => candidate.id === slotSelections[slot.id]) || slot.candidates?.[0] || null
@@ -1808,91 +2082,95 @@ export default function StoryInspector({ type, data, onClose }) {
 
               <div style={candidateStageStyle}>
                 <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
-                    <div>
-                      <div style={sectionTitleStyle}>卡牌候选</div>
-                      <div style={{ ...smallLineStyle, marginTop: 8 }}>
-                        当前槽位：{selectedSlot?.title || '未选择槽位'}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
+                    <div style={{ ...smallLineStyle, paddingTop: 8 }}>
+                      当前槽位：{selectedSlot?.title || '未选择槽位'}
+                    </div>
+                    <div style={{ ...candidateToolbarStyle, width: '100%', alignItems: 'stretch' }}>
+                      <div style={{ ...candidateToolbarGroupStyle, justifyContent: 'space-between', alignItems: 'center', width: '100%', flexWrap: 'wrap' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', minWidth: 0, position: 'relative' }}>
+                          <button
+                            type="button"
+                            style={secondaryButtonStyle}
+                            onClick={() => handleStepCondition(-1)}
+                            disabled={visibleConditionGroups.length <= 1}
+                          >
+                            上一个条件
+                          </button>
+                          <div
+                            style={{ position: 'relative', minWidth: 0, maxWidth: 'min(460px, 48vw)' }}
+                            onMouseEnter={() => setConditionPreviewExpanded(true)}
+                            onMouseLeave={() => setConditionPreviewExpanded(false)}
+                          >
+                            <button
+                              type="button"
+                              style={{ ...activeToggleButtonStyle, width: '100%', minWidth: 220, maxWidth: '100%' }}
+                              onClick={() => setConditionSelectorOpen(true)}
+                              title={activeConditionGroup?.label || '默认条件'}
+                            >
+                              <span style={conditionSummaryTextStyle}>
+                                {truncateDisplayText(activeConditionGroup?.label || '默认条件', CONDITION_BUTTON_MAX_LENGTH)}
+                              </span>
+                            </button>
+                            {conditionPreviewExpanded && activeConditionGroup?.label ? (
+                              <div style={{
+                                position: 'absolute',
+                                top: 'calc(100% + 8px)',
+                                left: 0,
+                                width: 'min(460px, 48vw)',
+                                padding: '12px 14px',
+                                borderRadius: 16,
+                                background: 'rgba(11, 9, 7, 0.94)',
+                                border: '1px solid rgba(212, 184, 126, 0.16)',
+                                boxShadow: '0 14px 28px rgba(0, 0, 0, 0.28)',
+                                color: '#f3ead8',
+                                fontSize: 13,
+                                lineHeight: 1.75,
+                                whiteSpace: 'pre-wrap',
+                                zIndex: 5,
+                              }}>
+                                {activeConditionGroup.label}
+                              </div>
+                            ) : null}
+                          </div>
+                          <button
+                            type="button"
+                            style={secondaryButtonStyle}
+                            onClick={() => handleStepCondition(1)}
+                            disabled={visibleConditionGroups.length <= 1}
+                          >
+                            下一个条件
+                          </button>
+                        </div>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                          <input
+                            type="text"
+                            value={candidateCardFilterText}
+                            onChange={(event) => setCandidateCardFilterText(event.target.value)}
+                            placeholder="搜索卡牌"
+                            style={candidateSearchInputStyle}
+                          />
+                          <button
+                            type="button"
+                            style={secondaryButtonStyle}
+                            onClick={() => setCandidatePage((page) => Math.max(1, page - 1))}
+                            disabled={candidatePage === 1}
+                          >
+                            上一页
+                          </button>
+                          <span style={{ ...smallLineStyle, whiteSpace: 'nowrap', flexShrink: 0 }}>{candidatePage} / {selectedSlotPageCount}</span>
+                          <button
+                            type="button"
+                            style={secondaryButtonStyle}
+                            onClick={() => setCandidatePage((page) => Math.min(selectedSlotPageCount, page + 1))}
+                            disabled={candidatePage === selectedSlotPageCount}
+                          >
+                            下一页
+                          </button>
+                        </div>
                       </div>
                     </div>
-                    <div style={candidateToolbarStyle}>
-                      <div style={candidateToolbarGroupStyle}>
-                        <button
-                          type="button"
-                          style={secondaryButtonStyle}
-                          onClick={() => handleStepCondition(-1)}
-                          disabled={visibleConditionGroups.length <= 1}
-                        >
-                          上一个条件
-                        </button>
-                        <button
-                          type="button"
-                          style={activeToggleButtonStyle}
-                          onClick={() => setConditionSelectorOpen(true)}
-                          title={activeConditionGroup?.label || '默认条件'}
-                        >
-                          <span style={conditionSummaryTextStyle}>
-                            {truncateDisplayText(activeConditionGroup?.label || '默认条件', CONDITION_BUTTON_MAX_LENGTH)}
-                          </span>
-                        </button>
-                        <button
-                          type="button"
-                          style={secondaryButtonStyle}
-                          onClick={() => handleStepCondition(1)}
-                          disabled={visibleConditionGroups.length <= 1}
-                        >
-                          下一个条件
-                        </button>
-                      </div>
-                      <div style={{ ...candidateToolbarGroupStyle, flexWrap: 'nowrap', whiteSpace: 'nowrap' }}>
-                        <input
-                          type="text"
-                          value={candidateCardFilterText}
-                          onChange={(event) => setCandidateCardFilterText(event.target.value)}
-                          placeholder="搜索卡牌"
-                          style={candidateSearchInputStyle}
-                        />
-                        <button
-                          type="button"
-                          style={secondaryButtonStyle}
-                          onClick={() => setCandidatePage((page) => Math.max(1, page - 1))}
-                          disabled={candidatePage === 1}
-                        >
-                          上一页
-                        </button>
-                        <span style={{ ...smallLineStyle, whiteSpace: 'nowrap', flexShrink: 0 }}>{candidatePage} / {selectedSlotPageCount}</span>
-                        <button
-                          type="button"
-                          style={secondaryButtonStyle}
-                          onClick={() => setCandidatePage((page) => Math.min(selectedSlotPageCount, page + 1))}
-                          disabled={candidatePage === selectedSlotPageCount}
-                        >
-                          下一页
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                  {activeConditionGroup?.label && (
-                    <div style={{ marginTop: 12, position: 'relative', zIndex: 1 }}>
-                      <div
-                        style={{
-                          ...translucentTextBlockStyle,
-                          marginTop: 0,
-                          overflow: conditionPreviewExpanded ? 'auto' : 'hidden',
-                          whiteSpace: conditionPreviewExpanded ? 'normal' : 'nowrap',
-                          textOverflow: conditionPreviewExpanded ? 'clip' : 'ellipsis',
-                          maxHeight: conditionPreviewExpanded ? 144 : undefined,
-                        }}
-                        title={activeConditionGroup.label}
-                        onMouseEnter={() => setConditionPreviewExpanded(true)}
-                        onMouseLeave={() => setConditionPreviewExpanded(false)}
-                      >
-                        {conditionPreviewExpanded
-                          ? activeConditionGroup.label
-                          : truncateDisplayText(activeConditionGroup.label, CONDITION_PREVIEW_MAX_LENGTH)}
-                      </div>
-                    </div>
-                  )}
                 </div>
 
                 <div style={{
@@ -1927,6 +2205,7 @@ export default function StoryInspector({ type, data, onClose }) {
                       </div>
                     </div>
                   )}
+                </div>
                 </div>
               </div>
             </div>
@@ -2237,6 +2516,8 @@ export default function StoryInspector({ type, data, onClose }) {
           onSelectCondition={handleSelectExecutionCondition}
           onOpenCard={handleOpenCard}
           onOpenAction={handleOpenAction}
+          onInspectCard={handleInspectExecutionCard}
+          onInspectAction={handleInspectExecutionAction}
           onClose={() => {
             setExecutionOpen(false)
             setExecutionMode('normal')
@@ -2305,6 +2586,14 @@ export default function StoryInspector({ type, data, onClose }) {
       )}
       {rawContent !== null && (
         <RawFileView content={rawContent} onClose={() => setRawContent(null)} />
+      )}
+      {readerDetail && (
+        <ReaderDetailPanel
+          detail={readerDetail}
+          cardsById={cardsById}
+          onOpenDetail={(nextType, nextId) => void openReaderDetail(nextType, nextId)}
+          onClose={() => setReaderDetail(null)}
+        />
       )}
     </div>
   )

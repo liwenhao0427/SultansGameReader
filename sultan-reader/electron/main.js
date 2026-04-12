@@ -810,10 +810,10 @@ ipcMain.handle('asset:extract', async (event, { gamePath, outputDir }) => {
 /**
  * asset:resolveImage
  * 4 步回退链：
- *   1. Sprite/{name}.png
- *   2. Sprite/{name}.png.png
- *   3. Texture2D/{name}.png
- *   4. Texture2D/{name}.png.png
+ *   1. Texture2D/{name}.png
+ *   2. Texture2D/{name}.png.png
+ *   3. Sprite/{name}.png
+ *   4. Sprite/{name}.png.png
  * 返回 sultan-asset:// 协议 URL 或 null
  */
 ipcMain.handle('asset:resolveImage', async (_event, pic) => {
@@ -826,10 +826,10 @@ ipcMain.handle('asset:resolveImage', async (_event, pic) => {
 
   // 4 步回退链
   const candidates = [
-    { rel: `Sprite/${name}.png`,         url: `sultan-asset://Sprite/${name}.png` },
-    { rel: `Sprite/${name}.png.png`,     url: `sultan-asset://Sprite/${name}.png.png` },
     { rel: `Texture2D/${name}.png`,      url: `sultan-asset://Texture2D/${name}.png` },
     { rel: `Texture2D/${name}.png.png`,  url: `sultan-asset://Texture2D/${name}.png.png` },
+    { rel: `Sprite/${name}.png`,         url: `sultan-asset://Sprite/${name}.png` },
+    { rel: `Sprite/${name}.png.png`,     url: `sultan-asset://Sprite/${name}.png.png` },
   ];
 
   const resourceRoots = [];
