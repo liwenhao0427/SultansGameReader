@@ -116,6 +116,7 @@ function withAlpha(hex, alpha) {
 const nodeShellStyle = {
   position: 'relative',
   display: 'inline-block',
+  paddingRight: 56,
 }
 
 const nodeCardStyle = {

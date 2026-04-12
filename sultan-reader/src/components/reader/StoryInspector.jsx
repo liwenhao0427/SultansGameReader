@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import useConfigStore from '../../stores/useConfigStore'
+import useReadingStateStore from '../../stores/useReadingStateStore'
 import { useResolvedImage } from '../../services/imageResolver'
 import { adaptStoryData } from '../../services/storyAdapter'
 import { READER_CHROME } from '../../readerChromeConfig'
@@ -985,6 +986,7 @@ export default function StoryInspector({ type, data, onClose }) {
   const RITE_CANDIDATE_PAGE_SIZE = 7
   const cardsLite = useConfigStore((s) => s.cardsLite)
   const cardsById = useConfigStore((s) => s.cardsById)
+  const toggleRead = useReadingStateStore((state) => state.toggleRead)
   const model = adaptStoryData(type, data, cardsLite, cardsById)
   const [templateData, setTemplateData] = useState(null)
   const [rawContent, setRawContent] = useState(null)
@@ -1019,6 +1021,13 @@ export default function StoryInspector({ type, data, onClose }) {
   const { url: settlementBgUrl } = useResolvedImage(READER_RESOURCE_ASSETS.settlementBackground)
   const { url: settlementDiceBgUrl } = useResolvedImage(READER_RESOURCE_ASSETS.settlementDiceBackground)
   const [executionTargetNameMap, setExecutionTargetNameMap] = useState({})
+
+  function handleMarkReadAndClose() {
+    if (type && data?.id != null) {
+      toggleRead(type, String(data.id))
+    }
+    onClose?.()
+  }
 
   function buildDialogueLines(slotId, selections, settlementState, globalSelection = globalSettlementSelection) {
     const slot = model?.slots?.find((entry) => entry.id === slotId) || null
@@ -1897,6 +1906,7 @@ export default function StoryInspector({ type, data, onClose }) {
           {data?._source_path && (
             <button type="button" onClick={handleViewRaw} style={secondaryButtonStyle}>查看原始文件</button>
           )}
+          <button type="button" onClick={handleMarkReadAndClose} style={secondaryButtonStyle}>已读并关闭</button>
           <button type="button" onClick={onClose} style={closeButtonStyle}>关闭</button>
         </div>
       </div>
