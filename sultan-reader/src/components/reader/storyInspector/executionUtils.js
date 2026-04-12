@@ -379,6 +379,77 @@ function hasMeaningfulResult(result) {
   return Object.keys(result).some((key) => !isDisplayMetaKey(key))
 }
 
+function hasMeaningfulCondition(condition) {
+  if (!condition || typeof condition !== 'object') return false
+  return Object.keys(condition).some((key) => !isDisplayMetaKey(key))
+}
+
+function buildMergedResultGroupMap(phases = []) {
+  const groupMap = new Map()
+  let index = 0
+
+  while (index < phases.length) {
+    const phase = phases[index]
+    const canMerge = hasMeaningfulResult(phase?.raw?.result) && hasMeaningfulCondition(phase?.raw?.condition || {})
+
+    if (!canMerge) {
+      index += 1
+      continue
+    }
+
+    let endIndex = index + 1
+    while (endIndex < phases.length) {
+      const nextPhase = phases[endIndex]
+      const nextCanMerge = hasMeaningfulResult(nextPhase?.raw?.result) && hasMeaningfulCondition(nextPhase?.raw?.condition || {})
+      if (!nextCanMerge) break
+      endIndex += 1
+    }
+
+    if (endIndex - index > 1) {
+      const mergedGroupId = `resultblock:${index}`
+      for (let cursor = index; cursor < endIndex; cursor += 1) {
+        groupMap.set(cursor, mergedGroupId)
+      }
+    }
+
+    index = endIndex
+  }
+
+  return groupMap
+}
+
+function resolvePhaseGroupId(phase, index, mergedGroupMap = new Map()) {
+  return mergedGroupMap.get(index) || buildConditionGroupKey(phase?.raw?.condition || {})
+}
+
+function analyzeMergedResultCondition(condition, groupId, branchSelections = {}) {
+  const selectedOptionId = branchSelections[groupId]
+  if (!selectedOptionId) {
+    return {
+      status: 'pending',
+      groupId,
+      key: '__compound__',
+      value: condition,
+    }
+  }
+
+  if (isSkipOptionId(groupId, selectedOptionId)) {
+    return {
+      status: 'unmatched',
+      groupId,
+      key: '__compound__',
+      value: condition,
+    }
+  }
+
+  return {
+    status: selectedOptionId === buildCompositeConditionOptionId(groupId, condition) ? 'matched' : 'unmatched',
+    groupId,
+    key: '__compound__',
+    value: condition,
+  }
+}
+
 function buildExecutionStepFromPhase(phase) {
   return {
     id: `${phase.phaseKey}:${phase.index}`,
@@ -545,8 +616,9 @@ export function buildConditionGroupKey(condition = {}) {
   return tokens.join('')
 }
 
-function collectGroupOptions(model, phases, startIndex, groupId, cardsMap, slotCards, counterRegistry = null) {
-  const isCompositeGroup = hasMultipleStructureTokens(phases[startIndex]?.raw?.condition || {})
+function collectGroupOptions(model, phases, startIndex, groupId, cardsMap, slotCards, counterRegistry = null, mergedGroupMap = new Map()) {
+  const isForcedMergedGroup = mergedGroupMap.get(startIndex) === groupId
+  const isCompositeGroup = isForcedMergedGroup || hasMultipleStructureTokens(phases[startIndex]?.raw?.condition || {})
   const options = [{
     id: buildSkipOptionId(groupId),
     rawKey: null,
@@ -558,11 +630,13 @@ function collectGroupOptions(model, phases, startIndex, groupId, cardsMap, slotC
   for (let index = startIndex; index < phases.length; index += 1) {
     const phase = phases[index]
     const phaseCondition = phase.raw?.condition || {}
-    const phaseGroupId = buildConditionGroupKey(phaseCondition)
+    const phaseGroupId = resolvePhaseGroupId(phase, index, mergedGroupMap)
     if (!phaseGroupId) break
     if (phaseGroupId !== groupId) break
 
-    const atomic = findFirstAtomicForGroup(phaseCondition, groupId) || extractFirstAtomic(phaseCondition)
+    const atomic = isForcedMergedGroup
+      ? extractFirstAtomic(phaseCondition)
+      : (findFirstAtomicForGroup(phaseCondition, groupId) || extractFirstAtomic(phaseCondition))
     const optionId = isCompositeGroup
       ? buildCompositeConditionOptionId(groupId, phaseCondition)
       : buildConditionOptionId(groupId, atomic.key, atomic.value)
@@ -597,7 +671,7 @@ function collectGroupOptions(model, phases, startIndex, groupId, cardsMap, slotC
       : buildGroupDescription(model, groupId, slotCards, counterRegistry),
     options,
     isDice: /^r\d+$/i.test(groupId),
-    isSlot: /^s\d+$/i.test(groupId),
+    isSlot: !isForcedMergedGroup && /^s\d+$/i.test(groupId),
     stageId: /^r\d+$/i.test(groupId) ? groupId : null,
     phaseText: /^r\d+$/i.test(groupId) ? (model?.randomText?.[groupId] || '') : '',
     promptText: stageMeta.text || '',
@@ -646,6 +720,7 @@ export function buildExecutionFlow(model, context = {}) {
   const resolvedSelections = { ...(context.branchSelections || {}) }
   const renderedChoiceGroups = new Set()
   const phases = model?.rawPhases || []
+  const mergedGroupMap = buildMergedResultGroupMap(phases)
 
   if (model?.title || model?.intro || normalizeArray(model?.tipsText).length > 0) {
     steps.push(buildExecutionIntroStep(model))
@@ -656,10 +731,10 @@ export function buildExecutionFlow(model, context = {}) {
 
   while (index < phases.length) {
     const phase = phases[index]
-    const blockGroupId = buildConditionGroupKey(phase.raw?.condition || {})
+    const blockGroupId = resolvePhaseGroupId(phase, index, mergedGroupMap)
 
     if (blockGroupId && !renderedChoiceGroups.has(blockGroupId)) {
-      const group = collectGroupOptions(model, phases, index, blockGroupId, context.cardsMap, context.slotCards || {}, context.counterRegistry)
+      const group = collectGroupOptions(model, phases, index, blockGroupId, context.cardsMap, context.slotCards || {}, context.counterRegistry, mergedGroupMap)
       if (group.options.length > 0) {
         conditionGroups.push(group)
         steps.push(buildChoiceStepPlain(group))
@@ -667,10 +742,12 @@ export function buildExecutionFlow(model, context = {}) {
       }
     }
 
-    const analysis = analyzeConditionNode(phase.raw?.condition || {}, {
-      branchSelections: resolvedSelections,
-      slotCards: context.slotCards || {},
-    })
+    const analysis = mergedGroupMap.has(index)
+      ? analyzeMergedResultCondition(phase.raw?.condition || {}, blockGroupId, resolvedSelections)
+      : analyzeConditionNode(phase.raw?.condition || {}, {
+        branchSelections: resolvedSelections,
+        slotCards: context.slotCards || {},
+      })
 
     if (analysis.status === 'unmatched') {
       index += 1
@@ -680,7 +757,7 @@ export function buildExecutionFlow(model, context = {}) {
     if (analysis.status === 'pending' && analysis.groupId) {
       const groupId = analysis.groupId
       const group = conditionGroups.find((entry) => entry.id === groupId)
-        || collectGroupOptions(model, phases, index, groupId, context.cardsMap, context.slotCards || {}, context.counterRegistry)
+        || collectGroupOptions(model, phases, index, groupId, context.cardsMap, context.slotCards || {}, context.counterRegistry, mergedGroupMap)
 
       if (!conditionGroups.some((entry) => entry.id === group.id) && group.options.length > 0) {
         conditionGroups.push(group)

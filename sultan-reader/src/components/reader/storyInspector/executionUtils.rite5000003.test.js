@@ -10,7 +10,7 @@ function loadRite5000003() {
 }
 
 describe('executionUtils - 仪式 5000003', () => {
-  it('分组时忽略 __c 注释键，但保留注释文本作为条件展示', () => {
+  it('忽略 __c 注释键，并把连续结算结果合并到同一条件组中', () => {
     const rite = loadRite5000003()
     const targetSettlement = rite.settlement[0]
     const model = adaptStoryData('rite', rite, new Map(), {})
@@ -21,15 +21,15 @@ describe('executionUtils - 仪式 5000003', () => {
 
     expect(buildConditionGroupKey(targetSettlement.condition)).toBe('s3')
 
-    const s3Group = flow.conditionGroups.find((group) => group.id === 's3')
-    expect(s3Group).toBeTruthy()
+    const mergedResultGroup = flow.conditionGroups.find((group) => group.id.startsWith('resultblock:'))
+    expect(mergedResultGroup).toBeTruthy()
     expect(
-      s3Group.options.some((option) => (option.fullLabel || option.label || '').includes('荆棘戒指'))
+      mergedResultGroup.options.some((option) => (option.fullLabel || option.label || '').includes('荆棘戒指'))
     ).toBe(true)
     expect(
-      s3Group.options.some((option) => (option.fullLabel || option.label || '').includes('s3戴上了荆棘戒指'))
+      mergedResultGroup.options.some((option) => (option.fullLabel || option.label || '').includes('s3戴上了荆棘戒指'))
     ).toBe(true)
     expect(Object.keys(flow.autoSelections || {}).length).toBeGreaterThan(0)
-    expect(flow.steps.some((step) => step.kind === 'choice' && step.groupId === 's3')).toBe(true)
+    expect(flow.steps.some((step) => step.kind === 'choice' && step.groupId === mergedResultGroup.id)).toBe(true)
   })
 })
