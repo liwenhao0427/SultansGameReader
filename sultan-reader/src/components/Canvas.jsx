@@ -514,6 +514,25 @@ function CanvasInner() {
     [nodes]
   )
 
+  const selectedNodeFocusState = useMemo(() => {
+    if (!selectedNodeId) return null
+
+    const activeNode = nodes.find((node) => node.id === selectedNodeId)
+    if (!activeNode) return null
+
+    const fallbackSize = AUTO_LAYOUT_NODE_SIZE[activeNode.type] || AUTO_LAYOUT_NODE_SIZE.default
+    const width = activeNode.measured?.width || fallbackSize.width
+    const height = activeNode.measured?.height || fallbackSize.height
+
+    return {
+      id: activeNode.id,
+      type: activeNode.type,
+      openMode: selectedOpenMode,
+      position: activeNode.position,
+      size: { width, height },
+    }
+  }, [nodes, selectedNodeId, selectedOpenMode])
+
   const getEdgeOpacity = useCallback(
     (edge) => {
       if (!hasPlayerData || !edge.data?.conditionObj) return 1
@@ -757,32 +776,39 @@ function CanvasInner() {
   }, [edges, nodes, runAutoLayout])
 
   useEffect(() => {
-    if (!selectedNodeId) return
-    const activeNode = useCanvasStore.getState().nodes.find((node) => node.id === selectedNodeId)
-    if (!activeNode) return
+    if (!selectedNodeFocusState) return undefined
 
-    const width = activeNode.measured?.width || AUTO_LAYOUT_NODE_SIZE[activeNode.type]?.width || AUTO_LAYOUT_NODE_SIZE.default.width
-    const height = activeNode.measured?.height || AUTO_LAYOUT_NODE_SIZE[activeNode.type]?.height || AUTO_LAYOUT_NODE_SIZE.default.height
+    let cancelled = false
+    let frameId = 0
 
-    const canvasRect = canvasShellRef.current?.getBoundingClientRect?.()
-    if (!canvasRect) return
+    frameId = window.requestAnimationFrame(() => {
+      if (cancelled) return
 
-    const overlayRect = selectedOpenMode === 'panel'
-      ? document.querySelector('[data-detail-panel="true"]')?.getBoundingClientRect?.() ?? null
-      : null
+      const canvasRect = canvasShellRef.current?.getBoundingClientRect?.()
+      if (!canvasRect) return
 
-    const viewport = buildFocusViewport({
-      canvasRect,
-      overlayRect,
-      nodePosition: activeNode.position,
-      nodeSize: { width, height },
-      zoom: getZoom(),
+      const overlayRect = selectedNodeFocusState.openMode === 'panel'
+        ? document.querySelector('[data-detail-panel="true"]')?.getBoundingClientRect?.() ?? null
+        : null
+
+      const viewport = buildFocusViewport({
+        canvasRect,
+        overlayRect,
+        nodePosition: selectedNodeFocusState.position,
+        nodeSize: selectedNodeFocusState.size,
+        zoom: getZoom(),
+      })
+
+      if (!viewport) return
+
+      setViewport(viewport, { duration: 420 })
     })
 
-    if (!viewport) return
-
-    setViewport(viewport, { duration: 420 })
-  }, [getZoom, selectedNodeId, selectedOpenMode, setViewport])
+    return () => {
+      cancelled = true
+      if (frameId) window.cancelAnimationFrame(frameId)
+    }
+  }, [getZoom, selectedNodeFocusState, setViewport])
 
   return (
     <div ref={canvasShellRef} style={{ width: '100%', height: '100%', position: 'relative' }}>
