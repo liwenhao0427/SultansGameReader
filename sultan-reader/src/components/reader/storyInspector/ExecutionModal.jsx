@@ -385,6 +385,7 @@ export default function ExecutionModal({
   onOpenCard,
   onOpenAction,
   onClose,
+  onMarkRead,
 }) {
   const [detailGroupId, setDetailGroupId] = useState(null)
   const [detailFilterText, setDetailFilterText] = useState('')
@@ -419,20 +420,22 @@ export default function ExecutionModal({
   return (
     <div style={styles.overlay}>
       <div style={styles.modal}>
-        <div style={styles.toolbar}>
-          <div>
-            <div style={{ ...styles.headerLabel, color: '#b88b58' }}>仪式结算</div>
-            <div style={{ marginTop: 8, color: '#6a4623', fontSize: 14, lineHeight: 1.7 }}>
-              按当前准备状态预览仪式结算。
-            </div>
-          </div>
-          <button type="button" style={styles.closeButton} onClick={onClose}>关闭结算</button>
-        </div>
-
         <div style={styles.bodyShell}>
           <div style={styles.backgroundLayer}>
             {settlementBgUrl ? <img src={settlementBgUrl} alt="" style={styles.backgroundImage} /> : null}
             {settlementDiceBgUrl ? <img src={settlementDiceBgUrl} alt="" style={styles.diceImage} /> : null}
+          </div>
+
+          <div style={styles.topActions}>
+            <button type="button" style={styles.readButton} onClick={onMarkRead || onClose}>已读</button>
+            <button type="button" style={styles.closeIconButton} onClick={onClose} aria-label="关闭结算">x</button>
+          </div>
+
+          <div style={styles.floatingIntro}>
+            <div style={{ ...styles.headerLabel, color: '#d8b477' }}>仪式结算</div>
+            <div style={styles.introText}>
+              按当前准备状态预览仪式结算。
+            </div>
           </div>
 
           <div style={styles.bodyGrid}>
@@ -460,7 +463,7 @@ export default function ExecutionModal({
               </div>
 
               <div style={styles.summaryPanel}>
-                <div style={styles.headerLabel}>结算获取</div>
+                <div style={styles.summaryTitle}>结算获取</div>
                 {executionSummaryEffects.length > 0 ? (
                   <div style={{ marginTop: 12 }}>
                     <ExecutionEffectList effects={executionSummaryEffects} onOpenCard={onOpenCard} />
@@ -521,12 +524,12 @@ export default function ExecutionModal({
                       </div>
                     ) : null}
                     {step.text ? (
-                      <div style={styles.contentBlock}>
+                      <div style={styles.textBlock}>
                         <div style={styles.text}>{step.text}</div>
                       </div>
                     ) : null}
                     {(step.tips || []).map((tip, index) => (
-                      <div key={`${step.id}:tip:${index}`} style={styles.contentBlock}>
+                      <div key={`${step.id}:tip:${index}`} style={styles.tipBlock}>
                         <div style={styles.tipText}>{tip}</div>
                       </div>
                     ))}
@@ -539,12 +542,12 @@ export default function ExecutionModal({
                       />
                     ) : null}
                     {step.effects?.length > 0 ? (
-                      <div style={styles.contentBlock}>
+                      <div style={styles.inlineSection}>
                         <ExecutionEffectList effects={step.effects} onOpenCard={onOpenCard} />
                       </div>
                     ) : null}
                     {step.actions?.length > 0 ? (
-                      <div style={styles.contentBlock}>
+                      <div style={styles.inlineSection}>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                           {step.actions.map((action, index) => (
                             <button

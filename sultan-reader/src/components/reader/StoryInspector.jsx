@@ -2242,6 +2242,12 @@ export default function StoryInspector({ type, data, onClose }) {
             setExecutionMode('normal')
             setExecutionConditionSelections({})
           }}
+          onMarkRead={() => {
+            setExecutionStepIndex(Math.max(0, executionSteps.length - 1))
+            setExecutionOpen(false)
+            setExecutionMode('normal')
+            setExecutionConditionSelections({})
+          }}
         />
       )}
       {conditionSelectorOpen && type === 'rite' && (
