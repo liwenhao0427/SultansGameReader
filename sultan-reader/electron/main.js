@@ -65,6 +65,16 @@ let searchIndex = [];
 /** 主窗口引用 */
 let mainWindow = null;
 
+function resolveAppIconPath() {
+  const candidates = [
+    path.join(__dirname, 'app-icon.png'),
+    path.join(process.resourcesPath || '', 'app-icon.png'),
+    path.join(process.cwd(), 'electron', 'app-icon.png'),
+  ].filter(Boolean);
+
+  return candidates.find((candidate) => fs.existsSync(candidate)) || undefined;
+}
+
 const PERSISTENT_STORAGE_FILES = {
   contentNameMap: 'content-name-map.json',
   readingState: 'reading-state.json',
@@ -440,6 +450,7 @@ async function createWindow() {
     minWidth:  900,
     minHeight: 600,
     title: `${appMeta.title} ${appMeta.version}`,
+    icon: resolveAppIconPath(),
     webPreferences: {
       preload:         path.join(__dirname, 'preload.js'),
       contextIsolation: true,

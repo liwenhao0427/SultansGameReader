@@ -35,7 +35,7 @@
   "build": {
     "appId": "com.liwenhao.sultanreader",
     "productName": "SultanReader",
-    "icon": "build/app-icon.png",
+    "icon": "electron/app-icon.png",
     "directories": {
       "output": "release"
     },
@@ -50,7 +50,7 @@
       "main": "electron/main.js"
     },
     "win": {
-      "icon": "build/app-icon.ico",
+      "icon": "electron/app-icon.ico",
       "signAndEditExecutable": false,
       "target": [
         {

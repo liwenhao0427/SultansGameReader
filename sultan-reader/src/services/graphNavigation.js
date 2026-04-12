@@ -3,7 +3,6 @@ import { extractEdges } from './edgeExtractor'
 
 const EDGE_COLORS = { success: '#d3d8a2', failed: '#d9a09a', default: '#d9c7a0' }
 const CANVAS_NODE_TYPES = new Set(['rite', 'event', 'loot', 'over'])
-const AUTO_EXPAND_SOURCE_TYPES = new Set(['event', 'loot'])
 const AUTO_EXPAND_TARGET_TYPES = new Set(['event', 'loot', 'rite', 'over'])
 const AUTO_EXPAND_LIMIT = 3
 
@@ -14,7 +13,7 @@ function summarize(item, data) {
 export async function mountNodeOnCanvas(item, position, options = {}) {
   const {
     autoSelect = true,
-    expandRelations = AUTO_EXPAND_SOURCE_TYPES.has(item.type),
+    expandRelations = false,
     autoExpandLimit = AUTO_EXPAND_LIMIT,
   } = options
 
