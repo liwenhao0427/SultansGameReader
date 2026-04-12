@@ -2,7 +2,7 @@
 
 一个面向《苏丹的游戏》的本地剧情阅读器项目。它不追求完整复刻游戏系统，而是优先服务“快速阅读剧情、查看幕后关系、浏览仪式分支、联动图片资源”这件事。
 
-当前仓库的核心可开发目录是 [sultan-reader](/C:/Users/temp/项目/SultansGameReader/sultan-reader)，项目以 Electron + React + Vite 构建，前端只依赖 `cache/` 和 `resource/`，不直接解析原始 `config/`。
+当前仓库的核心可开发目录是 `sultan-reader/`，项目以 Electron + React + Vite 构建，前端只依赖 `cache/` 和 `resource/`，不直接解析原始 `config/`。
 
 ## 项目目标
 
@@ -100,7 +100,7 @@ SultansGameReader/
 
 ### 1. Electron 主进程
 
-入口文件：[sultan-reader/electron/main.js](/C:/Users/temp/项目/SultansGameReader/sultan-reader/electron/main.js)
+入口文件：`sultan-reader/electron/main.js`
 
 负责：
 
@@ -114,7 +114,7 @@ SultansGameReader/
 
 ### 2. 配置解析器
 
-目录：[sultan-reader/electron/parser](/C:/Users/temp/项目/SultansGameReader/sultan-reader/electron/parser)
+目录：`sultan-reader/electron/parser/`
 
 负责把游戏配置解析为缓存文件，供前端直接读取。项目文档中明确提到它支持：
 
@@ -126,10 +126,10 @@ SultansGameReader/
 
 关键文件：
 
-- [sultan-reader/src/App.jsx](/C:/Users/temp/项目/SultansGameReader/sultan-reader/src/App.jsx)
-- [sultan-reader/src/components/MainLayout.jsx](/C:/Users/temp/项目/SultansGameReader/sultan-reader/src/components/MainLayout.jsx)
-- [sultan-reader/src/components/DetailPanel.jsx](/C:/Users/temp/项目/SultansGameReader/sultan-reader/src/components/DetailPanel.jsx)
-- [sultan-reader/src/components/reader/StoryInspector.jsx](/C:/Users/temp/项目/SultansGameReader/sultan-reader/src/components/reader/StoryInspector.jsx)
+- `sultan-reader/src/App.jsx`
+- `sultan-reader/src/components/MainLayout.jsx`
+- `sultan-reader/src/components/DetailPanel.jsx`
+- `sultan-reader/src/components/reader/StoryInspector.jsx`
 
 职责分工：
 
@@ -140,7 +140,7 @@ SultansGameReader/
 
 ### 4. 状态管理
 
-目录：[sultan-reader/src/stores](/C:/Users/temp/项目/SultansGameReader/sultan-reader/src/stores)
+目录：`sultan-reader/src/stores/`
 
 目前主要包含：
 
@@ -251,14 +251,20 @@ npm run pack:win
 - 不在渲染层直接解析 `config/`
 - 图片查找必须兼容 `.png` 和 `.png.png`
 - 资源常量统一放在配置文件中维护，不在组件内散落硬编码
-- 涉及字段语义调整时，应先查看 [相关知识](/C:/Users/temp/项目/SultansGameReader/相关知识)
+- 涉及字段语义调整时，应先查看 `相关知识/`
 
 ## 参考文档
 
-- 项目需求稿：[sultan-reader-spec.md](/C:/Users/temp/项目/SultansGameReader/sultan-reader-spec.md)
-- 协作约束：[Agents.md](/C:/Users/temp/项目/SultansGameReader/Agents.md)
-- 字段语义参考目录：[相关知识](/C:/Users/temp/项目/SultansGameReader/相关知识)
+- 项目需求稿：`sultan-reader-spec.md`
+- 协作约束：`Agents.md`
+- 字段语义参考目录：`相关知识/`
 
 ## 仓库地址
 
 [GitHub - liwenhao0427/SultansGameReader](https://github.com/liwenhao0427/SultansGameReader)
+
+## 支持作者
+
+如果这个工具对你有帮助，欢迎支持作者继续完善阅读器。
+
+<img src="/C:/Users/temp/项目/SultansGameReader/sultan-reader/src/assets/donate-support.jpeg" alt="支持作者开发" width="220" />
