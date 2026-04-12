@@ -3,7 +3,7 @@ import { extractEdges } from './edgeExtractor'
 
 const EDGE_COLORS = { success: '#d3d8a2', failed: '#d9a09a', default: '#d9c7a0' }
 const CANVAS_NODE_TYPES = new Set(['rite', 'event', 'loot', 'over'])
-const AUTO_EXPAND_SOURCE_TYPES = new Set(['event'])
+const AUTO_EXPAND_SOURCE_TYPES = new Set(['event', 'loot'])
 const AUTO_EXPAND_TARGET_TYPES = new Set(['event', 'loot', 'rite', 'over'])
 const AUTO_EXPAND_LIMIT = 3
 
@@ -61,8 +61,12 @@ export async function mountNodeOnCanvas(item, position, options = {}) {
       return nodeKey
     }
 
-    for (let index = 0; index < relations.length; index += 1) {
-      const relation = relations[index]
+    const randomizedRelations = [...relations]
+      .sort(() => Math.random() - 0.5)
+      .slice(0, autoExpandLimit)
+
+    for (let index = 0; index < randomizedRelations.length; index += 1) {
+      const relation = randomizedRelations[index]
       const [targetType, targetId] = relation.target.split(':')
       if (!targetType || !targetId) continue
 

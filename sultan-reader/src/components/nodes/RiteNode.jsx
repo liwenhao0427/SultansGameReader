@@ -18,6 +18,7 @@ export default function RiteNode({ data, selected }) {
       variant="iconTitle"
       onExpand={data.onExpand}
       onRemove={data.onRemove}
+      expandCount={data.expandCount}
     />
   )
 }

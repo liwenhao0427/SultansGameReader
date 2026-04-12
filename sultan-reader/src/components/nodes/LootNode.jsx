@@ -26,6 +26,7 @@ export default function LootNode({ data, selected }) {
       variant="iconTitle"
       onExpand={data.onExpand}
       onRemove={data.onRemove}
+      expandCount={data.expandCount}
     />
   )
 }

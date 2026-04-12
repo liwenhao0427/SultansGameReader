@@ -201,6 +201,33 @@ function buildCardSummary(id, cardsMap, cardsById) {
   }
 }
 
+function collectExplicitConditionCardIds(condition, collector = new Set()) {
+  if (!condition || typeof condition !== 'object') return collector
+
+  Object.entries(condition).forEach(([key, value]) => {
+    if (key.endsWith('__c') || key.endsWith('__ca') || key.endsWith('__ci')) return
+
+    if (key === 'is' || key === '!is') {
+      normalizeArray(value).forEach((id) => {
+        if (id != null) collector.add(String(id))
+      })
+      return
+    }
+
+    if (key === 'any' || key === 'all') {
+      if (Array.isArray(value)) {
+        value.forEach((item) => collectExplicitConditionCardIds(item, collector))
+        return
+      }
+      if (value && typeof value === 'object') {
+        collectExplicitConditionCardIds(value, collector)
+      }
+    }
+  })
+
+  return collector
+}
+
 function isCardLikeId(value) {
   return /^\d{6,}$/.test(String(value ?? ''))
 }
@@ -301,17 +328,11 @@ function buildFallbackSlotCandidate(slotId, slot, cardsMap, cardsById) {
 }
 
 function extractConditionCards(condition, cardsMap, cardsById) {
-  const directIs = normalizeArray(condition?.is)
-  // any 可能是对象或数组，只有对象时才取 any.is
+  const explicitIds = Array.from(collectExplicitConditionCardIds(condition))
   const anyObj = condition?.any && !Array.isArray(condition.any) && typeof condition.any === 'object' ? condition.any : null
-  const anyIs = normalizeArray(anyObj?.is)
 
-  // 优先用 is 字段
-  if (directIs.length > 0) {
-    return directIs.map((id) => buildCardSummary(id, cardsMap, cardsById))
-  }
-  if (anyIs.length > 0) {
-    return anyIs.map((id) => buildCardSummary(id, cardsMap, cardsById))
+  if (explicitIds.length > 0) {
+    return explicitIds.map((id) => buildCardSummary(id, cardsMap, cardsById))
   }
 
   // 识别固定 tag（主角、妻子等）→ 直接返回对应卡牌
@@ -336,22 +357,17 @@ function summarizeLabel(name, fallbackPrefix = '') {
 function buildSlotCandidate(slotId, pop, index, cardsMap, cardsById) {
   const condition = pop?.condition || {}
   const anyCondition = condition.any && typeof condition.any === 'object' ? condition.any : null
-  const directIs = normalizeArray(condition.is)
-  const anyIs = normalizeArray(anyCondition?.is)
+  const explicitIds = Array.from(collectExplicitConditionCardIds(condition))
   const parsedConditionText = parseConditionObject(condition, cardsMap).join(' / ')
 
   let label = `候选 ${index + 1}`
   let cards = []
   let mode = 'text'
 
-  if (directIs.length > 0) {
-    cards = directIs.map((id) => buildCardSummary(id, cardsMap, cardsById))
+  if (explicitIds.length > 0) {
+    cards = explicitIds.map((id) => buildCardSummary(id, cardsMap, cardsById))
     label = condition.is__c || cards.map((card) => card.name).join(' / ')
     mode = cards.length > 1 ? 'stack' : 'card'
-  } else if (anyIs.length > 0) {
-    cards = anyIs.map((id) => buildCardSummary(id, cardsMap, cardsById))
-    label = anyCondition?.is__c || condition.any__c || cards.map((card) => card.name).join(' / ')
-    mode = 'stack'
   } else {
     // 检查固定 tag（主角、妻子等）→ 直接用对应卡牌展示
     const allKeys = [...Object.keys(condition), ...Object.keys(anyCondition || {})]
@@ -632,9 +648,7 @@ function matchesBrowseCondition(card, condition) {
     if (key.endsWith('__c') || key.endsWith('__ca') || key.endsWith('__ci')) return true
     if (key === 'any') {
       if (Array.isArray(value)) return value.some((item) => matchesBrowseCondition(card, item))
-      if (value && typeof value === 'object') return Object.entries(value).some(([subKey, subValue]) => (
-        matchesBrowseCondition(card, { [subKey]: subValue })
-      ))
+      if (value && typeof value === 'object') return matchesBrowseCondition(card, value)
       return true
     }
     if (key === 'all') {
@@ -778,9 +792,9 @@ function extractLockedSlotCard(condition, cardsMap, cardsById) {
   const fixedItemCard = condition.type === 'item' ? buildFixedItemCard(condition) : null
   if (fixedItemCard) return fixedItemCard
 
-  const directIs = normalizeArray(condition.is)
-  if (directIs.length === 1 && isCardLikeId(directIs[0])) {
-    return buildCardSummary(directIs[0], cardsMap, cardsById)
+  const explicitIds = Array.from(collectExplicitConditionCardIds(condition))
+  if (explicitIds.length === 1 && isCardLikeId(explicitIds[0])) {
+    return buildCardSummary(explicitIds[0], cardsMap, cardsById)
   }
 
   const fixedTag = Object.keys(FIXED_TAG_CARD_IDS).find((tag) => Number(condition[tag]) > 0)

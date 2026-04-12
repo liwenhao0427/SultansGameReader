@@ -14,6 +14,7 @@ import { CARD_RENDER_CONFIG, getCardRarityFrameAsset } from '../../resourceConfi
  * @param {'text'|'iconTitle'|'heroBackdrop'} variant - 节点展示样式
  * @param {Function|null} onExpand - 右侧签出回调
  * @param {Function|null} onRemove - 左侧移除子树回调
+ * @param {number} expandCount - 当前还可带出的关联节点数量
  */
 export default function BaseNode({
   id,
@@ -26,6 +27,7 @@ export default function BaseNode({
   variant = 'text',
   onExpand = null,
   onRemove = null,
+  expandCount = 0,
 }) {
   const { url: imgUrl } = useResolvedImage(image || null)
   const { url: fallbackImgUrl } = useResolvedImage(fallbackImage || null)
@@ -113,7 +115,7 @@ export default function BaseNode({
           }}
           aria-label="签出关联节点"
         >
-          +
+          +{expandCount > 0 ? expandCount : ''}
         </button>
       ) : null}
 

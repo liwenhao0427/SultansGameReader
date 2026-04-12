@@ -117,7 +117,12 @@ export default function EventDetail({ data }) {
   }, [currentEventNode?.relatedCards, model?.eventFlow?.relatedCards, model?.fallbackCharacterCard])
 
   const followupActions = useMemo(() => (
-    (currentEventNode?.actions || []).filter((action) => action.targetType === 'rite' || action.targetType === 'over' || action.targetType === 'event')
+    (currentEventNode?.actions || []).filter((action) => (
+      action.targetType === 'rite' ||
+      action.targetType === 'over' ||
+      action.targetType === 'event' ||
+      action.targetType === 'loot'
+    ))
   ), [currentEventNode?.actions])
 
   const resolvedFollowupActions = useMemo(() => (

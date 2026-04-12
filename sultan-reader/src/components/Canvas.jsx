@@ -30,6 +30,8 @@ const EDGE_COLORS = {
   default: '#d9c7a0',
 }
 
+const EXPANDABLE_TARGET_TYPES = new Set(['event', 'loot', 'rite', 'over'])
+
 const AUTO_LAYOUT_NODE_SIZE = {
   rite: { width: 260, height: 86 },
   event: { width: 220, height: 72 },
@@ -216,6 +218,36 @@ function summarize(item, data) {
   return item.name || item.text || data?.name || data?.dialog_tree_id || data?.description || data?.text || item.id
 }
 
+function dedupeRelationOptions(relations, nodeIdSet) {
+  const optionMap = new Map()
+
+  relations.forEach((relation, index) => {
+    const [targetType, targetId] = relation.target.split(':')
+    if (!targetType || !targetId) return
+    if (!EXPANDABLE_TARGET_TYPES.has(targetType)) return
+    if (nodeIdSet.has(relation.target)) return
+
+    const dedupeKey = [
+      targetType,
+      targetId,
+      relation.conditionText || '',
+      relation.resultTitle || '',
+      relation.resultText || '',
+    ].join('|')
+
+    if (!optionMap.has(dedupeKey)) {
+      optionMap.set(dedupeKey, {
+        optionId: `${relation.path}:${targetType}:${targetId}:${index}`,
+        relation,
+        targetType,
+        targetId,
+      })
+    }
+  })
+
+  return Array.from(optionMap.values())
+}
+
 function buildCanvasEdge(relation) {
   const stroke = EDGE_COLORS[relation.branchType] ?? EDGE_COLORS.default
   return {
@@ -315,9 +347,6 @@ function RelationPickerModal({ picker, onToggle, onConfirm, onClose }) {
     })
     : picker.options
 
-  const cardOptions = filteredOptions.filter((option) => option.targetType === 'card')
-  const otherOptions = filteredOptions.filter((option) => option.targetType !== 'card')
-
   return (
     <div style={pickerMaskStyle} onClick={onClose}>
       <div style={pickerPanelStyle} onClick={(event) => event.stopPropagation()}>
@@ -361,22 +390,11 @@ function RelationPickerModal({ picker, onToggle, onConfirm, onClose }) {
 
         {!picker.loading && !picker.error && filteredOptions.length > 0 && (
           <div style={pickerListStyle}>
-            {cardOptions.length > 0 && (
-              <div style={pickerSectionStyle}>
-                <div style={pickerSectionTitleStyle}>卡牌关联</div>
-                <div style={pickerCardGridStyle}>
-                  {cardOptions.map((option) => (
-                    <RelationOptionCard key={option.optionId} option={option} selected={picker.selectedOptionIds.includes(option.optionId)} onToggle={onToggle} />
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {otherOptions.length > 0 && (
+            {filteredOptions.length > 0 && (
               <div style={pickerSectionStyle}>
                 <div style={pickerSectionTitleStyle}>其他关联</div>
                 <div style={{ display: 'grid', gap: 12 }}>
-                  {otherOptions.map((option) => (
+                  {filteredOptions.map((option) => (
                     <RelationOptionRow key={option.optionId} option={option} selected={picker.selectedOptionIds.includes(option.optionId)} onToggle={onToggle} />
                   ))}
                 </div>
@@ -523,22 +541,19 @@ function CanvasInner() {
     const sourceRawId = sourceNodeId.slice(colonIndex + 1)
 
     try {
-      // 仪式节点的关联选择优先剧情链，过滤掉卡牌目标，避免噪音过高
-      const shouldHideCardRelations = sourceType === 'rite'
       const relations = extractEdges(sourceType, sourceRawId, sourceNode.data.rawData)
-        .filter((relation) => (
-          !nodeIdSet.has(relation.target) &&
-          (!shouldHideCardRelations || !relation.target.startsWith('card:'))
-        ))
+      const pendingOptions = dedupeRelationOptions(relations, nodeIdSet)
 
       const optionMap = new Map()
-      for (let index = 0; index < relations.length; index += 1) {
-        const relation = relations[index]
-        const [targetType, targetId] = relation.target.split(':')
+      for (let index = 0; index < pendingOptions.length; index += 1) {
+        const seed = pendingOptions[index]
+        const relation = seed.relation
+        const targetType = seed.targetType
+        const targetId = seed.targetId
         const targetData = await window.electronAPI.configReadCache(targetType, targetId)
         const conditionLines = parseConditionObject(relation.conditionObj, cardsLite)
         const option = {
-          optionId: `${relation.path}:${targetType}:${targetId}:${index}`,
+          optionId: seed.optionId,
           relation,
           targetType,
           targetId,
@@ -599,9 +614,13 @@ function CanvasInner() {
         ...node.data,
         onExpand: (nodeId) => openRelationPicker(nodeId),
         onRemove: (nodeId) => removeNodeTree(nodeId),
+        expandCount: dedupeRelationOptions(
+          extractEdges(node.type, node.id.split(':').slice(1).join(':'), node.data?.rawData || {}),
+          nodeIdSet
+        ).length,
       },
     })),
-    [nodes, openRelationPicker, removeNodeTree]
+    [nodeIdSet, nodes, openRelationPicker, removeNodeTree]
   )
 
   const onDragOver = useCallback((event) => {

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import useConfigStore from '../../stores/useConfigStore'
-import useReadingStateStore from '../../stores/useReadingStateStore'
+import useReadingStateStore, { getContentState } from '../../stores/useReadingStateStore'
 import { useResolvedImage } from '../../services/imageResolver'
 import { adaptStoryData } from '../../services/storyAdapter'
 import { READER_CHROME } from '../../readerChromeConfig'
@@ -986,7 +986,9 @@ export default function StoryInspector({ type, data, onClose }) {
   const RITE_CANDIDATE_PAGE_SIZE = 7
   const cardsLite = useConfigStore((s) => s.cardsLite)
   const cardsById = useConfigStore((s) => s.cardsById)
+  const contentStates = useReadingStateStore((state) => state.contentStates)
   const toggleRead = useReadingStateStore((state) => state.toggleRead)
+  const toggleFavorite = useReadingStateStore((state) => state.toggleFavorite)
   const model = adaptStoryData(type, data, cardsLite, cardsById)
   const [templateData, setTemplateData] = useState(null)
   const [rawContent, setRawContent] = useState(null)
@@ -1022,12 +1024,18 @@ export default function StoryInspector({ type, data, onClose }) {
   const { url: settlementBgUrl } = useResolvedImage(READER_RESOURCE_ASSETS.settlementBackground)
   const { url: settlementDiceBgUrl } = useResolvedImage(READER_RESOURCE_ASSETS.settlementDiceBackground)
   const [executionTargetNameMap, setExecutionTargetNameMap] = useState({})
+  const entryState = getContentState(contentStates, type, String(data?.id || ''))
 
-  function handleMarkReadAndClose() {
+  function handleToggleRead() {
     if (type && data?.id != null) {
       toggleRead(type, String(data.id))
     }
-    onClose?.()
+  }
+
+  function handleToggleFavorite() {
+    if (type && data?.id != null) {
+      toggleFavorite(type, String(data.id))
+    }
   }
 
   function buildDialogueLines(slotId, selections, settlementState, globalSelection = globalSettlementSelection) {
@@ -1926,10 +1934,23 @@ export default function StoryInspector({ type, data, onClose }) {
               {hideReaderUi ? '显示内容' : '显示背景图'}
             </button>
           )}
+          <button
+            type="button"
+            onClick={handleToggleFavorite}
+            style={entryState.favorite ? activeToggleButtonStyle : secondaryButtonStyle}
+          >
+            {entryState.favorite ? '取消收藏' : '加入收藏'}
+          </button>
           {data?._source_path && (
             <button type="button" onClick={handleViewRaw} style={secondaryButtonStyle}>查看原始文件</button>
           )}
-          <button type="button" onClick={handleMarkReadAndClose} style={secondaryButtonStyle}>已读并关闭</button>
+          <button
+            type="button"
+            onClick={handleToggleRead}
+            style={entryState.read ? activeToggleButtonStyle : secondaryButtonStyle}
+          >
+            {entryState.read ? '设置未读' : '设置已读'}
+          </button>
           <button type="button" onClick={onClose} style={closeButtonStyle}>关闭</button>
         </div>
       </div>

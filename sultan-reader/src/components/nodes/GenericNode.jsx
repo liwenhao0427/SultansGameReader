@@ -21,6 +21,7 @@ export default function GenericNode({ data, selected }) {
       variant={variant}
       onExpand={data.onExpand}
       onRemove={data.onRemove}
+      expandCount={data.expandCount}
     />
   )
 }

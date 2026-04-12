@@ -4,6 +4,7 @@ import { useResolvedImage } from '../../services/imageResolver'
 import { CARD_RENDER_CONFIG, getCardFrameHeight, getCardRarityFrameAsset } from '../../resourceConfig'
 import useCanvasStore from '../../stores/useCanvasStore'
 import { linkNodesOnCanvas, mountNodeOnCanvas } from '../../services/graphNavigation'
+import { parseConditionObject } from '../../services/conditionParser'
 
 const AUTO_CANVAS_LIMIT = 3
 
@@ -72,6 +73,7 @@ function LootItemPoster({ pic, rare }) {
 }
 
 export default function LootDetail({ data }) {
+  const cardsLite = useConfigStore((s) => s.cardsLite)
   const cardsById = useConfigStore((s) => s.cardsById)
   const selectedNodeId = useCanvasStore((s) => s.selectedNodeId)
   const [targetNames, setTargetNames] = useState({})
@@ -81,21 +83,26 @@ export default function LootDetail({ data }) {
   const enrichedItems = useMemo(() => items.map((item, index) => {
     const card = item?.type === 'card' ? cardsById?.[String(item.id)] : null
     const pic = Array.isArray(card?.resource) ? (card.resource[0] || null) : (card?.resource || null)
+    const typeKey = `${item?.type}:${String(item?.id)}`
     return {
       key: `${item?.type || 'item'}:${item?.id || index}:${index}`,
       id: item?.id,
       type: item?.type,
       num: item?.num,
       weight: item?.weight,
-      name: card?.name || targetNames[`${item?.type}:${String(item?.id)}`] || `${item?.type || '未知类型'} ${item?.id || ''}`.trim(),
+      name: card?.name || targetNames[typeKey] || `${item?.type || '未知类型'} ${item?.id || ''}`.trim(),
       text: card?.text || '',
       pic,
       rare: card?.rare ?? null,
+      conditionText: parseConditionObject(item?.condition || {}, cardsLite).join(' / '),
     }
-  }), [cardsById, items, targetNames])
+  }), [cardsById, cardsLite, items, targetNames])
 
   const relatedCanvasItems = useMemo(
-    () => enrichedItems.filter((item) => (item.type === 'rite' || item.type === 'event') && item.id != null),
+    () => enrichedItems.filter((item) => (
+      (item.type === 'rite' || item.type === 'event' || item.type === 'loot' || item.type === 'over') &&
+      item.id != null
+    )),
     [enrichedItems]
   )
   const autoCanvasItems = useMemo(
@@ -153,7 +160,7 @@ export default function LootDetail({ data }) {
   }, [autoCanvasItems, selectedNodeId])
 
   async function handleOpenRelatedItem(item, offsetIndex = 0) {
-    if (!item?.id || (item.type !== 'rite' && item.type !== 'event')) return
+    if (!item?.id || (item.type !== 'rite' && item.type !== 'event' && item.type !== 'loot' && item.type !== 'over')) return
 
     const targetNodeKey = await mountNodeOnCanvas(
       { id: String(item.id), type: item.type, name: item.name },
@@ -188,20 +195,29 @@ export default function LootDetail({ data }) {
                 type="button"
                 style={{
                   ...S.card,
-                  cursor: item.type === 'rite' || item.type === 'event' ? 'pointer' : 'default',
+                  cursor: item.type === 'rite' || item.type === 'event' || item.type === 'loot' || item.type === 'over' ? 'pointer' : 'default',
                   textAlign: 'left',
                 }}
                 onClick={() => handleOpenRelatedItem(item, index)}
-                disabled={item.type !== 'rite' && item.type !== 'event'}
+                disabled={item.type !== 'rite' && item.type !== 'event' && item.type !== 'loot' && item.type !== 'over'}
               >
                 <LootItemPoster pic={item.pic} rare={item.rare} />
                 <div style={{ minWidth: 0 }}>
                   <div style={S.name}>{item.name}</div>
                   <div style={S.meta}>{item.type}:{item.id}</div>
-                  {(item.type === 'rite' || item.type === 'event') && (
-                    <div style={S.stat}>{item.type === 'rite' ? `关联仪式：${item.name}` : `关联幕后：${item.name}`}</div>
+                  {(item.type === 'rite' || item.type === 'event' || item.type === 'loot' || item.type === 'over') && (
+                    <div style={S.stat}>
+                      {item.type === 'rite'
+                        ? `关联仪式：${item.name}`
+                        : item.type === 'event'
+                          ? `关联幕后：${item.name}`
+                          : item.type === 'loot'
+                            ? `关联掉落池：${item.name}`
+                            : `关联结局：${item.name}`}
+                    </div>
                   )}
                   <div style={S.stat}>数量：{item.num ?? '-'} / 权重：{item.weight ?? '-'}</div>
+                  {item.conditionText && <div style={S.stat}>条件：{item.conditionText}</div>}
                   {item.text && <div title={item.text} style={S.text}>{item.text}</div>}
                 </div>
               </button>
