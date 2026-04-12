@@ -349,11 +349,8 @@ function LegacyInlineChoiceStep({ group, selectedId, onSelect, onOpenDetail }) {
 }
 
 function ConditionGroupIntro({ group }) {
-  return (
-    <div style={styles.conditionIntro}>
-      <div style={styles.headerLabel}>{group.title}</div>
-    </div>
-  )
+  if (!group) return null
+  return null
 }
 
 function ConditionGridGroup({ group, selectedId, onSelect }) {
@@ -644,8 +641,7 @@ export default function ExecutionModal({
           <div style={styles.detailDialog} onClick={(event) => event.stopPropagation()}>
             <div style={styles.detailHeader}>
               <div>
-                <div style={styles.headerLabel}>{detailGroup.title}</div>
-                <div style={{ marginTop: 8, fontSize: 13, lineHeight: 1.7, color: '#dbc7a1' }}>{detailGroup.description}</div>
+                <div style={{ fontSize: 13, lineHeight: 1.7, color: '#dbc7a1' }}>{detailGroup.description}</div>
               </div>
               <button type="button" style={styles.closeButton} onClick={() => { setDetailGroupId(null); setDetailFilterText('') }}>关闭</button>
             </div>

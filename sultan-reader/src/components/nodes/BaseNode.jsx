@@ -1,113 +1,94 @@
 // 基础节点组件，所有自定义节点共用此样式基础
+import { useState } from 'react'
 import { Handle, Position } from '@xyflow/react'
 import { useResolvedImage } from '../../services/imageResolver'
 import { CARD_RENDER_CONFIG, getCardFrameHeight, getCardRarityFrameAsset } from '../../resourceConfig'
-import { CONTENT_TYPE_LABELS } from '../../constants/gameTerminology'
-
-const NODE_TYPE_LABELS = {
-  ...CONTENT_TYPE_LABELS,
-  loot: '掉落池',
-}
-
-function formatDisplayId(id) {
-  if (typeof id !== 'string') return String(id || '')
-  const colonIndex = id.indexOf(':')
-  if (colonIndex === -1) return id
-  const type = id.slice(0, colonIndex)
-  const rawId = id.slice(colonIndex + 1)
-  return `${NODE_TYPE_LABELS[type] || type}:${rawId}`
-}
 
 /**
  * @param {string} id - 节点 ID
- * @param {string} label - 底部显示的名称/摘要文本
+ * @param {string} label - 节点标题
  * @param {string} color - 边框颜色
  * @param {boolean} selected - 是否被选中
  * @param {string|null} image - 图片资源 key（可选）
  * @param {number|null} rare - 稀有度（卡牌用，可选）
+ * @param {'text'|'iconTitle'} variant - 节点展示样式
+ * @param {Function|null} onExpand - 右侧签出回调
  */
-export default function BaseNode({ id, label, color, selected, image, rare }) {
+export default function BaseNode({ id, label, color, selected, image, rare, variant = 'text', onExpand = null }) {
   const { url: imgUrl } = useResolvedImage(image || null)
   const { url: rareFrameUrl } = useResolvedImage(rare ? getCardRarityFrameAsset(rare) : null)
   const isCardLike = rare != null
-  const previewWidth = isCardLike ? 72 : 118
-  const previewHeight = isCardLike ? getCardFrameHeight(72) : 84
-  const displayId = formatDisplayId(id)
+  const [hovered, setHovered] = useState(false)
+  const previewWidth = isCardLike ? 56 : 56
+  const previewHeight = isCardLike ? getCardFrameHeight(56) : 56
+  const useIconTitle = variant === 'iconTitle' && imgUrl
+  const canExpand = typeof onExpand === 'function'
 
   return (
-    <div style={{
-      background: '#1e1e2e',
-      border: `${selected ? 3 : 2}px solid ${selected ? lighten(color) : color}`,
-      borderRadius: 6,
-      padding: imgUrl ? '8px' : '8px 12px',
-      minWidth: imgUrl ? previewWidth + 16 : 120,
-      maxWidth: 200,
-      boxSizing: 'border-box',
-    }}>
-      <Handle type="target" position={Position.Top} />
+    <div
+      style={nodeShellStyle}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      <Handle type="target" position={Position.Left} style={handleStyle} />
 
-      {imgUrl && (
-        <div style={{
-          width: previewWidth,
-          height: previewHeight,
-          borderRadius: 6,
-          overflow: 'hidden',
-          position: 'relative',
-          background: 'rgba(12, 10, 8, 0.8)',
-          backgroundImage: rareFrameUrl ? `url("${rareFrameUrl}")` : 'none',
-          backgroundSize: '100% 100%',
-        }}>
-          <img
-            src={imgUrl}
-            alt=""
-            style={{
-              width: '100%',
-              height: '100%',
-              objectFit: isCardLike ? CARD_RENDER_CONFIG.imageObjectFit : 'cover',
-              objectPosition: isCardLike ? CARD_RENDER_CONFIG.imageObjectPosition : 'center',
-              display: 'block',
-            }}
-          />
-          <div style={overlayShadeStyle} />
-          <div style={overlayTextWrapStyle}>
-            <div style={{ ...overlayIdStyle, color }}>
-              {displayId}
+      <div style={{
+        ...nodeCardStyle,
+        ...(useIconTitle ? iconTitleNodeStyle : textNodeStyle),
+        border: `${selected ? 2.5 : 2}px solid ${selected ? lighten(color) : color}`,
+        boxShadow: selected
+          ? `0 16px 30px ${withAlpha(color, 0.22)}`
+          : `0 14px 26px ${withAlpha(color, 0.12)}`,
+      }}>
+        {useIconTitle ? (
+          <>
+            <div style={{
+              ...iconThumbWrapStyle,
+              backgroundImage: rareFrameUrl ? `url("${rareFrameUrl}")` : 'none',
+            }}>
+              <img
+                src={imgUrl}
+                alt=""
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  objectFit: isCardLike ? CARD_RENDER_CONFIG.imageObjectFit : 'cover',
+                  objectPosition: isCardLike ? CARD_RENDER_CONFIG.imageObjectPosition : 'center',
+                  display: 'block',
+                }}
+              />
             </div>
-            <div style={overlayLabelStyle}>
-              {label}
+            <div style={iconTitleTextWrapStyle}>
+              <div style={iconTitleLabelStyle}>{label}</div>
             </div>
-          </div>
-        </div>
-      )}
+          </>
+        ) : (
+          <div style={textTitleStyle}>{label}</div>
+        )}
+      </div>
 
-      {!imgUrl && (
-        <>
-          <div style={{
-            fontFamily: 'monospace',
-            fontSize: 12,
-            color,
-            marginBottom: 4,
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-          }}>
-            {displayId}
-          </div>
+      {canExpand ? (
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation()
+            onExpand(id)
+          }}
+          style={{
+            ...expandButtonStyle,
+            opacity: hovered ? 1 : 0,
+            transform: hovered ? 'translate(0, -50%)' : 'translate(8px, -50%)',
+            pointerEvents: hovered ? 'auto' : 'none',
+            borderColor: selected ? lighten(color) : color,
+            boxShadow: `0 10px 20px ${withAlpha(color, 0.22)}`,
+          }}
+          aria-label="签出关联节点"
+        >
+          +
+        </button>
+      ) : null}
 
-          <div style={{
-            fontSize: 11,
-            color: '#a6adc8',
-            display: '-webkit-box',
-            WebkitLineClamp: 2,
-            WebkitBoxOrient: 'vertical',
-            overflow: 'hidden',
-          }}>
-            {label}
-          </div>
-        </>
-      )}
-
-      <Handle type="source" position={Position.Bottom} />
+      <Handle type="source" position={Position.Right} style={handleStyle} />
     </div>
   )
 }
@@ -121,38 +102,105 @@ function lighten(hex) {
   return `rgb(${r},${g},${b})`
 }
 
-const overlayShadeStyle = {
-  position: 'absolute',
-  inset: 0,
-  background: 'linear-gradient(180deg, rgba(8, 7, 6, 0.06) 0%, rgba(8, 7, 6, 0.16) 48%, rgba(8, 7, 6, 0.92) 100%)',
+function withAlpha(hex, alpha) {
+  const n = parseInt(hex.replace('#', ''), 16)
+  const r = (n >> 16) & 0xff
+  const g = (n >> 8) & 0xff
+  const b = n & 0xff
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`
 }
 
-const overlayTextWrapStyle = {
-  position: 'absolute',
-  left: 0,
-  right: 0,
-  bottom: 0,
-  padding: '8px 8px 7px',
+const nodeShellStyle = {
+  position: 'relative',
+  paddingRight: 24,
 }
 
-const overlayIdStyle = {
-  fontFamily: 'monospace',
-  fontSize: 11,
-  lineHeight: 1.2,
-  textShadow: '0 1px 2px rgba(0, 0, 0, 0.8)',
+const nodeCardStyle = {
+  background: 'linear-gradient(180deg, rgba(17, 12, 9, 0.96), rgba(10, 8, 6, 0.98))',
+  borderRadius: 18,
+  boxSizing: 'border-box',
+  color: '#f4ead6',
+  backdropFilter: 'blur(4px)',
+}
+
+const textNodeStyle = {
+  minWidth: 180,
+  maxWidth: 240,
+  padding: '14px 18px',
+}
+
+const iconTitleNodeStyle = {
+  minWidth: 210,
+  maxWidth: 280,
+  padding: 8,
+  display: 'grid',
+  gridTemplateColumns: '56px minmax(0, 1fr)',
+  alignItems: 'center',
+  gap: 12,
+}
+
+const iconThumbWrapStyle = {
+  width: 56,
+  height: 56,
+  borderRadius: 14,
+  overflow: 'hidden',
+  position: 'relative',
+  background: 'rgba(12, 10, 8, 0.92)',
+  backgroundSize: '100% 100%',
+  backgroundRepeat: 'no-repeat',
+  backgroundPosition: 'center',
+}
+
+const iconTitleTextWrapStyle = {
+  minWidth: 0,
+  paddingRight: 6,
+}
+
+const iconTitleLabelStyle = {
+  fontSize: 17,
+  lineHeight: 1.3,
+  fontWeight: 700,
+  color: '#f4ead6',
+  textShadow: '0 1px 2px rgba(0, 0, 0, 0.58)',
+  whiteSpace: 'nowrap',
   overflow: 'hidden',
   textOverflow: 'ellipsis',
-  whiteSpace: 'nowrap',
 }
 
-const overlayLabelStyle = {
-  marginTop: 4,
-  fontSize: 11,
-  lineHeight: 1.35,
-  color: '#f1e8d5',
-  textShadow: '0 1px 2px rgba(0, 0, 0, 0.88)',
+const textTitleStyle = {
+  fontSize: 16,
+  lineHeight: 1.45,
+  fontWeight: 700,
+  color: '#f4ead6',
+  textAlign: 'left',
   display: '-webkit-box',
-  WebkitLineClamp: 3,
+  WebkitLineClamp: 2,
   WebkitBoxOrient: 'vertical',
   overflow: 'hidden',
+}
+
+const expandButtonStyle = {
+  position: 'absolute',
+  top: '50%',
+  right: -8,
+  width: 28,
+  height: 28,
+  borderRadius: 999,
+  border: '2px solid #c8aa70',
+  background: 'rgba(16, 12, 9, 0.96)',
+  color: '#f4ead6',
+  fontSize: 18,
+  lineHeight: '24px',
+  fontWeight: 700,
+  cursor: 'pointer',
+  transition: 'opacity 140ms ease, transform 140ms ease',
+}
+
+const handleStyle = {
+  position: 'absolute',
+  width: 10,
+  height: 10,
+  borderRadius: 999,
+  background: 'rgba(0, 0, 0, 0)',
+  border: 'none',
 }

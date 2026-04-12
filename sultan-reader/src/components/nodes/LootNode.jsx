@@ -23,6 +23,8 @@ export default function LootNode({ data, selected }) {
       selected={selected}
       image={image}
       rare={rare}
+      variant="iconTitle"
+      onExpand={data.onExpand}
     />
   )
 }

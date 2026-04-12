@@ -15,6 +15,7 @@ export default function GenericNode({ data, selected }) {
       color={COLOR}
       selected={selected}
       image={image}
+      onExpand={data.onExpand}
     />
   )
 }

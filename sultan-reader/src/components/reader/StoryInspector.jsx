@@ -2102,6 +2102,13 @@ export default function StoryInspector({ type, data, onClose }) {
                     </div>
                     <div style={{ ...candidateToolbarStyle, width: '100%', alignItems: 'stretch' }}>
                       <div style={{ ...candidateToolbarGroupStyle, justifyContent: 'space-between', alignItems: 'center', width: '100%', flexWrap: 'wrap' }}>
+                        <input
+                          type="text"
+                          value={candidateCardFilterText}
+                          onChange={(event) => setCandidateCardFilterText(event.target.value)}
+                          placeholder="搜索卡牌"
+                          style={{ ...candidateSearchInputStyle, width: 'min(260px, 100%)', flex: '1 1 220px' }}
+                        />
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                           <button
                             type="button"
@@ -2180,15 +2187,6 @@ export default function StoryInspector({ type, data, onClose }) {
                             {'>'}
                           </button>
                         </div>
-                      </div>
-                      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                        <input
-                          type="text"
-                          value={candidateCardFilterText}
-                          onChange={(event) => setCandidateCardFilterText(event.target.value)}
-                          placeholder="搜索卡牌"
-                          style={candidateSearchInputStyle}
-                        />
                       </div>
                     </div>
                 </div>

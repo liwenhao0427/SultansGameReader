@@ -5,7 +5,6 @@ const COLOR = '#89b4fa'
 
 export default function EventNode({ data, selected }) {
   const { rawData } = data
-  // text 字段作为摘要，截取前 50 字符
-  const label = rawData?.text ? String(rawData.text).slice(0, 50) : '—'
-  return <BaseNode id={`event:${rawData?.id ?? data.label}`} label={label} color={COLOR} selected={selected} />
+  const label = rawData?.name ?? rawData?.title ?? (rawData?.text ? String(rawData.text).slice(0, 24) : '—')
+  return <BaseNode id={`event:${rawData?.id ?? data.label}`} label={label} color={COLOR} selected={selected} onExpand={data.onExpand} />
 }

@@ -6,5 +6,15 @@ const COLOR = '#cba6f7'
 export default function RiteNode({ data, selected }) {
   const { rawData } = data
   const label = rawData?.name ?? '—'
-  return <BaseNode id={`rite:${rawData?.id ?? data.label}`} label={label} color={COLOR} selected={selected} image={rawData?.icon || null} />
+  return (
+    <BaseNode
+      id={`rite:${rawData?.id ?? data.label}`}
+      label={label}
+      color={COLOR}
+      selected={selected}
+      image={rawData?.icon || null}
+      variant="iconTitle"
+      onExpand={data.onExpand}
+    />
+  )
 }

@@ -16,6 +16,7 @@ import { useResolvedImage } from '../services/imageResolver'
 import { extractEdges } from '../services/edgeExtractor.js'
 import { parseConditionObject } from '../services/conditionParser.js'
 import { mountNodeOnCanvas, linkNodesOnCanvas } from '../services/graphNavigation.js'
+import { READER_RESOURCE_ASSETS } from '../resourceConfig.js'
 import useCanvasStore from '../stores/useCanvasStore.js'
 import useConfigStore from '../stores/useConfigStore.js'
 import usePlayerStore from '../stores/usePlayerStore.js'
@@ -29,11 +30,17 @@ const EDGE_COLORS = {
 }
 
 const AUTO_LAYOUT_NODE_SIZE = {
-  rite: { width: 170, height: 116 },
-  event: { width: 150, height: 88 },
-  loot: { width: 156, height: 96 },
-  default: { width: 150, height: 90 },
+  rite: { width: 260, height: 86 },
+  event: { width: 220, height: 72 },
+  loot: { width: 250, height: 86 },
+  default: { width: 220, height: 72 },
 }
+
+const ISOLATED_NODE_X = 68
+const TREE_ROOT_X = 348
+const TREE_START_Y = 56
+const ISOLATED_NODE_GAP_Y = 52
+const TREE_COMPONENT_GAP_Y = 112
 
 function getNodeLayoutSize(node) {
   return AUTO_LAYOUT_NODE_SIZE[node.type] || AUTO_LAYOUT_NODE_SIZE.default
@@ -74,7 +81,43 @@ function buildConnectedComponents(nodes, edges) {
   return components
 }
 
-function layoutComponent(nodes, edges, componentNodeIds, offsetX, offsetY) {
+function normalizePositionedNodes(positionedNodes, offsetX, offsetY) {
+  if (positionedNodes.length === 0) {
+    return { nodes: [], width: 0, height: 0 }
+  }
+
+  let minLeft = Number.POSITIVE_INFINITY
+  let minTop = Number.POSITIVE_INFINITY
+  let maxRight = Number.NEGATIVE_INFINITY
+  let maxBottom = Number.NEGATIVE_INFINITY
+
+  positionedNodes.forEach((node) => {
+    const size = getNodeLayoutSize(node)
+    const width = node.measured?.width || size.width
+    const height = node.measured?.height || size.height
+    minLeft = Math.min(minLeft, node.position.x)
+    minTop = Math.min(minTop, node.position.y)
+    maxRight = Math.max(maxRight, node.position.x + width)
+    maxBottom = Math.max(maxBottom, node.position.y + height)
+  })
+
+  const translateX = offsetX - minLeft
+  const translateY = offsetY - minTop
+
+  return {
+    nodes: positionedNodes.map((node) => ({
+      ...node,
+      position: {
+        x: Math.round(node.position.x + translateX),
+        y: Math.round(node.position.y + translateY),
+      },
+    })),
+    width: Math.max(0, maxRight - minLeft),
+    height: Math.max(0, maxBottom - minTop),
+  }
+}
+
+function layoutTreeComponent(nodes, edges, componentNodeIds, offsetX, offsetY) {
   const componentNodes = componentNodeIds
     .map((nodeId) => nodes.find((node) => node.id === nodeId))
     .filter(Boolean)
@@ -83,31 +126,13 @@ function layoutComponent(nodes, edges, componentNodeIds, offsetX, offsetY) {
     componentNodeIdSet.has(edge.source) && componentNodeIdSet.has(edge.target)
   ))
 
-  if (componentNodes.length <= 1) {
-    const node = componentNodes[0]
-    if (!node) {
-      return { nodes: [], width: 0, height: 0 }
-    }
-    const size = getNodeLayoutSize(node)
-    return {
-      nodes: [{
-        ...node,
-        position: {
-          x: Math.round(offsetX),
-          y: Math.round(offsetY),
-        },
-      }],
-      width: size.width,
-      height: size.height,
-    }
-  }
-
   const graph = new dagre.graphlib.Graph()
   graph.setDefaultEdgeLabel(() => ({}))
   graph.setGraph({
     rankdir: 'LR',
-    nodesep: 72,
-    ranksep: 120,
+    ranker: 'tight-tree',
+    nodesep: 44,
+    ranksep: 126,
     marginx: 40,
     marginy: 40,
   })
@@ -138,48 +163,48 @@ function layoutComponent(nodes, edges, componentNodeIds, offsetX, offsetY) {
     }
   })
 
-  let maxRight = offsetX
-  let maxBottom = offsetY
-  positionedNodes.forEach((node) => {
-    const size = getNodeLayoutSize(node)
-    maxRight = Math.max(maxRight, node.position.x + (node.measured?.width || size.width))
-    maxBottom = Math.max(maxBottom, node.position.y + (node.measured?.height || size.height))
-  })
-
-  return {
-    nodes: positionedNodes,
-    width: Math.max(0, maxRight - offsetX),
-    height: Math.max(0, maxBottom - offsetY),
-  }
+  return normalizePositionedNodes(positionedNodes, offsetX, offsetY)
 }
 
 function layoutNodesWithDagre(nodes, edges) {
   const components = buildConnectedComponents(nodes, edges)
   const positionedNodeMap = new Map()
-  let componentOffsetX = 40
-  let isolatedOffsetY = 40
+  let isolatedOffsetY = TREE_START_Y
+  let treeOffsetY = TREE_START_Y
 
   components.forEach((componentNodeIds) => {
-    const isIsolated = componentNodeIds.length <= 1
-    const result = layoutComponent(
+    const componentNodeIdSet = new Set(componentNodeIds)
+    const componentEdges = edges.filter((edge) => (
+      componentNodeIdSet.has(edge.source) && componentNodeIdSet.has(edge.target)
+    ))
+    const isIsolated = componentEdges.length === 0
+
+    if (isIsolated) {
+      const node = nodes.find((entry) => entry.id === componentNodeIds[0])
+      if (!node) return
+      positionedNodeMap.set(node.id, {
+        ...node,
+        position: {
+          x: ISOLATED_NODE_X,
+          y: isolatedOffsetY,
+        },
+      })
+      isolatedOffsetY += getNodeLayoutSize(node).height + ISOLATED_NODE_GAP_Y
+      return
+    }
+
+    const result = layoutTreeComponent(
       nodes,
       edges,
       componentNodeIds,
-      componentOffsetX,
-      isIsolated ? isolatedOffsetY : 40
+      TREE_ROOT_X,
+      treeOffsetY
     )
 
     result.nodes.forEach((node) => {
       positionedNodeMap.set(node.id, node)
     })
-
-    if (isIsolated) {
-      isolatedOffsetY += result.height + 56
-      componentOffsetX = Math.max(componentOffsetX, 40 + result.width + 120)
-      return
-    }
-
-    componentOffsetX += result.width + 160
+    treeOffsetY += result.height + TREE_COMPONENT_GAP_Y
   })
 
   return nodes.map((node) => positionedNodeMap.get(node.id) || node)
@@ -432,6 +457,7 @@ function CanvasInner() {
   const cardsById = useConfigStore((s) => s.cardsById)
   const { setNodes, screenToFlowPosition, setViewport, getZoom } = useReactFlow()
   const { triggeredEvents, counterValues } = usePlayerStore()
+  const { url: mapBackgroundUrl } = useResolvedImage(READER_RESOURCE_ASSETS.nodeMapBackground)
 
   const hasPlayerData = triggeredEvents.size > 0 || counterValues.size > 0
   const [tooltip, setTooltip] = useState(null)
@@ -542,6 +568,18 @@ function CanvasInner() {
       })
     }
   }, [cardsById, cardsLite, nodeIdSet, nodeMap])
+
+  const flowNodes = useMemo(
+    () => nodes.map((node) => ({
+      ...node,
+      draggable: false,
+      data: {
+        ...node.data,
+        onExpand: (nodeId) => openRelationPicker(nodeId),
+      },
+    })),
+    [nodes, openRelationPicker]
+  )
 
   const onDragOver = useCallback((event) => {
     event.preventDefault()
@@ -704,8 +742,12 @@ function CanvasInner() {
 
   return (
     <div ref={canvasShellRef} style={{ width: '100%', height: '100%', position: 'relative' }}>
+      <div style={canvasBackdropStyle}>
+        {mapBackgroundUrl ? <img src={mapBackgroundUrl} alt="" style={canvasBackdropImageStyle} /> : null}
+        <div style={canvasBackdropShadeStyle} />
+      </div>
       <ReactFlow
-        nodes={nodes}
+        nodes={flowNodes}
         edges={edges.map((edge) => ({
           ...edge,
           style: {
@@ -723,11 +765,12 @@ function CanvasInner() {
         onConnectStart={onConnectStart}
         onConnectEnd={onConnectEnd}
         onNodeDragStop={onNodeDragStop}
-        nodesDraggable
+        nodesDraggable={false}
         fitView
         proOptions={{ hideAttribution: true }}
+        style={{ background: 'transparent' }}
       >
-        <Background color="rgba(172, 141, 88, 0.18)" gap={24} />
+        <Background color="rgba(233, 199, 139, 0.08)" gap={28} />
         <Controls
           position="bottom-left"
           showInteractive={false}
@@ -791,6 +834,33 @@ const pickerMaskStyle = {
   alignItems: 'center',
   justifyContent: 'center',
   padding: 24,
+}
+
+const canvasBackdropStyle = {
+  position: 'absolute',
+  inset: 0,
+  borderRadius: 32,
+  overflow: 'hidden',
+  pointerEvents: 'none',
+}
+
+const canvasBackdropImageStyle = {
+  width: '100%',
+  height: '100%',
+  objectFit: 'cover',
+  objectPosition: 'center',
+  display: 'block',
+  filter: 'saturate(0.9) brightness(0.7)',
+  transform: 'scale(1.02)',
+}
+
+const canvasBackdropShadeStyle = {
+  position: 'absolute',
+  inset: 0,
+  background: `
+    linear-gradient(180deg, rgba(17, 12, 9, 0.42), rgba(13, 10, 8, 0.68)),
+    radial-gradient(circle at center, rgba(130, 57, 22, 0.08), rgba(10, 8, 6, 0.18))
+  `,
 }
 
 const pickerPanelStyle = {

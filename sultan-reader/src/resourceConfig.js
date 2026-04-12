@@ -37,6 +37,9 @@ export const READER_RESOURCE_ASSETS = {
   noteBackground: 'note_bg_new',
   titleEmblem: 'nomal_rite_bg',
   defaultRiteBackground: 'nomal_rite_bg',
+  // 节点图背景地图。
+  // 优先使用桌面地图底图，给节点画布提供固定的叙事氛围背景。
+  nodeMapBackground: 'table-map',
   settlementBackground: 'settlement_bg',
   settlementDiceBackground: 'settlement_bg_dice',
   riteTitlePlate: 'rite_title_bg',
