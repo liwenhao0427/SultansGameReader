@@ -45,6 +45,8 @@ const TREE_ROOT_X = 348
 const TREE_START_Y = 56
 const ISOLATED_NODE_GAP_Y = 52
 const TREE_COMPONENT_GAP_Y = 112
+const FIT_VIEW_OPTIONS = { padding: 0.34, minZoom: 0.22, maxZoom: 1 }
+const VIEWPORT_EPSILON = 0.5
 
 function getNodeLayoutSize(node) {
   return AUTO_LAYOUT_NODE_SIZE[node.type] || AUTO_LAYOUT_NODE_SIZE.default
@@ -282,6 +284,40 @@ function buildCanvasEdge(relation) {
   }
 }
 
+function buildGraphStructureSignature(nodes, edges) {
+  return JSON.stringify({
+    nodeIds: nodes.map((node) => node.id),
+    edgeIds: edges.map((edge) => edge.id),
+  })
+}
+
+function buildFocusSignature(focusState) {
+  if (!focusState) return ''
+
+  return JSON.stringify({
+    id: focusState.id,
+    openMode: focusState.openMode,
+    position: {
+      x: Math.round(focusState.position.x),
+      y: Math.round(focusState.position.y),
+    },
+    size: {
+      width: Math.round(focusState.size.width),
+      height: Math.round(focusState.size.height),
+    },
+  })
+}
+
+function isViewportClose(currentViewport, nextViewport) {
+  if (!currentViewport || !nextViewport) return false
+
+  return (
+    Math.abs((currentViewport.x || 0) - nextViewport.x) < VIEWPORT_EPSILON &&
+    Math.abs((currentViewport.y || 0) - nextViewport.y) < VIEWPORT_EPSILON &&
+    Math.abs((currentViewport.zoom || 0) - nextViewport.zoom) < 0.01
+  )
+}
+
 function extractRelationCards(conditionObj, cardsMap, cardsById) {
   if (!conditionObj || typeof conditionObj !== 'object') return []
 
@@ -493,7 +529,7 @@ function CanvasInner() {
   const { nodes, edges, selectedNodeId, selectedOpenMode, setSelectedNode, setNodes: setCanvasNodes, removeNodeTree } = useCanvasStore()
   const cardsLite = useConfigStore((s) => s.cardsLite)
   const cardsById = useConfigStore((s) => s.cardsById)
-  const { setNodes, screenToFlowPosition, setViewport, getZoom } = useReactFlow()
+  const { setNodes, screenToFlowPosition, setViewport, getZoom, getViewport, fitView } = useReactFlow()
   const { triggeredEvents, counterValues } = usePlayerStore()
   const { url: mapBackgroundUrl } = useResolvedImage(READER_RESOURCE_ASSETS.nodeMapBackground)
 
@@ -502,6 +538,8 @@ function CanvasInner() {
   const [pendingSourceId, setPendingSourceId] = useState(null)
   const [relationPicker, setRelationPicker] = useState(null)
   const lastAutoLayoutSignatureRef = useRef('')
+  const lastFitViewSignatureRef = useRef('')
+  const lastFocusSignatureRef = useRef('')
   const canvasShellRef = useRef(null)
 
   const nodeMap = useMemo(
@@ -532,6 +570,16 @@ function CanvasInner() {
       size: { width, height },
     }
   }, [nodes, selectedNodeId, selectedOpenMode])
+
+  const graphStructureSignature = useMemo(
+    () => buildGraphStructureSignature(nodes, edges),
+    [edges, nodes]
+  )
+
+  const focusSignature = useMemo(
+    () => buildFocusSignature(selectedNodeFocusState),
+    [selectedNodeFocusState]
+  )
 
   const getEdgeOpacity = useCallback(
     (edge) => {
@@ -763,23 +811,53 @@ function CanvasInner() {
   }, [runAutoLayout])
 
   useEffect(() => {
-    const signature = JSON.stringify({
-      nodeIds: nodes.map((node) => node.id),
-      edgeIds: edges.map((edge) => edge.id),
-    })
-
-    if (signature === lastAutoLayoutSignatureRef.current) return
-    lastAutoLayoutSignatureRef.current = signature
+    if (graphStructureSignature === lastAutoLayoutSignatureRef.current) return
+    lastAutoLayoutSignatureRef.current = graphStructureSignature
 
     if (nodes.length <= 1) return
     runAutoLayout()
-  }, [edges, nodes, runAutoLayout])
+  }, [graphStructureSignature, nodes.length, runAutoLayout])
 
   useEffect(() => {
-    if (!selectedNodeFocusState) return undefined
+    if (nodes.length === 0) {
+      lastFitViewSignatureRef.current = ''
+      return undefined
+    }
+
+    if (selectedNodeFocusState) return undefined
+    if (graphStructureSignature === lastFitViewSignatureRef.current) return undefined
 
     let cancelled = false
     let frameId = 0
+
+    lastFitViewSignatureRef.current = graphStructureSignature
+
+    frameId = window.requestAnimationFrame(() => {
+      if (cancelled) return
+      fitView({
+        ...FIT_VIEW_OPTIONS,
+        duration: 280,
+      })
+    })
+
+    return () => {
+      cancelled = true
+      if (frameId) window.cancelAnimationFrame(frameId)
+    }
+  }, [fitView, graphStructureSignature, nodes.length, selectedNodeFocusState])
+
+  useEffect(() => {
+    if (!selectedNodeFocusState) {
+      lastFocusSignatureRef.current = ''
+      return undefined
+    }
+
+    if (focusSignature === lastFocusSignatureRef.current) return undefined
+
+    let cancelled = false
+    let frameId = 0
+
+    lastFocusSignatureRef.current = focusSignature
 
     frameId = window.requestAnimationFrame(() => {
       if (cancelled) return
@@ -800,15 +878,16 @@ function CanvasInner() {
       })
 
       if (!viewport) return
+      if (isViewportClose(getViewport(), viewport)) return
 
-      setViewport(viewport, { duration: 420 })
+      setViewport(viewport, { duration: 320 })
     })
 
     return () => {
       cancelled = true
       if (frameId) window.cancelAnimationFrame(frameId)
     }
-  }, [getZoom, selectedNodeFocusState, setViewport])
+  }, [focusSignature, getViewport, getZoom, selectedNodeFocusState, setViewport])
 
   return (
     <div ref={canvasShellRef} style={{ width: '100%', height: '100%', position: 'relative' }}>
@@ -836,8 +915,6 @@ function CanvasInner() {
         onConnectEnd={onConnectEnd}
         onNodeDragStop={onNodeDragStop}
         nodesDraggable={false}
-        fitView
-        fitViewOptions={{ padding: 0.34, minZoom: 0.22, maxZoom: 1 }}
         proOptions={{ hideAttribution: true }}
         style={{ background: 'transparent' }}
         defaultEdgeOptions={{
