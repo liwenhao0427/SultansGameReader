@@ -465,6 +465,13 @@ function buildExecutionStepFromPhase(phase) {
   }
 }
 
+function shouldContinueAfterResult(phases, index, meaningfulResultCount) {
+  const nextPhase = phases[index + 1]
+  if (!nextPhase) return false
+  if (nextPhase.phaseKey !== 'settlement_extre') return false
+  return meaningfulResultCount < 2
+}
+
 function buildChoiceStepCompact(model, group) {
   return {
     id: `choice:${group.id}`,
@@ -727,6 +734,7 @@ export function buildExecutionFlow(model, context = {}) {
   }
 
   let isComplete = false
+  let meaningfulResultCount = 0
   let index = 0
 
   while (index < phases.length) {
@@ -785,6 +793,11 @@ export function buildExecutionFlow(model, context = {}) {
 
     steps.push(buildExecutionStepFromPhase(phase))
     if (hasMeaningfulResult(phase.raw?.result)) {
+      meaningfulResultCount += 1
+      if (shouldContinueAfterResult(phases, index, meaningfulResultCount)) {
+        index += 1
+        continue
+      }
       isComplete = true
       break
     }
