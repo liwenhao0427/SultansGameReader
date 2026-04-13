@@ -22,6 +22,17 @@ let Store;
 
 // 解析器模块（已完成，直接集成）
 const { CacheManager, resolveConfigDir } = require('./parser/cacheManager');
+const {
+  MOD_DIRECTORY_TYPE_MAP,
+  buildCacheEntryFromSource,
+  buildModDirectoryTreeLines,
+  isModDirectory,
+  listModsInRoot,
+  mergeCacheEntries,
+  readModInfo,
+  resolveModInfoPath,
+  resolveModSingleFileTarget,
+} = require('./parser/modImport');
 
 // ─── 常量 ─────────────────────────────────────────────────────────────────────
 
@@ -45,6 +56,15 @@ const WORKSPACE_ROOT = isDev
 protocol.registerSchemesAsPrivileged([
   {
     scheme: 'sultan-asset',
+    privileges: {
+      secure: true,
+      standard: true,
+      supportFetchAPI: true,
+      corsEnabled: true,
+    },
+  },
+  {
+    scheme: 'sultan-local',
     privileges: {
       secure: true,
       standard: true,
@@ -227,6 +247,240 @@ function readSingleAggregateFile(fileName) {
   }
 }
 
+function refreshDerivedCacheArtifacts() {
+  const cacheDir = getCacheDir();
+
+  try {
+    const singleDir = path.join(cacheDir, 'single');
+    ensureDir(singleDir);
+    const cardsPath = path.join(singleDir, 'cards.json');
+    if (fs.existsSync(cardsPath)) {
+      const cardsData = JSON.parse(fs.readFileSync(cardsPath, 'utf-8'));
+      const cardsLite = buildCardsLiteMap(cardsData);
+      fs.writeFileSync(
+        path.join(singleDir, 'cards_lite.json'),
+        JSON.stringify(cardsLite, null, 2),
+        'utf-8'
+      );
+    }
+  } catch (e) {
+    console.warn('生成 cards_lite.json 失败:', e.message);
+  }
+
+  try {
+    writePersistentJson('contentNameMap', buildPersistentContentNameMap());
+  } catch (e) {
+    console.warn('生成内容名称映射缓存失败:', e.message);
+  }
+}
+
+function tryReadJsonFile(filePath, fallbackValue = null) {
+  if (!filePath || !fs.existsSync(filePath)) return fallbackValue;
+  try {
+    return JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+  } catch {
+    return fallbackValue;
+  }
+}
+
+function walkFilesRecursively(rootDir, predicate = () => true) {
+  if (!rootDir || !fs.existsSync(rootDir)) return [];
+
+  const results = [];
+  const stack = [rootDir];
+
+  while (stack.length > 0) {
+    const currentDir = stack.pop();
+    for (const entry of fs.readdirSync(currentDir, { withFileTypes: true })) {
+      const fullPath = path.join(currentDir, entry.name);
+      if (entry.isDirectory()) {
+        stack.push(fullPath);
+        continue;
+      }
+      if (predicate(fullPath, entry)) {
+        results.push(fullPath);
+      }
+    }
+  }
+
+  return results;
+}
+
+function listExistingDriveRoots() {
+  const roots = [];
+  for (let code = 67; code <= 90; code += 1) {
+    const driveRoot = `${String.fromCharCode(code)}:\\`;
+    if (fs.existsSync(driveRoot)) {
+      roots.push(driveRoot);
+    }
+  }
+  return roots;
+}
+
+function detectSteamGamePath() {
+  const relativeGamePath = path.join('Steam', 'steamapps', 'common', "Sultan's Game");
+
+  for (const driveRoot of listExistingDriveRoots()) {
+    const candidate = path.join(driveRoot, relativeGamePath);
+    const exePath = path.join(candidate, "Sultan's Game.exe");
+    if (fs.existsSync(exePath)) {
+      return candidate;
+    }
+  }
+
+  return '';
+}
+
+function deriveModRootPathFromGamePath(gamePath) {
+  if (!gamePath) return '';
+
+  const normalizedPath = path.normalize(gamePath);
+  const pathParts = normalizedPath.split(path.sep).filter(Boolean);
+  const steamappsIndex = pathParts.findIndex((part) => part.toLowerCase() === 'steamapps');
+
+  if (steamappsIndex >= 0) {
+    const steamRootParts = pathParts.slice(0, steamappsIndex);
+    const steamRoot = normalizedPath.startsWith('\\\\')
+      ? `\\\\${steamRootParts.join(path.sep)}`
+      : `${steamRootParts.join(path.sep)}${path.sep}`;
+    const workshopPath = path.join(steamRoot, 'steamapps', 'workshop', 'content', '3117820');
+    if (fs.existsSync(workshopPath)) {
+      return workshopPath;
+    }
+  }
+
+  const parsed = path.parse(normalizedPath);
+  if (parsed.root) {
+    const fallbackWorkshopPath = path.join(parsed.root, 'Steam', 'steamapps', 'workshop', 'content', '3117820');
+    if (fs.existsSync(fallbackWorkshopPath)) {
+      return fallbackWorkshopPath;
+    }
+  }
+
+  return '';
+}
+
+function detectDefaultGameAndModPaths() {
+  const gamePath = detectSteamGamePath();
+  const modRootPath = deriveModRootPathFromGamePath(gamePath);
+
+  return {
+    gamePath,
+    modRootPath,
+  };
+}
+
+function importSingleModIntoCurrentData(modPath) {
+  const normalizedModPath = path.normalize(modPath);
+  if (!fs.existsSync(normalizedModPath) || !fs.statSync(normalizedModPath).isDirectory()) {
+    return { success: false, error: '选择的 Mod 路径无效' };
+  }
+  if (!isModDirectory(normalizedModPath)) {
+    return { success: false, error: '目标目录不是有效的 Mod 目录' };
+  }
+
+  const cacheDir = getCacheDir();
+  const resourceDir = getResourceDir();
+  ensureDir(cacheDir);
+  ensureDir(resourceDir);
+
+  const modConfigDir = path.join(normalizedModPath, 'config');
+  const modImageDir = path.join(normalizedModPath, 'image');
+  const info = readModInfo(normalizedModPath) || {};
+  const infoPath = resolveModInfoPath(normalizedModPath);
+  const hasConfig = fs.existsSync(modConfigDir) && fs.statSync(modConfigDir).isDirectory();
+  const hasImage = fs.existsSync(modImageDir) && fs.statSync(modImageDir).isDirectory();
+
+  if (!hasConfig && !hasImage) {
+    return { success: false, error: '未找到可导入内容，需至少包含 config 或 image 目录' };
+  }
+
+  const warnings = [];
+  const counts = {
+    cacheAdded: 0,
+    cacheReplaced: 0,
+    resourceAdded: 0,
+    resourceReplaced: 0,
+  };
+
+  if (!infoPath) {
+    warnings.push('未找到 Info.json，已按目录内容直接导入。');
+  }
+
+  if (hasConfig) {
+    for (const [dirName, type] of Object.entries(MOD_DIRECTORY_TYPE_MAP)) {
+      const sourceDir = path.join(modConfigDir, dirName);
+      if (!fs.existsSync(sourceDir) || !fs.statSync(sourceDir).isDirectory()) continue;
+
+      const jsonFiles = fs.readdirSync(sourceDir).filter((file) => file.toLowerCase().endsWith('.json'));
+      for (const fileName of jsonFiles) {
+        const sourcePath = path.join(sourceDir, fileName);
+        const rawSource = fs.readFileSync(sourcePath, 'utf-8');
+        const sourceStat = fs.statSync(sourcePath);
+        const cacheEntry = buildCacheEntryFromSource(sourcePath, rawSource, sourceStat.mtimeMs);
+        const targetPath = path.join(cacheDir, type, `${path.basename(fileName, '.json')}.json`);
+
+        ensureDir(path.dirname(targetPath));
+        const existed = fs.existsSync(targetPath);
+        fs.writeFileSync(targetPath, JSON.stringify(cacheEntry, null, 2), 'utf-8');
+        counts[existed ? 'cacheReplaced' : 'cacheAdded'] += 1;
+
+        if (cacheEntry._parse_error) {
+          warnings.push(`${dirName}/${fileName} 解析时有告警：${cacheEntry._parse_error}`);
+        }
+      }
+    }
+
+    const rootJsonFiles = fs.readdirSync(modConfigDir).filter((fileName) => fileName.toLowerCase().endsWith('.json'));
+    for (const fileName of rootJsonFiles) {
+      const sourcePath = path.join(modConfigDir, fileName);
+      if (!fs.statSync(sourcePath).isFile()) continue;
+
+      const rawSource = fs.readFileSync(sourcePath, 'utf-8');
+      const sourceStat = fs.statSync(sourcePath);
+      const incomingEntry = buildCacheEntryFromSource(sourcePath, rawSource, sourceStat.mtimeMs);
+      const target = resolveModSingleFileTarget(fileName);
+      const targetPath = path.join(cacheDir, target.type, `${target.id}.json`);
+
+      ensureDir(path.dirname(targetPath));
+      const existed = fs.existsSync(targetPath);
+      const existingEntry = existed ? tryReadJsonFile(targetPath, {}) : null;
+      const nextEntry = existed
+        ? mergeCacheEntries(existingEntry, incomingEntry)
+        : incomingEntry;
+
+      fs.writeFileSync(targetPath, JSON.stringify(nextEntry, null, 2), 'utf-8');
+      counts[existed ? 'cacheReplaced' : 'cacheAdded'] += 1;
+
+      if (incomingEntry._parse_error) {
+        warnings.push(`${fileName} 解析时有告警：${incomingEntry._parse_error}`);
+      }
+    }
+  }
+
+  if (hasImage) {
+    const textureDir = path.join(resourceDir, 'Texture2D');
+    ensureDir(textureDir);
+
+    const pngFiles = walkFilesRecursively(modImageDir, (filePath) => filePath.toLowerCase().endsWith('.png'));
+    for (const sourcePath of pngFiles) {
+      const fileName = path.basename(sourcePath);
+      const targetPath = path.join(textureDir, fileName);
+      const existed = fs.existsSync(targetPath);
+      fs.copyFileSync(sourcePath, targetPath);
+      counts[existed ? 'resourceReplaced' : 'resourceAdded'] += 1;
+    }
+  }
+
+  return {
+    success: true,
+    modName: info?.name || path.basename(normalizedModPath),
+    modPath: normalizedModPath,
+    counts,
+    warnings,
+  };
+}
+
 /** 判断聚合缓存对象中的 key 是否是实际条目 ID */
 function isAggregateEntryKey(key, value) {
   if (value == null || typeof value !== 'object' || Array.isArray(value)) return false;
@@ -381,6 +635,8 @@ async function initStore() {
         cliPath:     bundledCliPath,
         resourceDir: defaultResourceDir,
         cacheDir:    defaultCacheDir,
+        modRootPath: '',
+        modRootPathManual: false,
       },
     });
 
@@ -425,6 +681,8 @@ function createFallbackStore(defaultCacheDir, defaultResourceDir, bundledCliPath
     cliPath:     bundledCliPath,
     resourceDir: defaultResourceDir || path.join(app.getPath('userData'), 'resource'),
     cacheDir:    defaultCacheDir    || path.join(app.getPath('userData'), 'cache'),
+    modRootPath: '',
+    modRootPathManual: false,
   };
 
   // 读取已有数据
@@ -499,6 +757,19 @@ function registerAssetProtocol() {
     // 使用 net.fetch 返回本地文件流
     return net.fetch(`file://${fullPath}`);
   });
+
+  protocol.handle('sultan-local', (request) => {
+    try {
+      const requestUrl = new URL(request.url);
+      const targetPath = decodeURIComponent(requestUrl.searchParams.get('path') || '');
+      if (!targetPath || !fs.existsSync(targetPath)) {
+        return new Response('本地文件不存在', { status: 404 });
+      }
+      return net.fetch(pathToFileURL(targetPath).toString());
+    } catch {
+      return new Response('本地文件路径无效', { status: 400 });
+    }
+  });
 }
 
 // ─── 工具函数 ─────────────────────────────────────────────────────────────────
@@ -531,7 +802,12 @@ ipcMain.handle('config:setGameDir', async (_event, gamePath) => {
     return { success: false, configDir: null, error: `路径无效：找不到 ${configDir}` };
   }
   settings.set('gamePath', gamePath);
-  return { success: true, configDir };
+  const detectedModRootPath = deriveModRootPathFromGamePath(gamePath);
+  return { success: true, configDir, suggestedModRootPath: detectedModRootPath || '' };
+});
+
+ipcMain.handle('config:detectDefaultPaths', async () => {
+  return detectDefaultGameAndModPaths();
 });
 
 /**
@@ -571,29 +847,7 @@ ipcMain.handle('config:rebuildCache', async (event) => {
     });
   });
 
-  // 生成 cards_lite.json（id → name 精简映射，供前端 conditionParser 使用）
-  try {
-    const singleDir = path.join(cacheDir, 'single');
-    ensureDir(singleDir);
-    const cardsPath = path.join(singleDir, 'cards.json');
-    if (fs.existsSync(cardsPath)) {
-      const cardsData = JSON.parse(fs.readFileSync(cardsPath, 'utf-8'));
-      const cardsLite = buildCardsLiteMap(cardsData);
-      fs.writeFileSync(
-        path.join(singleDir, 'cards_lite.json'),
-        JSON.stringify(cardsLite, null, 2),
-        'utf-8'
-      );
-    }
-  } catch (e) {
-    console.warn('生成 cards_lite.json 失败:', e.message);
-  }
-
-  try {
-    writePersistentJson('contentNameMap', buildPersistentContentNameMap());
-  } catch (e) {
-    console.warn('生成内容名称映射缓存失败:', e.message);
-  }
+  refreshDerivedCacheArtifacts();
 
   // 统计总处理文件数
   let total = 0;
@@ -606,6 +860,104 @@ ipcMain.handle('config:rebuildCache', async (event) => {
     total,
     errors: errors.map(e => (typeof e === 'string' ? e : `${e.id}: ${e.error}`)),
   };
+});
+
+ipcMain.handle('config:listMods', async (_event, rootPath) => {
+  if (!rootPath || typeof rootPath !== 'string') return [];
+  return listModsInRoot(path.normalize(rootPath)).map((mod) => ({
+    ...mod,
+    previewUrl: mod.previewPath ? `sultan-local://preview?path=${encodeURIComponent(mod.previewPath)}` : null,
+  }));
+});
+
+ipcMain.handle('config:getModDetail', async (_event, modPath) => {
+  if (!modPath || typeof modPath !== 'string') {
+    return { success: false, error: 'Mod 路径为空' };
+  }
+
+  const normalizedPath = path.normalize(modPath);
+  if (!fs.existsSync(normalizedPath) || !fs.statSync(normalizedPath).isDirectory()) {
+    return { success: false, error: 'Mod 目录不存在' };
+  }
+
+  const mod = listModsInRoot(normalizedPath).find((item) => path.normalize(item.path) === normalizedPath)
+    || listModsInRoot(path.dirname(normalizedPath)).find((item) => path.normalize(item.path) === normalizedPath);
+
+  if (!mod) {
+    return { success: false, error: '未识别为有效的 Mod 目录' };
+  }
+
+  return {
+    success: true,
+    detail: {
+      ...mod,
+      previewUrl: mod.previewPath ? `sultan-local://preview?path=${encodeURIComponent(mod.previewPath)}` : null,
+      structureLines: buildModDirectoryTreeLines(normalizedPath),
+    },
+  };
+});
+
+ipcMain.handle('config:importMod', async (_event, modPath) => {
+  if (!modPath || typeof modPath !== 'string') {
+    return { success: false, error: 'Mod 路径为空' };
+  }
+
+  const result = importSingleModIntoCurrentData(modPath);
+  if (result.success) {
+    refreshDerivedCacheArtifacts();
+  }
+  return result;
+});
+
+ipcMain.handle('config:importMods', async (_event, modPaths = []) => {
+  if (!Array.isArray(modPaths) || modPaths.length === 0) {
+    return { success: false, error: '未选择要导入的 Mod' };
+  }
+
+  const summary = {
+    success: true,
+    imported: [],
+    failed: [],
+    counts: {
+      cacheAdded: 0,
+      cacheReplaced: 0,
+      resourceAdded: 0,
+      resourceReplaced: 0,
+    },
+    warnings: [],
+  };
+
+  for (const modPath of modPaths) {
+    const result = importSingleModIntoCurrentData(modPath);
+    if (!result.success) {
+      summary.failed.push({
+        modPath,
+        error: result.error || '未知错误',
+      });
+      continue;
+    }
+
+    summary.imported.push(result);
+    summary.counts.cacheAdded += result.counts.cacheAdded || 0;
+    summary.counts.cacheReplaced += result.counts.cacheReplaced || 0;
+    summary.counts.resourceAdded += result.counts.resourceAdded || 0;
+    summary.counts.resourceReplaced += result.counts.resourceReplaced || 0;
+    summary.warnings.push(...(result.warnings || []).map((warning) => `${result.modName}：${warning}`));
+  }
+
+  if (summary.imported.length > 0) {
+    refreshDerivedCacheArtifacts();
+  }
+
+  if (summary.imported.length === 0) {
+    return {
+      success: false,
+      error: summary.failed[0]?.error || '没有可导入的 Mod',
+      failed: summary.failed,
+    };
+  }
+
+  return summary;
 });
 
 /**

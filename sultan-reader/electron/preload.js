@@ -16,6 +16,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   configSetGameDir: (gamePath) =>
     ipcRenderer.invoke('config:setGameDir', gamePath),
 
+  configDetectDefaultPaths: () =>
+    ipcRenderer.invoke('config:detectDefaultPaths'),
+
   /**
    * 重建缓存，支持可选进度回调
    * @param {(current: number, total: number, id: string) => void} [onProgress]
@@ -59,6 +62,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   configGetContentNameMap: (forceRefresh = false) =>
     ipcRenderer.invoke('config:getContentNameMap', forceRefresh),
+
+  configListMods: (rootPath) =>
+    ipcRenderer.invoke('config:listMods', rootPath),
+
+  configGetModDetail: (modPath) =>
+    ipcRenderer.invoke('config:getModDetail', modPath),
+
+  configImportMod: (modPath) =>
+    ipcRenderer.invoke('config:importMod', modPath),
+
+  configImportMods: (modPaths) =>
+    ipcRenderer.invoke('config:importMods', modPaths),
 
   // ── asset: 组 ───────────────────────────────────────────────────────────────
 

@@ -19,7 +19,7 @@
 const { stripComments } = require('./commentStripper');
 
 // 解析器版本号，用于缓存失效判断（修改解析逻辑时需同步更新此版本号）
-const PARSER_VERSION = "1.0.0";
+const PARSER_VERSION = "1.1.0";
 
 const ARRAY_MERGE_KEYS = new Set([
   'rite', 'event_on', 'rite_end', 'card', 'loot', 'choose',
@@ -116,6 +116,18 @@ function tokenParseWithComments(str, comments) {
     if (ch === 'n') return parseLiteral('null', null);
     if (ch === '-' || (ch >= '0' && ch <= '9')) return parseNumber();
     throw new Error(`Unexpected char '${ch}' at pos ${pos}, line ${currentLine}`);
+  }
+
+  function isValueStartChar(ch) {
+    if (!ch) return false;
+    return ch === '{'
+      || ch === '['
+      || ch === '"'
+      || ch === '-'
+      || ch === 't'
+      || ch === 'f'
+      || ch === 'n'
+      || (ch >= '0' && ch <= '9');
   }
 
   function parseLiteral(word, value) {
@@ -227,6 +239,9 @@ function tokenParseWithComments(str, comments) {
         advance();
         skipWhitespace();
         if (str[pos] === ']') { advance(); return { value: arr, itemComments: scalarComments }; }
+      } else if (isValueStartChar(str[pos])) {
+        // 宽松模式：部分 Mod 文件会漏写数组元素之间的逗号，这里降级兼容。
+        continue;
       } else if (str[pos] === ']') {
         advance();
         return { value: arr, itemComments: scalarComments };
@@ -294,6 +309,9 @@ function tokenParseWithComments(str, comments) {
         advance();
         skipWhitespace();
         if (str[pos] === '}') { advance(); break; }
+      } else if (str[pos] === '"') {
+        // 宽松模式：部分 Mod 文件会漏写对象字段之间的逗号，这里降级兼容。
+        continue;
       } else if (str[pos] === '}') {
         advance(); break;
       } else {

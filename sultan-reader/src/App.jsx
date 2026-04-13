@@ -17,7 +17,22 @@ export default function App() {
   useEffect(() => {
     async function decideEntry() {
       try {
-        const gamePath = await window.electronAPI.settingsGet('gamePath')
+        let gamePath = await window.electronAPI.settingsGet('gamePath')
+        if (!gamePath) {
+          const detected = await window.electronAPI.configDetectDefaultPaths?.()
+          if (detected?.gamePath) {
+            const result = await window.electronAPI.configSetGameDir(detected.gamePath)
+            if (result?.success) {
+              gamePath = detected.gamePath
+              await window.electronAPI.settingsSet('gamePath', detected.gamePath)
+              if (result?.suggestedModRootPath || detected.modRootPath) {
+                await window.electronAPI.settingsSet('modRootPath', result?.suggestedModRootPath || detected.modRootPath)
+                await window.electronAPI.settingsSet('modRootPathManual', false)
+              }
+            }
+          }
+        }
+
         if (!gamePath) {
           setPage('settings')
         }

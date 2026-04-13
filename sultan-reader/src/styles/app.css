@@ -67,3 +67,59 @@ button {
   overflow: hidden;
   box-shadow: 0 12px 24px rgba(0, 0, 0, 0.22);
 }
+
+.mod-pagination {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mod-pagination .rc-pagination-item,
+.mod-pagination .rc-pagination-prev,
+.mod-pagination .rc-pagination-next,
+.mod-pagination .rc-pagination-jump-prev,
+.mod-pagination .rc-pagination-jump-next {
+  min-width: 36px;
+  height: 36px;
+  margin: 0;
+  border: 1px solid #45475a;
+  border-radius: 8px;
+  background: #181825;
+  color: #cdd6f4;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 120ms ease, background 120ms ease, color 120ms ease;
+}
+
+.mod-pagination .rc-pagination-item a,
+.mod-pagination .rc-pagination-prev button,
+.mod-pagination .rc-pagination-next button {
+  color: inherit;
+}
+
+.mod-pagination .rc-pagination-item:hover,
+.mod-pagination .rc-pagination-prev:hover,
+.mod-pagination .rc-pagination-next:hover {
+  border-color: #89b4fa;
+  background: #1f2235;
+  color: #f5f7ff;
+}
+
+.mod-pagination .rc-pagination-item-active {
+  border-color: #94e2d5;
+  background: #1d3a3a;
+  color: #94e2d5;
+}
+
+.mod-pagination .rc-pagination-disabled,
+.mod-pagination .rc-pagination-disabled:hover {
+  opacity: 0.45;
+  cursor: not-allowed;
+  border-color: #313244;
+  background: #141622;
+  color: #6c7086;
+}

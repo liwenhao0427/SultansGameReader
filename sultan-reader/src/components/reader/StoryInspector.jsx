@@ -989,7 +989,10 @@ export default function StoryInspector({ type, data, onClose }) {
   const contentStates = useReadingStateStore((state) => state.contentStates)
   const toggleRead = useReadingStateStore((state) => state.toggleRead)
   const toggleFavorite = useReadingStateStore((state) => state.toggleFavorite)
-  const model = adaptStoryData(type, data, cardsLite, cardsById)
+  const model = useMemo(
+    () => adaptStoryData(type, data, cardsLite, cardsById),
+    [type, data, cardsLite, cardsById]
+  )
   const [templateData, setTemplateData] = useState(null)
   const [rawContent, setRawContent] = useState(null)
   const { url: headerIconUrl } = useResolvedImage(model?.headerIcon)
