@@ -1393,6 +1393,37 @@ ipcMain.handle('file:pickPath', async (_event, options = {}) => {
   return result.filePaths[0];
 });
 
+ipcMain.handle('file:pickSavePath', async (_event, options = {}) => {
+  const {
+    title = '保存文件',
+    defaultPath = '',
+    filters = [],
+  } = options || {};
+
+  const result = await dialog.showSaveDialog(mainWindow, {
+    title,
+    defaultPath: defaultPath || undefined,
+    filters,
+  });
+
+  if (result.canceled || !result.filePath) return null;
+  return result.filePath;
+});
+
+ipcMain.handle('file:writeUtf8', async (_event, filePath, content) => {
+  if (!filePath || typeof filePath !== 'string') {
+    return { success: false, error: '保存路径无效' };
+  }
+
+  try {
+    ensureDir(path.dirname(filePath));
+    fs.writeFileSync(filePath, String(content ?? ''), 'utf-8');
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
 ipcMain.handle('file:openFolder', async (_event, targetPath) => {
   if (!targetPath) return { success: false, error: '路径为空' };
 

@@ -116,6 +116,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   filePickPath: (options) =>
     ipcRenderer.invoke('file:pickPath', options),
 
+  filePickSavePath: (options) =>
+    ipcRenderer.invoke('file:pickSavePath', options),
+
+  fileWriteUtf8: (filePath, content) =>
+    ipcRenderer.invoke('file:writeUtf8', filePath, content),
+
   fileOpenFolder: (targetPath) =>
     ipcRenderer.invoke('file:openFolder', targetPath),
 

@@ -26,7 +26,9 @@ const TYPE_TABS = [
 ]
 
 const PAGE_SIZE = 18
-const CANVAS_SNAPSHOT_STORAGE_KEY = 'canvasSnapshot'
+const GRAPH_FILE_FILTERS = [
+  { name: '节点图存档', extensions: ['json'] },
+]
 
 function chunkSummary(entry) {
   return entry.name || entry.title || entry.text || entry.id
@@ -102,9 +104,8 @@ export default function MainLayout({ onNavigate }) {
   const [currentPage, setCurrentPage] = useState(1)
   const [loadingItems, setLoadingItems] = useState(false)
   const [bootstrapped, setBootstrapped] = useState(false)
-  const [savingSnapshot, setSavingSnapshot] = useState(false)
-  const [loadingSnapshot, setLoadingSnapshot] = useState(false)
-  const [hasSavedSnapshot, setHasSavedSnapshot] = useState(false)
+  const [exportingGraph, setExportingGraph] = useState(false)
+  const [importingGraph, setImportingGraph] = useState(false)
 
   useEffect(() => {
     initialize()
@@ -138,29 +139,6 @@ export default function MainLayout({ onNavigate }) {
   useEffect(() => {
     setCurrentPage(1)
   }, [filterText, activeStateFilter])
-
-  useEffect(() => {
-    let cancelled = false
-
-    async function checkSavedSnapshot() {
-      try {
-        const snapshot = await window.electronAPI.storageGetJson?.(CANVAS_SNAPSHOT_STORAGE_KEY)
-        if (!cancelled) {
-          setHasSavedSnapshot(Boolean(snapshot?.nodes?.length))
-        }
-      } catch {
-        if (!cancelled) {
-          setHasSavedSnapshot(false)
-        }
-      }
-    }
-
-    void checkSavedSnapshot()
-
-    return () => {
-      cancelled = true
-    }
-  }, [])
 
   useEffect(() => {
     if (!isLoaded || bootstrapped || nodeIdSet.size > 0) return
@@ -216,48 +194,96 @@ export default function MainLayout({ onNavigate }) {
     return filteredItems.slice(start, start + PAGE_SIZE)
   }, [currentPage, filteredItems])
 
-  async function handleSaveCanvasSnapshot() {
-    if (nodes.length === 0 || savingSnapshot) return
+  async function handleExportCanvasGraph() {
+    if (nodes.length === 0 || exportingGraph) return
 
-    setSavingSnapshot(true)
+    setExportingGraph(true)
     try {
-      await window.electronAPI.storageSetJson?.(CANVAS_SNAPSHOT_STORAGE_KEY, {
+      const savePath = await window.electronAPI.filePickSavePath?.({
+        title: '导出节点图',
+        defaultPath: '节点图存档.json',
+        filters: GRAPH_FILE_FILTERS,
+      })
+      if (!savePath) return
+
+      const payload = {
         version: 1,
-        savedAt: new Date().toISOString(),
+        exportedAt: new Date().toISOString(),
         selectedNodeId,
         selectedOpenMode,
         nodes,
         edges,
-      })
-      setHasSavedSnapshot(true)
+      }
+
+      const result = await window.electronAPI.fileWriteUtf8?.(
+        savePath,
+        JSON.stringify(payload, null, 2)
+      )
+
+      if (!result?.success) {
+        throw new Error(result?.error || '写入文件失败')
+      }
     } catch (error) {
-      alert(`保存节点图失败：${error?.message || '未知错误'}`)
+      alert(`导出节点图失败：${error?.message || '未知错误'}`)
     } finally {
-      setSavingSnapshot(false)
+      setExportingGraph(false)
     }
   }
 
-  async function handleLoadCanvasSnapshot() {
-    if (loadingSnapshot) return
+  async function handleImportCanvasGraph() {
+    if (importingGraph) return
 
-    setLoadingSnapshot(true)
+    setImportingGraph(true)
     try {
-      const snapshot = await window.electronAPI.storageGetJson?.(CANVAS_SNAPSHOT_STORAGE_KEY)
-      if (!snapshot?.nodes?.length) {
-        alert('还没有已保存的节点图。')
-        setHasSavedSnapshot(false)
-        return
+      const filePath = await window.electronAPI.filePickPath?.({
+        kind: 'file',
+        title: '导入节点图',
+        filters: GRAPH_FILE_FILTERS,
+      })
+      if (!filePath) return
+
+      const raw = await window.electronAPI.fileReadRaw?.(filePath)
+      const snapshot = JSON.parse(raw)
+
+      if (!Array.isArray(snapshot?.nodes) || snapshot.nodes.length === 0) {
+        throw new Error('文件中没有可导入的节点数据')
       }
 
-      replaceCanvas(snapshot.nodes, snapshot.edges || [], {
-        selectedNodeId: snapshot.selectedNodeId || null,
+      if (!Array.isArray(snapshot?.edges)) {
+        throw new Error('文件格式无效，缺少边数据')
+      }
+
+      const normalizedNodes = snapshot.nodes
+        .filter((node) => node && typeof node === 'object' && node.id && node.type && node.position)
+        .map((node) => ({
+          ...node,
+          position: {
+            x: Number(node.position?.x) || 0,
+            y: Number(node.position?.y) || 0,
+          },
+        }))
+
+      if (normalizedNodes.length === 0) {
+        throw new Error('文件中的节点数据无效')
+      }
+
+      const validNodeIds = new Set(normalizedNodes.map((node) => node.id))
+      const normalizedEdges = snapshot.edges.filter((edge) => (
+        edge
+        && typeof edge === 'object'
+        && edge.id
+        && validNodeIds.has(edge.source)
+        && validNodeIds.has(edge.target)
+      ))
+
+      replaceCanvas(normalizedNodes, normalizedEdges, {
+        selectedNodeId: validNodeIds.has(snapshot.selectedNodeId) ? snapshot.selectedNodeId : null,
         selectedOpenMode: snapshot.selectedOpenMode || 'panel',
       })
-      setHasSavedSnapshot(true)
     } catch (error) {
-      alert(`载入节点图失败：${error?.message || '未知错误'}`)
+      alert(`导入节点图失败：${error?.message || '未知错误'}`)
     } finally {
-      setLoadingSnapshot(false)
+      setImportingGraph(false)
     }
   }
 
@@ -278,23 +304,20 @@ export default function MainLayout({ onNavigate }) {
               ...secondaryActionStyle,
               ...(nodes.length > 0 ? null : disabledActionStyle),
             }}
-            onClick={handleSaveCanvasSnapshot}
-            disabled={nodes.length === 0 || savingSnapshot}
-            title={nodes.length > 0 ? '保存当前画布上的所有节点与连线，供下次载入' : '当前画布为空，无法保存'}
+            onClick={handleExportCanvasGraph}
+            disabled={nodes.length === 0 || exportingGraph}
+            title={nodes.length > 0 ? '把当前画布导出为 JSON 节点图文件' : '当前画布为空，无法导出'}
           >
-            {savingSnapshot ? '保存中…' : '保存节点图'}
+            {exportingGraph ? '导出中…' : '导出节点图'}
           </button>
           <button
             type="button"
-            style={{
-              ...secondaryActionStyle,
-              ...(hasSavedSnapshot ? null : disabledActionStyle),
-            }}
-            onClick={handleLoadCanvasSnapshot}
-            disabled={!hasSavedSnapshot || loadingSnapshot}
-            title={hasSavedSnapshot ? '载入上次保存的节点图存档' : '当前没有可载入的节点图存档'}
+            style={secondaryActionStyle}
+            onClick={handleImportCanvasGraph}
+            disabled={importingGraph}
+            title="从 JSON 节点图文件导入当前画布"
           >
-            {loadingSnapshot ? '载入中…' : '载入节点图'}
+            {importingGraph ? '导入中…' : '导入节点图'}
           </button>
           <button
             type="button"
