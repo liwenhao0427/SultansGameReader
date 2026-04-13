@@ -1039,8 +1039,25 @@ export default function SettingsPage({ onNavigate }) {
             </div>
           )}
 
-          {totalModPages > 1 && (
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 14 }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 12,
+              flexWrap: 'wrap',
+            }}
+          >
+            <button
+              type="button"
+              style={{ ...btnStyle, background: importingMod ? '#45475a' : '#94e2d5', color: '#1e1e2e' }}
+              onClick={handleImportMod}
+              disabled={importingMod || selectedModPaths.length === 0}
+            >
+              {importingMod ? '读取中…' : `读取勾选的 Mod 到缓存与资源${selectedModPaths.length > 0 ? `（${selectedModPaths.length}）` : ''}`}
+            </button>
+
+            {totalModPages > 1 && (
               <Pagination
                 className="mod-pagination"
                 current={Math.min(modPage, totalModPages)}
@@ -1050,18 +1067,7 @@ export default function SettingsPage({ onNavigate }) {
                 showLessItems
                 onChange={(page) => setModPage(page)}
               />
-            </div>
-          )}
-
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            <button
-              type="button"
-              style={{ ...btnStyle, background: importingMod ? '#45475a' : '#94e2d5', color: '#1e1e2e' }}
-              onClick={handleImportMod}
-              disabled={importingMod || selectedModPaths.length === 0}
-            >
-              {importingMod ? '读取中…' : `读取勾选的 Mod 到缓存与资源${selectedModPaths.length > 0 ? `（${selectedModPaths.length}）` : ''}`}
-            </button>
+            )}
           </div>
 
           {modImportResult && (

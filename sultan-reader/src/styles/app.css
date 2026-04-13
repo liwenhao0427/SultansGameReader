@@ -97,13 +97,21 @@ button {
 
 .mod-pagination .rc-pagination-item a,
 .mod-pagination .rc-pagination-prev button,
-.mod-pagination .rc-pagination-next button {
+.mod-pagination .rc-pagination-next button,
+.mod-pagination .rc-pagination-jump-prev button,
+.mod-pagination .rc-pagination-jump-next button,
+.mod-pagination .rc-pagination-prev .rc-pagination-item-link,
+.mod-pagination .rc-pagination-next .rc-pagination-item-link {
   color: inherit;
+  background: transparent;
+  border: none;
 }
 
 .mod-pagination .rc-pagination-item:hover,
 .mod-pagination .rc-pagination-prev:hover,
-.mod-pagination .rc-pagination-next:hover {
+.mod-pagination .rc-pagination-next:hover,
+.mod-pagination .rc-pagination-jump-prev:hover,
+.mod-pagination .rc-pagination-jump-next:hover {
   border-color: #89b4fa;
   background: #1f2235;
   color: #f5f7ff;
@@ -115,6 +123,27 @@ button {
   color: #94e2d5;
 }
 
+.mod-pagination .rc-pagination-item-active a {
+  color: inherit;
+}
+
+.mod-pagination .rc-pagination-prev .rc-pagination-item-link,
+.mod-pagination .rc-pagination-next .rc-pagination-item-link {
+  background: transparent;
+  border: none;
+}
+
+.mod-pagination .rc-pagination-prev:hover .rc-pagination-item-link,
+.mod-pagination .rc-pagination-next:hover .rc-pagination-item-link {
+  color: inherit;
+  border: none;
+}
+
+.mod-pagination .rc-pagination-jump-prev button:after,
+.mod-pagination .rc-pagination-jump-next button:after {
+  color: inherit;
+}
+
 .mod-pagination .rc-pagination-disabled,
 .mod-pagination .rc-pagination-disabled:hover {
   opacity: 0.45;
@@ -122,4 +151,13 @@ button {
   border-color: #313244;
   background: #141622;
   color: #6c7086;
+}
+
+.mod-pagination .rc-pagination-disabled .rc-pagination-item-link,
+.mod-pagination .rc-pagination-disabled:hover .rc-pagination-item-link,
+.mod-pagination .rc-pagination-disabled button,
+.mod-pagination .rc-pagination-disabled:hover button {
+  color: inherit;
+  background: transparent;
+  border: none;
 }
