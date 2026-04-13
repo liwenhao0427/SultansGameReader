@@ -8,7 +8,7 @@ import useReadingStateStore, {
 } from '../stores/useReadingStateStore'
 import Canvas from './Canvas'
 import DetailPanel from './DetailPanel'
-import { mountNodeOnCanvas } from '../services/graphNavigation'
+import { mountNodeOnCanvas, replaceCanvasWithFullGraph } from '../services/graphNavigation'
 import { useResolvedImage } from '../services/imageResolver'
 import { getCardRarityFrameAsset } from '../resourceConfig'
 import { getContentTypeLabel } from '../constants/gameTerminology'
@@ -85,7 +85,9 @@ export default function MainLayout({ onNavigate }) {
   const indexStats = useConfigStore((state) => state.indexStats)
   const cardsById = useConfigStore((state) => state.cardsById)
   const nodeIdSet = useCanvasStore((state) => state.nodeIdSet)
+  const nodes = useCanvasStore((state) => state.nodes)
   const clearCanvas = useCanvasStore((state) => state.clearCanvas)
+  const selectedNodeId = useCanvasStore((state) => state.selectedNodeId)
   const contentStates = useReadingStateStore((state) => state.contentStates)
   const toggleRead = useReadingStateStore((state) => state.toggleRead)
 
@@ -96,6 +98,7 @@ export default function MainLayout({ onNavigate }) {
   const [currentPage, setCurrentPage] = useState(1)
   const [loadingItems, setLoadingItems] = useState(false)
   const [bootstrapped, setBootstrapped] = useState(false)
+  const [exportingGraph, setExportingGraph] = useState(false)
 
   useEffect(() => {
     initialize()
@@ -184,6 +187,31 @@ export default function MainLayout({ onNavigate }) {
     return filteredItems.slice(start, start + PAGE_SIZE)
   }, [currentPage, filteredItems])
 
+  const selectedCanvasNode = useMemo(
+    () => nodes.find((node) => node.id === selectedNodeId) || null,
+    [nodes, selectedNodeId]
+  )
+
+  async function handleExportCurrentNodeGraph() {
+    if (!selectedCanvasNode || exportingGraph) return
+
+    setExportingGraph(true)
+    try {
+      const colonIndex = selectedCanvasNode.id.indexOf(':')
+      const type = selectedCanvasNode.id.slice(0, colonIndex)
+      const id = selectedCanvasNode.id.slice(colonIndex + 1)
+      await replaceCanvasWithFullGraph({
+        id,
+        type,
+        name: selectedCanvasNode.data?.label || '',
+      })
+    } catch (error) {
+      alert(`导出节点图失败：${error?.message || '未知错误'}`)
+    } finally {
+      setExportingGraph(false)
+    }
+  }
+
   if (!isLoaded) {
     return <div style={loadingScreenStyle}>正在整理剧情索引与阅读资源…</div>
   }
@@ -194,7 +222,19 @@ export default function MainLayout({ onNavigate }) {
         <div>
           <div style={titleStyle}>{APP_TITLE_WITH_VERSION}</div>
         </div>
-        <div style={{ display: 'flex', gap: 10 }}>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          <button
+            type="button"
+            style={{
+              ...secondaryActionStyle,
+              ...(selectedCanvasNode ? null : disabledActionStyle),
+            }}
+            onClick={handleExportCurrentNodeGraph}
+            disabled={!selectedCanvasNode || exportingGraph}
+            title={selectedCanvasNode ? '清空当前画布，并用当前选中节点重建完整节点图' : '请先在节点图中选中一个节点'}
+          >
+            {exportingGraph ? '导出中…' : '导出节点图'}
+          </button>
           <button
             type="button"
             style={secondaryActionStyle}
@@ -413,6 +453,11 @@ const secondaryActionStyle = {
   background: 'rgba(212, 184, 126, 0.08)',
   color: '#f1e8d5',
   cursor: 'pointer',
+}
+
+const disabledActionStyle = {
+  opacity: 0.48,
+  cursor: 'not-allowed',
 }
 
 const workspaceStyle = {

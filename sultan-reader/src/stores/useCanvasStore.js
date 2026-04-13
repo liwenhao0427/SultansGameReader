@@ -73,6 +73,27 @@ const useCanvasStore = create((set, get) => ({
   },
 
   /**
+   * 整体替换画布内容
+   * @param {Array} nodes
+   * @param {Array} edges
+   * @param {{ selectedNodeId?: string|null, selectedOpenMode?: 'panel'|'fullscreen' }} options
+   */
+  replaceCanvas: (nodes, edges, options = {}) => {
+    const {
+      selectedNodeId = null,
+      selectedOpenMode = 'panel',
+    } = options;
+
+    set({
+      nodes,
+      edges,
+      nodeIdSet: new Set(nodes.map((node) => node.id)),
+      selectedNodeId,
+      selectedOpenMode,
+    });
+  },
+
+  /**
    * 设置当前选中节点
    * @param {string | null} id - 节点 ID（"{type}:{id}" 格式）
    * @param {'panel'|'fullscreen'} openMode - 打开模式，默认 'panel'
