@@ -17,7 +17,7 @@ const useCanvasStore = create((set, get) => ({
   // 当前选中节点 ID
   selectedNodeId: null,
 
-  // 打开模式：'panel'（右侧面板）或 'fullscreen'（全屏阅读器）
+  // 打开模式：'panel'（右侧面板）、'fullscreen'（全屏阅读器）或 'canvas'（仅在画布中保持聚焦）
   selectedOpenMode: 'panel',
 
   /**
@@ -96,7 +96,7 @@ const useCanvasStore = create((set, get) => ({
   /**
    * 设置当前选中节点
    * @param {string | null} id - 节点 ID（"{type}:{id}" 格式）
-   * @param {'panel'|'fullscreen'} openMode - 打开模式，默认 'panel'
+   * @param {'panel'|'fullscreen'|'canvas'} openMode - 打开模式，默认 'panel'
    */
   setSelectedNode: (id, openMode = 'panel') => {
     set({ selectedNodeId: id, selectedOpenMode: openMode });

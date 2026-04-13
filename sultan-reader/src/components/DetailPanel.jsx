@@ -91,12 +91,18 @@ export default function DetailPanel() {
   const type = colonIdx !== -1 ? selectedNodeId.slice(0, colonIdx) : ''
   const id = colonIdx !== -1 ? selectedNodeId.slice(colonIdx + 1) : ''
   const entryState = getContentState(contentStates, type, id)
+  const handleCloseToCanvas = () => {
+    if (!selectedNodeId) return
+    setSelectedNode(selectedNodeId, 'canvas')
+  }
 
   if (!selectedNodeId) return null
 
+  if (selectedOpenMode === 'canvas') return null
+
   if (FULLSCREEN_TYPES.has(type) && selectedOpenMode === 'fullscreen') {
     return !loading && !error && data
-      ? <StoryInspector type={type} data={data} onClose={() => setSelectedNode(null)} />
+      ? <StoryInspector type={type} data={data} onClose={handleCloseToCanvas} />
       : null
   }
 
@@ -144,7 +150,7 @@ export default function DetailPanel() {
               {data?._source_path && (
                 <button type="button" onClick={handleViewRaw} style={actionButtonStyle}>查看原文件</button>
               )}
-              <button type="button" onClick={() => setSelectedNode(null)} style={actionButtonStyle}>关闭</button>
+              <button type="button" onClick={handleCloseToCanvas} style={actionButtonStyle}>关闭</button>
             </div>
           </div>
           {renderDetail(type, data)}

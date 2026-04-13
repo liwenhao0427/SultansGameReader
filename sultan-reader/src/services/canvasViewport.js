@@ -28,9 +28,12 @@ export function buildFocusViewport({
   nodePosition,
   nodeSize,
   zoom,
+  minZoom = 0,
 }) {
   const visibleRect = getVisibleCanvasRect(canvasRect, overlayRect)
   if (!visibleRect) return null
+
+  const safeZoom = Math.max(minZoom, zoom || 0)
 
   const focusX = nodePosition.x + nodeSize.width / 2
   const focusY = nodePosition.y + nodeSize.height / 2
@@ -38,8 +41,8 @@ export function buildFocusViewport({
   const targetScreenY = (visibleRect.top + visibleRect.bottom) / 2 - canvasRect.top
 
   return {
-    x: targetScreenX - focusX * zoom,
-    y: targetScreenY - focusY * zoom,
-    zoom,
+    x: targetScreenX - focusX * safeZoom,
+    y: targetScreenY - focusY * safeZoom,
+    zoom: safeZoom,
   }
 }

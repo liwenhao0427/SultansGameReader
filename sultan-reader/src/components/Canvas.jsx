@@ -45,7 +45,8 @@ const TREE_ROOT_X = 348
 const TREE_START_Y = 56
 const ISOLATED_NODE_GAP_Y = 52
 const TREE_COMPONENT_GAP_Y = 112
-const FIT_VIEW_OPTIONS = { padding: 0.34, minZoom: 0.22, maxZoom: 1 }
+const CANVAS_MIN_ZOOM = 0.42
+const FIT_VIEW_OPTIONS = { padding: 0.24, minZoom: CANVAS_MIN_ZOOM, maxZoom: 1 }
 const VIEWPORT_EPSILON = 0.5
 
 function getNodeLayoutSize(node) {
@@ -875,6 +876,7 @@ function CanvasInner() {
         nodePosition: selectedNodeFocusState.position,
         nodeSize: selectedNodeFocusState.size,
         zoom: getZoom(),
+        minZoom: CANVAS_MIN_ZOOM,
       })
 
       if (!viewport) return
@@ -917,6 +919,8 @@ function CanvasInner() {
         nodesDraggable={false}
         proOptions={{ hideAttribution: true }}
         style={{ background: 'transparent' }}
+        minZoom={CANVAS_MIN_ZOOM}
+        maxZoom={1}
         defaultEdgeOptions={{
           type: 'smoothstep',
           animated: false,
