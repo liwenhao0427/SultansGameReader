@@ -6,6 +6,7 @@ import { APP_TITLE_WITH_VERSION } from '../appMeta'
 import donateSupportImage from '../assets/donate-support.jpeg'
 
 const GITHUB_REPOSITORY_URL = 'https://github.com/liwenhao0427/SultansGameReader'
+const FEEDBACK_FORM_URL = 'https://my.feishu.cn/share/base/form/shrcnp7DwNEd9p92x3PVLLPdXFg'
 const MOD_TAG_LABELS = {
   'Alternative Storyline': '剧情',
   'Numerical Tuning': '数值修改',
@@ -214,6 +215,12 @@ export default function SettingsPage({ onNavigate }) {
 
   function handleOpenGithub() {
     window.electronAPI?.appOpenExternal?.(GITHUB_REPOSITORY_URL)
+      || window.open(GITHUB_REPOSITORY_URL, '_blank', 'noopener,noreferrer')
+  }
+
+  function handleOpenFeedback() {
+    window.electronAPI?.appOpenExternal?.(FEEDBACK_FORM_URL)
+      || window.open(FEEDBACK_FORM_URL, '_blank', 'noopener,noreferrer')
   }
 
   async function handleRebuildCache() {
@@ -535,6 +542,13 @@ export default function SettingsPage({ onNavigate }) {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', marginBottom: 28 }}>
           <h2 style={{ margin: 0, fontSize: 20, color: '#cba6f7', flex: '1 1 240px' }}>{APP_TITLE_WITH_VERSION}</h2>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+            <button
+              type="button"
+              style={{ ...btnStyle, background: '#74c7ec', color: '#11111b' }}
+              onClick={handleOpenFeedback}
+            >
+              反馈
+            </button>
             <button
               type="button"
               style={{ ...btnStyle, background: '#45475a', color: '#cdd6f4' }}
