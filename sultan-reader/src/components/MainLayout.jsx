@@ -8,7 +8,7 @@ import useReadingStateStore, {
 } from '../stores/useReadingStateStore'
 import Canvas from './Canvas'
 import DetailPanel from './DetailPanel'
-import { mountNodeOnCanvas, replaceCanvasWithFullGraph } from '../services/graphNavigation'
+import { mountNodeOnCanvas } from '../services/graphNavigation'
 import { useResolvedImage } from '../services/imageResolver'
 import { getCardRarityFrameAsset } from '../resourceConfig'
 import { getContentTypeLabel } from '../constants/gameTerminology'
@@ -26,6 +26,7 @@ const TYPE_TABS = [
 ]
 
 const PAGE_SIZE = 18
+const CANVAS_SNAPSHOT_STORAGE_KEY = 'canvasSnapshot'
 
 function chunkSummary(entry) {
   return entry.name || entry.title || entry.text || entry.id
@@ -86,8 +87,11 @@ export default function MainLayout({ onNavigate }) {
   const cardsById = useConfigStore((state) => state.cardsById)
   const nodeIdSet = useCanvasStore((state) => state.nodeIdSet)
   const nodes = useCanvasStore((state) => state.nodes)
+  const edges = useCanvasStore((state) => state.edges)
   const clearCanvas = useCanvasStore((state) => state.clearCanvas)
   const selectedNodeId = useCanvasStore((state) => state.selectedNodeId)
+  const selectedOpenMode = useCanvasStore((state) => state.selectedOpenMode)
+  const replaceCanvas = useCanvasStore((state) => state.replaceCanvas)
   const contentStates = useReadingStateStore((state) => state.contentStates)
   const toggleRead = useReadingStateStore((state) => state.toggleRead)
 
@@ -98,7 +102,9 @@ export default function MainLayout({ onNavigate }) {
   const [currentPage, setCurrentPage] = useState(1)
   const [loadingItems, setLoadingItems] = useState(false)
   const [bootstrapped, setBootstrapped] = useState(false)
-  const [exportingGraph, setExportingGraph] = useState(false)
+  const [savingSnapshot, setSavingSnapshot] = useState(false)
+  const [loadingSnapshot, setLoadingSnapshot] = useState(false)
+  const [hasSavedSnapshot, setHasSavedSnapshot] = useState(false)
 
   useEffect(() => {
     initialize()
@@ -132,6 +138,29 @@ export default function MainLayout({ onNavigate }) {
   useEffect(() => {
     setCurrentPage(1)
   }, [filterText, activeStateFilter])
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function checkSavedSnapshot() {
+      try {
+        const snapshot = await window.electronAPI.storageGetJson?.(CANVAS_SNAPSHOT_STORAGE_KEY)
+        if (!cancelled) {
+          setHasSavedSnapshot(Boolean(snapshot?.nodes?.length))
+        }
+      } catch {
+        if (!cancelled) {
+          setHasSavedSnapshot(false)
+        }
+      }
+    }
+
+    void checkSavedSnapshot()
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   useEffect(() => {
     if (!isLoaded || bootstrapped || nodeIdSet.size > 0) return
@@ -187,28 +216,48 @@ export default function MainLayout({ onNavigate }) {
     return filteredItems.slice(start, start + PAGE_SIZE)
   }, [currentPage, filteredItems])
 
-  const selectedCanvasNode = useMemo(
-    () => nodes.find((node) => node.id === selectedNodeId) || null,
-    [nodes, selectedNodeId]
-  )
+  async function handleSaveCanvasSnapshot() {
+    if (nodes.length === 0 || savingSnapshot) return
 
-  async function handleExportCurrentNodeGraph() {
-    if (!selectedCanvasNode || exportingGraph) return
-
-    setExportingGraph(true)
+    setSavingSnapshot(true)
     try {
-      const colonIndex = selectedCanvasNode.id.indexOf(':')
-      const type = selectedCanvasNode.id.slice(0, colonIndex)
-      const id = selectedCanvasNode.id.slice(colonIndex + 1)
-      await replaceCanvasWithFullGraph({
-        id,
-        type,
-        name: selectedCanvasNode.data?.label || '',
+      await window.electronAPI.storageSetJson?.(CANVAS_SNAPSHOT_STORAGE_KEY, {
+        version: 1,
+        savedAt: new Date().toISOString(),
+        selectedNodeId,
+        selectedOpenMode,
+        nodes,
+        edges,
       })
+      setHasSavedSnapshot(true)
     } catch (error) {
-      alert(`导出节点图失败：${error?.message || '未知错误'}`)
+      alert(`保存节点图失败：${error?.message || '未知错误'}`)
     } finally {
-      setExportingGraph(false)
+      setSavingSnapshot(false)
+    }
+  }
+
+  async function handleLoadCanvasSnapshot() {
+    if (loadingSnapshot) return
+
+    setLoadingSnapshot(true)
+    try {
+      const snapshot = await window.electronAPI.storageGetJson?.(CANVAS_SNAPSHOT_STORAGE_KEY)
+      if (!snapshot?.nodes?.length) {
+        alert('还没有已保存的节点图。')
+        setHasSavedSnapshot(false)
+        return
+      }
+
+      replaceCanvas(snapshot.nodes, snapshot.edges || [], {
+        selectedNodeId: snapshot.selectedNodeId || null,
+        selectedOpenMode: snapshot.selectedOpenMode || 'panel',
+      })
+      setHasSavedSnapshot(true)
+    } catch (error) {
+      alert(`载入节点图失败：${error?.message || '未知错误'}`)
+    } finally {
+      setLoadingSnapshot(false)
     }
   }
 
@@ -227,13 +276,25 @@ export default function MainLayout({ onNavigate }) {
             type="button"
             style={{
               ...secondaryActionStyle,
-              ...(selectedCanvasNode ? null : disabledActionStyle),
+              ...(nodes.length > 0 ? null : disabledActionStyle),
             }}
-            onClick={handleExportCurrentNodeGraph}
-            disabled={!selectedCanvasNode || exportingGraph}
-            title={selectedCanvasNode ? '清空当前画布，并用当前选中节点重建完整节点图' : '请先在节点图中选中一个节点'}
+            onClick={handleSaveCanvasSnapshot}
+            disabled={nodes.length === 0 || savingSnapshot}
+            title={nodes.length > 0 ? '保存当前画布上的所有节点与连线，供下次载入' : '当前画布为空，无法保存'}
           >
-            {exportingGraph ? '导出中…' : '导出节点图'}
+            {savingSnapshot ? '保存中…' : '保存节点图'}
+          </button>
+          <button
+            type="button"
+            style={{
+              ...secondaryActionStyle,
+              ...(hasSavedSnapshot ? null : disabledActionStyle),
+            }}
+            onClick={handleLoadCanvasSnapshot}
+            disabled={!hasSavedSnapshot || loadingSnapshot}
+            title={hasSavedSnapshot ? '载入上次保存的节点图存档' : '当前没有可载入的节点图存档'}
+          >
+            {loadingSnapshot ? '载入中…' : '载入节点图'}
           </button>
           <button
             type="button"
